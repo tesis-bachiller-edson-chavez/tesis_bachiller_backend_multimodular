@@ -142,4 +142,25 @@ class AuthenticationServiceTest {
         }, "Deberia lanzarse una excepcion, si el admin inicial esta configurado como vacio");
     }
 
+    @Test
+    @DisplayName("M (Many): Un usuario existente que vuelve a iniciar sesion es recuperado correctamente")
+    void processNewLogin_whenAdminExistsAndExistingUserLogsIn_ShouldReturnExistingUser(){
+        //Given
+        // 1. Ya existe un Administrador en el sistema
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
+        //2. El usuario que se loguea ya existe en la BD
+        User existingUser = new User(999L, "existing-user", "existing@github.com");
+        existingUser.getRoles().add(new Role(RoleName.DEVELOPER));
+        when(userRepository.findByGithubUsernameIgnoreCase("existing-user")).thenReturn(java.util.Optional.of(existingUser));
+
+        var githubUserDto = new GithubUserDto(999L, "existing-user", "existing@github.com");
+        //WHEN
+        User returnedUser = authenticationService.processNewLogin(githubUserDto);
+        //THEN
+        //1. El usuario devuelto debe ser el mismo que el existente
+        assertThat(returnedUser).isEqualTo(existingUser);
+        //2. NO se debe haber llamado a save(), porque el usuario ya existia
+        verify(userRepository, org.mockito.Mockito.never()).save(any(User.class));
+    }
+
 }
