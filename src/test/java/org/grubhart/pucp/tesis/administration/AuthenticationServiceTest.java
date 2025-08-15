@@ -125,4 +125,21 @@ class AuthenticationServiceTest {
         assertThat(savedUser.getRoles()).extracting(Role::getName).containsExactly(RoleName.DEVELOPER);
     }
 
+    @Test
+    @DisplayName("Z (Zero): lanza excepcion si la variable de entorno del admin esta vacia")
+    void processNewLogin_whenNoAdminAndEmptyEnvVar_shouldThrowException() {
+        //Given
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
+        //Simulamos que la variable de entorno esta presente pero esta vacia
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn("    ");
+
+        var githubUser = new GithubUserDto(123L, "any-user", "any@github.com");
+
+        //When & Then
+        //Verificamos que se lanza la excepcion
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> {
+            authenticationService.processNewLogin(githubUser);
+        }, "Deberia lanzarse una excepcion, si el admin inicial esta configurado como vacio");
+    }
+
 }
