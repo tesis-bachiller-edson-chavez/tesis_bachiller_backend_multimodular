@@ -1,11 +1,11 @@
-package org.grubhart.pucp.tesis.administration;
+package org.grubhart.pucp.tesis.module_administration;
 
 import jakarta.transaction.Transactional;
-import org.grubhart.pucp.tesis.domain.RoleRepository;
-import org.grubhart.pucp.tesis.domain.Role;
-import org.grubhart.pucp.tesis.domain.RoleName;
-import org.grubhart.pucp.tesis.domain.User;
-import org.grubhart.pucp.tesis.domain.UserRepository;
+import org.grubhart.pucp.tesis.module_domain.RoleRepository;
+import org.grubhart.pucp.tesis.module_domain.Role;
+import org.grubhart.pucp.tesis.module_domain.RoleName;
+import org.grubhart.pucp.tesis.module_domain.User;
+import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.springframework.core.env.Environment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

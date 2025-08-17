@@ -1,4 +1,4 @@
-package org.grubhart.pucp.tesis.domain;
+package org.grubhart.pucp.tesis.module_domain;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

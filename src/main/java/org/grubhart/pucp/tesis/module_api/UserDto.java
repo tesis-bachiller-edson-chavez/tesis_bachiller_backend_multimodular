@@ -1,4 +1,4 @@
-package org.grubhart.pucp.tesis.api;
+package org.grubhart.pucp.tesis.module_api;
 
 import java.util.Set;
 

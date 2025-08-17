@@ -1,12 +1,11 @@
-package org.grubhart.pucp.tesis.config;
+package org.grubhart.pucp.tesis.module_api;
 
 
-import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.grubhart.pucp.tesis.administration.AuthenticationService;
-import org.grubhart.pucp.tesis.administration.GithubUserDto;
+import org.grubhart.pucp.tesis.module_administration.AuthenticationService;
+import org.grubhart.pucp.tesis.module_administration.GithubUserDto;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;

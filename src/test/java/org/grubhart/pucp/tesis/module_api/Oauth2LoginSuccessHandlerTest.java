@@ -1,11 +1,9 @@
-package org.grubhart.pucp.tesis;
+package org.grubhart.pucp.tesis.module_api;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpServletResponse;
-import org.grubhart.pucp.tesis.administration.AuthenticationService;
-import org.grubhart.pucp.tesis.administration.GithubUserDto;
-import org.grubhart.pucp.tesis.config.Oauth2LoginSuccessHandler;
+import org.grubhart.pucp.tesis.module_administration.AuthenticationService;
+import org.grubhart.pucp.tesis.module_administration.GithubUserDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,7 +11,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -22,11 +19,9 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 
 import java.io.IOException;
 import jakarta.servlet.ServletException;
-import java.util.Collection;
+
 import java.util.Collections;
 import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
