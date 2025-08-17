@@ -1,8 +1,8 @@
 # Documento de Diseño de Software: Plataforma de Medición de Métricas DORA
 
-**Versión:** 9.7 (Ampliación de Trabajo Futuro)
+**Versión:** 10.4 (Idempotencia en todas las Recolecciones)
 **Autor:** Edson Abraham Chavez Montaño
-**Fecha:** 14 de agosto de 2025
+**Fecha:** 15 de agosto de 2025
 
 ---
 
@@ -120,37 +120,11 @@ graph TD;
 
 ---
 
-## 6. Detalle de Componentes
+## 6. Detalle de Componentes del Backend
 
-### 6.1. Backend (Java / Spring Boot)
-El backend se estructurará como un **Monolito Modular** utilizando **Spring Modulith** para definir y verificar los límites de cada módulo. El proyecto de Spring Boot se organizará en los siguientes módulos lógicos (paquetes de Java), cada uno anotado como un `@ApplicationModule`.
+### 6.1. Vista General de Módulos
+El backend se estructurará como un **Monolito Modular** utilizando **Spring Modulith**. El proyecto se organizará en los siguientes módulos lógicos (paquetes de Java), cada uno con responsabilidades bien definidas.
 
-- **`module-domain`:**
-    - **Responsabilidad:** Actúa como el núcleo de la aplicación. Define la **Única Fuente de Verdad** para el modelo de datos.
-    - **Componentes:** Clases de Entidad JPA (`@Entity`) e interfaces de Repositorio de Spring Data JPA (`JpaRepository`). **No contiene DTOs.**
-- **`module-collector`:**
-    - **Responsabilidad:** Conectarse a las APIs externas para recolectar eventos de forma **idempotente**. Su función es guardar cada evento externo una única vez en la tabla `Raw_Events`. Utiliza DTOs específicos para cada fuente externa, implementando el patrón **Anticorruption Layer (ACL)**.
-    - **Componentes:** Clases de servicio para cada integración, DTOs específicos para las APIs externas, lógica de scheduling con manejo de errores de duplicados.
-- **`module-processor`:**
-    - **Responsabilidad:** Orquestar el pipeline de datos interno de forma resiliente.
-        1.  Lee un lote de `Raw_Events` en estado `PENDING`.
-        2.  Parsea los payloads y los transforma en entidades de dominio estructuradas.
-        3.  Si el procesamiento de un evento falla, lo marca como `FAILED`, registra el error, y continúa con el siguiente.
-        4.  Si es exitoso, calcula las métricas DORA y guarda los resultados.
-        5.  Marca los `Raw_Events` exitosos como `COMPLETED`.
-        6.  **Publica un evento de dominio** (ej. `MetricThresholdExceededEvent`) si se detectan cambios significativos en las métricas.
-    - **Componentes:** Calculadoras de métricas, lógica de agregación, lógica de scheduling transaccional, manejo de errores.
-- **`module-notifications`:**
-    - **Responsabilidad:** **Escuchar eventos de dominio** y gestionar el envío de notificaciones salientes en respuesta a ellos.
-    - **Componentes:** Oyentes de eventos (`@EventListener`), Servicio de Email, plantillas de correo.
-- **`module-administration`:**
-    - **Responsabilidad:** Gestionar la configuración del sistema (incluyendo el cifrado de secretos) y los roles de usuario.
-    - **Componentes:** Lógica de negocio para la gestión de roles y configuración, servicio de criptografía.
-- **`module-api`:**
-    - **Responsabilidad:** Exponer los datos y la funcionalidad a través de una API REST pública y segura. Actúa como la **fachada y orquestador** para todas las peticiones externas.
-    - **Componentes:** Controladores REST que delegan la lógica a los servicios de los módulos `-processor` y `-administration`. DTOs que definen el contrato de la API. Configuración de Spring Security para OAuth y RBAC.
-
-#### Diagrama de Módulos del Backend (Dependencias de Compilación)
 ```mermaid
 graph TD;
     subgraph Monolito Modular
@@ -170,142 +144,40 @@ graph TD;
 ```
 ***Nota de Diseño:*** *Las dependencias entre módulos serán verificadas a través de pruebas de Spring Modulith. La comunicación entre `module-processor` y `module-notifications` se realiza de forma desacoplada a través de eventos de dominio, eliminando una dependencia de compilación directa. Las dependencias restantes son intencionales para permitir la orquestación y el acceso a la configuración.*
 
-### 6.2. Base de Datos (MySQL)
-Contendrá, como mínimo, las siguientes entidades. El modelo se expande para incluir entidades estructuradas que facilitan el cálculo de métricas.
+### 6.2. Detalle por Módulo
 
-- `Users` (id, github_id, name, email)
-- `Roles` (id, name) - Ej: 'ADMIN', 'ENGINEERING_MANAGER', 'TECH_LEAD', 'DEVELOPER'
-- `User_Roles` (user_id, role_id)
-- `Teams` (id, name)
-- `User_Teams` (user_id, team_id) - Tabla de unión para la relación N-M.
-- `Repositories` (id, name, team_id)
-- `Raw_Events` (id, **external_id**, repository_id (nullable), source, type, payload, timestamp, processed_status, processing_error)
-- `Pull_Requests` (id, repository_id, github_pr_id, state, created_at, merged_at)
-- `Commits` (id, repository_id, pull_request_id (nullable), sha, author, timestamp)
-- `Deployments` (id, repository_id, commit_sha, timestamp, status)
-- `Incidents` (id, repository_id, deployment_id (nullable), external_id, status, created_at, resolved_at)
-- `Calculated_Metrics` (id, repository_id, date, metric_name, value bigint) - *Nota: Las métricas basadas en tiempo se almacenarán en segundos.*
-- `System_Configurations` (config_key, **config_value_encrypted**)
+* **6.2.1. `module-domain`**
+    * **Responsabilidad:** Actúa como el núcleo de la aplicación. Define la **Única Fuente de Verdad** para el modelo de datos.
+    * **Componentes:** Clases de Entidad JPA (`@Entity`) e interfaces de Repositorio de Spring Data JPA (`JpaRepository`). **No contiene DTOs.**
 
-#### 6.2.1. Estrategia de Indexación
-Para garantizar un rendimiento óptimo de las consultas, se definirán los siguientes índices clave. Otros índices sobre claves foráneas serán creados automáticamente por el motor de la base de datos.
+* **6.2.2. `module-collector`**
+    * **Responsabilidad:** Conectarse a las APIs externas para recolectar eventos de forma **idempotente**. Su función es guardar cada evento externo una única vez en la tabla `Raw_Events`. Utiliza DTOs específicos para cada fuente externa, implementando el patrón **Anticorruption Layer (ACL)**.
+    * **Componentes:** Clases de servicio para cada integración, DTOs específicos para las APIs externas, lógica de scheduling con manejo de errores de duplicados.
 
-* **`Raw_Events`**:
-    * Índice en `(processed_status, timestamp)`: Esencial para que el `module-processor` pueda buscar eficientemente los eventos pendientes de procesar en orden cronológico.
-* **`Commits`**:
-    * Índice en `(repository_id, timestamp)`: Optimiza la búsqueda de commits para un repositorio específico dentro de un rango de fechas, una operación común para calcular el *Lead Time*.
-* **`Calculated_Metrics`**:
-    * Índice compuesto en `(repository_id, metric_name, date)`: Acelera drásticamente las consultas de la API y los dashboards, que típicamente filtrarán por una métrica específica para un repositorio en un período de tiempo.
+* **6.2.3. `module-processor`**
+    * **Responsabilidad:** Orquestar el pipeline de datos interno de forma resiliente.
+        1.  Lee un lote de `Raw_Events` en estado `PENDING`.
+        2.  Parsea los payloads y los transforma en entidades de dominio estructuradas.
+        3.  Si el procesamiento de un evento falla, lo marca como `FAILED`, registra el error, y continúa con el siguiente.
+        4.  Si es exitoso, calcula las métricas DORA y guarda los resultados.
+        5.  Marca los `Raw_Events` exitosos como `COMPLETED`.
+        6.  **Publica un evento de dominio** (ej. `MetricThresholdExceededEvent`) si se detectan cambios significativos en las métricas.
+    * **Componentes:** Calculadoras de métricas, lógica de agregación, lógica de scheduling transaccional, manejo de errores.
 
-#### 6.2.2. Garantías de Idempotencia
-Para asegurar la integridad de los datos, el pipeline será idempotente en sus dos etapas críticas:
+* **6.2.4. `module-notifications`**
+    * **Responsabilidad:** **Escuchar eventos de dominio** y gestionar el envío de notificaciones salientes en respuesta a ellos.
+    * **Componentes:** Oyentes de eventos (`@EventListener`), Servicio de Email, plantillas de correo.
 
-* **Idempotencia en la Recolección:** Para evitar registrar el mismo evento externo varias veces, la tabla `Raw_Events` incluirá una columna `external_id` (el ID del evento en su sistema de origen) y una restricción de unicidad (`UNIQUE`) sobre la combinación de `(source, external_id)`. El `module-collector` manejará los errores de violación de esta restricción, ignorando los eventos duplicados.
-* **Idempotencia en el Procesamiento:** Para evitar procesar el mismo evento crudo varias veces, el `module-processor` utilizará la columna `processed_status`. Solo seleccionará eventos en estado `PENDING` y los actualizará a `COMPLETED` o `FAILED` dentro de una transacción, asegurando que cada evento se procese una sola vez.
+* **6.2.5. `module-administration`**
+    * **Responsabilidad:** Gestionar la configuración del sistema (incluyendo el cifrado de secretos) y los roles de usuario.
+    * **Componentes:** Lógica de negocio para la gestión de roles y configuración, servicio de criptografía.
 
-#### Diagrama de Entidad-Relación (Completo)
-```mermaid
-erDiagram
-    USERS {
-        int id PK
-        varchar github_id
-        varchar name
-        varchar email
-    }
-    ROLES {
-        int id PK
-        varchar name
-    }
-    USER_ROLES {
-        int user_id FK
-        int role_id FK
-    }
-    TEAMS {
-        int id PK
-        varchar name
-    }
-    USER_TEAMS {
-        int user_id FK
-        int team_id FK
-    }
-    REPOSITORIES {
-        int id PK
-        varchar name
-        int team_id FK
-    }
-    RAW_EVENTS {
-        int id PK
-        varchar external_id "UNIQUE(source, external_id)"
-        int repository_id FK
-        varchar source
-        varchar type
-        json payload
-        datetime timestamp "INDEX"
-        varchar processed_status "INDEX"
-        text processing_error
-    }
-    PULL_REQUESTS {
-        int id PK
-        int repository_id FK
-        varchar state
-        datetime created_at
-        datetime merged_at
-    }
-    COMMITS {
-        int id PK
-        int repository_id FK
-        int pull_request_id FK
-        varchar sha
-        datetime timestamp "INDEX"
-    }
-    DEPLOYMENTS {
-        int id PK
-        int repository_id FK
-        varchar commit_sha
-        datetime timestamp
-        varchar status
-    }
-    INCIDENTS {
-        int id PK
-        int repository_id FK
-        int deployment_id FK
-        varchar external_id
-        varchar status
-        datetime created_at
-        datetime resolved_at
-    }
-    CALCULATED_METRICS {
-        int id PK
-        int repository_id FK
-        date date "INDEX"
-        varchar metric_name "INDEX"
-        bigint value
-    }
-    SYSTEM_CONFIGURATIONS {
-        varchar config_key PK
-        text config_value_encrypted
-    }
+* **6.2.6. `module-api`**
+    * **Responsabilidad:** Exponer los datos y la funcionalidad a través de una API REST pública y segura. Actúa como la **fachada y orquestador** para todas las peticiones externas.
+    * **Componentes:** Controladores REST que delegan la lógica a los servicios de los módulos `-processor` y `-administration`. DTOs que definen el contrato de la API. Configuración de Spring Security para OAuth y RBAC.
 
-    USERS ||--|{ USER_ROLES : "tiene"
-    ROLES ||--|{ USER_ROLES : "es"
-    TEAMS ||--|{ REPOSITORIES : "posee"
-    USERS ||--|{ USER_TEAMS : "pertenece a"
-    TEAMS ||--|{ USER_TEAMS : "contiene"
-    REPOSITORIES }o--|{ RAW_EVENTS : "genera"
-    REPOSITORIES ||--|{ PULL_REQUESTS : "tiene"
-    REPOSITORIES ||--|{ COMMITS : "tiene"
-    REPOSITORIES ||--|{ DEPLOYMENTS : "recibe"
-    PULL_REQUESTS }o--|{ COMMITS : "contiene"
-    REPOSITORIES ||--|{ CALCULATED_METRICS : "tiene"
-    REPOSITORIES ||--|{ INCIDENTS : "sufre"
-    DEPLOYMENTS }o--|{ INCIDENTS : "causa"
-```
-
-### 6.3. Frontend (Aplicación Web con Grafana)
-Será una Single-Page Application (SPA).
-- Se encargará de la experiencia de usuario general, incluyendo la autenticación y la navegación.
-- Implementará las interfaces para los **Módulos de Gestión de Roles y Configuración del Sistema**.
-- **Embeberá paneles de Grafana** para la visualización de datos. La instancia de Grafana estará configurada para usar la API REST del backend como su fuente de datos principal.
+### 6.3. Base de Datos (MySQL)
+El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estrategia de indexación, se encuentra en el **Apéndice A**.
 
 ---
 
@@ -469,11 +341,7 @@ graph
 
 ---
 
-## 10. Detalle de Casos de Uso (Historias de Usuario y Criterios de Aceptación)
-
-Esta sección desglosa los casos de uso en historias de usuario accionables y sus correspondientes Criterios de Aceptación (AC).
-
-### 10.1. Historias de Usuario Generales
+## 10. Detalle de Historias de Usuario
 
 * **HU-1: Iniciar Sesión**
     - **Como** un usuario no autenticado, **quiero** poder iniciar sesión con mi cuenta de GitHub, **para** acceder a la aplicación de forma segura.
@@ -484,8 +352,6 @@ Esta sección desglosa los casos de uso en historias de usuario accionables y su
 * **HU-2: Cerrar Sesión**
     - **Como** un usuario autenticado, **quiero** poder cerrar mi sesión, **para** proteger mi cuenta cuando termine de usar la aplicación.
     - **AC 2.1:** Dado que estoy logueado, cuando hago clic en "Cerrar Sesión", entonces mi sesión se invalida y soy redirigido a la página de inicio de sesión.
-
-### 10.2. Historias de Usuario de Administración
 
 * **HU-3: Configuración Inicial**
     - **Como** el primer usuario de la aplicación, **quiero** ser asignado automáticamente como Administrador, **para** poder realizar la configuración inicial del sistema.
@@ -505,8 +371,6 @@ Esta sección desglosa los casos de uso en historias de usuario accionables y su
     - **AC 5.4:** Dado que estoy en la página de gestión de usuarios, cuando selecciono un usuario y le asigno el rol "Engineering Manager", entonces el cambio se persiste y se refleja en la lista.
     - **AC 5.5:** Dado que estoy en la página de gestión de usuarios, cuando selecciono un usuario y le asigno el rol "Administrador", entonces el cambio se persiste y se refleja en la lista.
 
-### 10.3. Historias de Usuario de Consulta
-
 * **HU-7: Dashboard de Engineering Manager**
     - **Como** Engineering Manager, **quiero** ver un dashboard con las métricas DORA agregadas a nivel de toda la organización, **para** entender el rendimiento general de la ingeniería.
     - **AC 7.1:** Dado que he iniciado sesión como Engineering Manager, cuando accedo al dashboard, entonces los gráficos muestran por defecto los datos de todos los equipos.
@@ -521,12 +385,45 @@ Esta sección desglosa los casos de uso en historias de usuario accionables y su
     - **Como** Desarrollador, **quiero** ver un dashboard con las métricas DORA de los repositorios en los que contribuyo, **para** entender el impacto de mi trabajo en el ciclo de entrega.
     - **AC 9.1:** Dado que he iniciado sesión como Desarrollador, cuando accedo al dashboard, entonces los gráficos muestran por defecto los datos de todos los repositorios en los que he hecho commits.
 
-### 10.4. Historias de Usuario del Sistema
-
 * **HU-10: Enviar Notificación de Alerta de Métrica**
     * **Como** el sistema, **quiero** enviar una notificación por correo electrónico, **para** alertar a los usuarios relevantes sobre cambios significativos en el rendimiento.
     * **AC 10.1:** Dado que el `module-processor` ha calculado una nueva métrica, cuando el valor de esta métrica excede un umbral predefinido, entonces se dispara un evento de notificación.
     * **AC 10.2:** Dado que se ha disparado un evento de notificación, cuando el `module-notifications` lo recibe, entonces se envía un correo electrónico al Tech Lead o Engineering Manager responsable del repositorio o equipo afectado.
+
+* **HU-11: Recolectar Datos de GitHub**
+    * **Como** el sistema, **quiero** conectarme a la API de GitHub de forma periódica, **para** recolectar eventos de PRs, commits y deployments.
+    * **AC 11.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de GitHub, entonces obtiene los eventos nuevos desde la última ejecución.
+    * **AC 11.2:** Dado que se obtiene un evento nuevo, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
+
+* **HU-12: Procesar Métricas de Velocidad**
+    * **Como** el sistema, **quiero** procesar los datos de GitHub, **para** calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.
+    * **AC 12.1:** Dado que hay eventos de despliegue y commits en la base de datos, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Frecuencia de Despliegue.
+    * **AC 12.2:** Dado que hay eventos de commits y PRs, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo de Espera para Cambios.
+
+* **HU-13: Recolectar Datos de Jira**
+    * **Como** el sistema, **quiero** conectarme a la API de Jira de forma periódica, **para** enriquecer los datos de los commits.
+    * **AC 13.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de Jira, entonces obtiene los datos de los tickets mencionados en los commits.
+    * **AC 13.2:** Dado que se obtiene un evento de Jira, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
+
+* **HU-14: Recolectar Datos de DataDog**
+    * **Como** el sistema, **quiero** conectarme a la API de DataDog de forma periódica, **para** recolectar eventos de incidentes.
+    * **AC 14.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de DataDog, entonces obtiene los incidentes nuevos y los guarda en la base de datos.
+    * **AC 14.2:** Dado que se obtiene un incidente de DataDog, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
+
+* **HU-15: Procesar Métricas de Estabilidad**
+    * **Como** el sistema, **quiero** procesar los datos de despliegues e incidentes, **para** calcular la Tasa de Fallo de Cambio y el Tiempo Medio de Recuperación.
+    * **AC 15.1:** Dado que hay eventos de despliegues e incidentes, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tasa de Fallo de Cambio.
+    * **AC 15.2:** Dado que hay eventos de incidentes, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo Medio de Recuperación.
+
+* **HU-16: Estructura Base del Frontend**
+    * **Como** desarrollador, **quiero** una estructura de proyecto React con ruteo y layouts, **para** tener una base sólida sobre la cual construir la UI.
+    * **AC 16.1:** Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la `LoginPage`.
+    * **AC 16.2:** Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el `AuthenticatedLayout` (header y sidebar) de forma persistente.
+
+* **HU-17: Página de Administración**
+    * **Como** Administrador, **quiero** una interfaz para gestionar los roles de los usuarios, **para** controlar los permisos de la aplicación.
+    * **AC 17.1:** Dado que he iniciado sesión como Administrador, cuando navego a la página de administración, entonces veo una tabla con los usuarios de la organización.
+    * **AC 17.2:** Dado que estoy viendo la tabla de usuarios, cuando cambio el rol de un usuario, entonces se realiza una llamada a la API y la UI se actualiza con el nuevo rol.
 
 ---
 
@@ -577,3 +474,181 @@ graph TD
 2.  La información del usuario (nombre, rol) se almacena en un **React Context** global (`AuthContext`) para controlar la UI. El token CSRF se almacena en memoria.
 3.  Para obtener datos del servidor (ej. la lista de usuarios en `UserManagement`), los componentes utilizarán los hooks de **TanStack Query** (ej. `useQuery`). TanStack Query se encargará de gestionar los estados de carga y error.
 4.  Para las peticiones que modifican el estado (ej. cambiar un rol), los componentes usarán los hooks de mutación de TanStack Query (ej. `useMutation`), asegurándose de incluir el **token CSRF** en una cabecera HTTP.
+
+---
+
+## Apéndice A: Diagramas de Diseño Detallado
+
+### A.1: Modelo Físico de Base de Datos (ERD)
+
+```mermaid
+erDiagram
+    USERS {
+        int id PK
+        varchar github_id
+        varchar name
+        varchar email
+    }
+    ROLES {
+        int id PK
+        varchar name
+    }
+    USER_ROLES {
+        int user_id FK
+        int role_id FK
+    }
+    TEAMS {
+        int id PK
+        varchar name
+    }
+    USER_TEAMS {
+        int user_id FK
+        int team_id FK
+    }
+    REPOSITORIES {
+        int id PK
+        varchar name
+        int team_id FK
+    }
+    RAW_EVENTS {
+        int id PK
+        varchar external_id "UNIQUE(source, external_id)"
+        int repository_id FK
+        varchar source
+        varchar type
+        json payload
+        datetime timestamp "INDEX"
+        varchar processed_status "INDEX"
+        text processing_error
+    }
+    PULL_REQUESTS {
+        int id PK
+        int repository_id FK
+        varchar state
+        datetime created_at
+        datetime merged_at
+    }
+    COMMITS {
+        int id PK
+        int repository_id FK
+        int pull_request_id FK
+        varchar sha
+        datetime timestamp "INDEX"
+    }
+    DEPLOYMENTS {
+        int id PK
+        int repository_id FK
+        varchar commit_sha
+        datetime timestamp
+        varchar status
+    }
+    INCIDENTS {
+        int id PK
+        int repository_id FK
+        int deployment_id FK
+        varchar external_id
+        varchar status
+        datetime created_at
+        datetime resolved_at
+    }
+    CALCULATED_METRICS {
+        int id PK
+        int repository_id FK
+        date date "INDEX"
+        varchar metric_name "INDEX"
+        bigint value
+    }
+    SYSTEM_CONFIGURATIONS {
+        varchar config_key PK
+        text config_value_encrypted
+    }
+
+    USERS ||--|{ USER_ROLES : "tiene"
+    ROLES ||--|{ USER_ROLES : "es"
+    TEAMS ||--|{ REPOSITORIES : "posee"
+    USERS ||--|{ USER_TEAMS : "pertenece a"
+    TEAMS ||--|{ USER_TEAMS : "contiene"
+    REPOSITORIES }o--|{ RAW_EVENTS : "genera"
+    REPOSITORIES ||--|{ PULL_REQUESTS : "tiene"
+    REPOSITORIES ||--|{ COMMITS : "tiene"
+    REPOSITORIES ||--|{ DEPLOYMENTS : "recibe"
+    PULL_REQUESTS }o--|{ COMMITS : "contiene"
+    REPOSITORIES ||--|{ CALCULATED_METRICS : "tiene"
+    REPOSITORIES ||--|{ INCIDENTS : "sufre"
+    DEPLOYMENTS }o--|{ INCIDENTS : "causa"
+```
+
+### A.2: Diagramas de Implementación (Trabajo en Progreso)
+
+Esta sección contendrá diagramas de Clases y de secuencia detallados para flujos de negocio complejos a medida que se implementen.
+
+#### Diagrama de Secuencia: `module-collector` (GitHub)
+```mermaid
+sequenceDiagram
+    participant Job as Scheduled Job
+    participant Collector as CollectorService
+    participant GitHub as GitHub API
+    participant DB as Database
+
+    activate Job
+    Job->>Collector: Iniciar recolección de eventos
+    activate Collector
+    
+    Collector->>GitHub: GET /repos/.../events?since=...
+    GitHub-->>Collector: Lista de eventos JSON
+    
+    loop por cada evento
+        Collector->>DB: INSERT INTO Raw_Events (...)
+        alt Evento ya existe
+            DB-->>Collector: UniqueConstraintViolation
+            note over Collector: Ignorar duplicado
+        else Evento nuevo
+            DB-->>Collector: OK
+        end
+    end
+
+    deactivate Collector
+    deactivate Job
+```
+
+## Apéndice B: Estrategia de Integración y Despliegue Continuo (CI/CD)
+
+La estrategia de CI/CD se implementará utilizando **GitHub Actions**. La documentación detallada y los scripts de los workflows se mantendrán directamente en el repositorio de código, siguiendo el principio de "Docs as Code".
+
+### B.1: Estrategia de Alto Nivel
+
+El pipeline de CI/CD se diseñará para automatizar el proceso de construcción, prueba y despliegue de la aplicación.
+
+* **Disparadores (Triggers):**
+
+    * El workflow principal se ejecutará automáticamente en cada `push` a la rama `main`.
+
+    * También se ejecutará en la creación de `Pull Requests` que apunten a `main`, para validar los cambios antes de que se integren.
+
+* **Etapas Principales (Jobs):**
+
+    1. **Build & Test:**
+
+        * Se compilará el backend de Spring Boot utilizando Gradle.
+
+        * Se ejecutarán todas las pruebas unitarias y de integración, incluyendo las pruebas de verificación de la arquitectura de Spring Modulith.
+
+    2. **Build Docker Image:**
+
+        * Si la etapa anterior es exitosa, se construirá la imagen de Docker de la aplicación.
+
+        * La imagen se etiquetará con el SHA del commit y se subirá a un registro de contenedores (ej. GitHub Container Registry).
+
+    3. **Deploy:**
+
+        * Esta etapa se ejecutará solo en los `push` a `main`.
+
+        * Utilizará Terraform para provisionar o actualizar la infraestructura en la nube.
+
+        * Desplegará la nueva versión de la imagen de Docker en el entorno de producción.
+
+### B.2: Documentación Detallada
+
+La implementación específica y los scripts de los workflows de GitHub Actions se encuentran documentados en el siguiente archivo dentro del repositorio del proyecto:
+
+* `[Enlace al README.md en .github/workflows/ en tu repositorio]`
