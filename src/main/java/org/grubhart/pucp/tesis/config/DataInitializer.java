@@ -27,7 +27,7 @@ public class DataInitializer implements ApplicationRunner {
         logger.info("Iniciando la inicializacion de data maestra");
 
         Arrays.stream(RoleName.values()).forEach(roleName -> {
-            if (!roleRepository.findByName(roleName).isPresent()) {
+            if (roleRepository.findByName(roleName).isEmpty()) { // .isEmpty() es más legible desde Java 11+
                 logger.info("Creando rol que no existe: {}", roleName);
                 roleRepository.save(new Role(roleName));
             }
