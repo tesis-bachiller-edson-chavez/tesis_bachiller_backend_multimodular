@@ -1,8 +1,8 @@
-package org.grubhart.pucp.tesis.config;
+package org.grubhart.pucp.tesis.module_administration;
 
-import org.grubhart.pucp.tesis.domain.Role;
-import org.grubhart.pucp.tesis.domain.RoleName;
-import org.grubhart.pucp.tesis.domain.RoleRepository;
+import org.grubhart.pucp.tesis.module_domain.Role;
+import org.grubhart.pucp.tesis.module_domain.RoleName;
+import org.grubhart.pucp.tesis.module_domain.RoleRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;

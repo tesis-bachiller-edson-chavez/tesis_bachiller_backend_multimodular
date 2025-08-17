@@ -1,10 +1,10 @@
-package org.grubhart.pucp.tesis.config;
+package org.grubhart.pucp.tesis.module_api;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.grubhart.pucp.tesis.domain.UserRepository;
+import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.context.SecurityContextHolder;

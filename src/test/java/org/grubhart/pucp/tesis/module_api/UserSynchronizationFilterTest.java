@@ -1,12 +1,10 @@
-package org.grubhart.pucp.tesis.config;
+package org.grubhart.pucp.tesis.module_api;
 
-import org.grubhart.pucp.tesis.administration.AuthenticationService;
-import org.grubhart.pucp.tesis.api.UserController;
-import org.grubhart.pucp.tesis.domain.User;
-import org.grubhart.pucp.tesis.domain.UserRepository;
+import org.grubhart.pucp.tesis.module_administration.AuthenticationService;
+import org.grubhart.pucp.tesis.module_domain.User;
+import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;

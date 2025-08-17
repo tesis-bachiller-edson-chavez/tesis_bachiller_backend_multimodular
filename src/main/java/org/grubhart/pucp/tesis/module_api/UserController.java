@@ -1,7 +1,7 @@
-package org.grubhart.pucp.tesis.api;
+package org.grubhart.pucp.tesis.module_api;
 
-import org.grubhart.pucp.tesis.domain.User;
-import org.grubhart.pucp.tesis.domain.UserRepository;
+import org.grubhart.pucp.tesis.module_domain.User;
+import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

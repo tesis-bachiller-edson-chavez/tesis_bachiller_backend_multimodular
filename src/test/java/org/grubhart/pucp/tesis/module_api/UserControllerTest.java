@@ -1,11 +1,9 @@
-package org.grubhart.pucp.tesis.api;
+package org.grubhart.pucp.tesis.module_api;
 
-import org.grubhart.pucp.tesis.config.Oauth2LoginSuccessHandler;
-import org.grubhart.pucp.tesis.config.SecurityConfig;
-import org.grubhart.pucp.tesis.domain.Role;
-import org.grubhart.pucp.tesis.domain.RoleName;
-import org.grubhart.pucp.tesis.domain.User;
-import org.grubhart.pucp.tesis.domain.UserRepository;
+import org.grubhart.pucp.tesis.module_domain.Role;
+import org.grubhart.pucp.tesis.module_domain.RoleName;
+import org.grubhart.pucp.tesis.module_domain.User;
+import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

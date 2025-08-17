@@ -1,4 +1,4 @@
-package org.grubhart.pucp.tesis.domain;
+package org.grubhart.pucp.tesis.module_domain;
 
 public enum RoleName {
     ADMIN,
