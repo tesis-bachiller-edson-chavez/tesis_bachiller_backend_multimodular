@@ -1,0 +1,38 @@
+package org.grubhart.pucp.tesis.config;
+
+import org.grubhart.pucp.tesis.domain.Role;
+import org.grubhart.pucp.tesis.domain.RoleName;
+import org.grubhart.pucp.tesis.domain.RoleRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.stereotype.Component;
+
+import java.util.Arrays;
+
+@Component
+public class DataInitializer implements ApplicationRunner {
+
+    private static final Logger logger = LoggerFactory.getLogger(DataInitializer.class);
+    private final RoleRepository roleRepository;
+
+    public DataInitializer(RoleRepository roleRepository) {
+        this.roleRepository = roleRepository;
+    }
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+
+        logger.info("Iniciando la inicializacion de data maestra");
+
+        Arrays.stream(RoleName.values()).forEach(roleName -> {
+            if (!roleRepository.findByName(roleName).isPresent()) {
+                logger.info("Creando rol que no existe: {}", roleName);
+                roleRepository.save(new Role(roleName));
+            }
+        });
+        logger.info("Finalizando la inicializacion de data maestra");
+    }
+
+}

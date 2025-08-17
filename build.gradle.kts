@@ -22,14 +22,19 @@ extra["springModulithVersion"] = "1.4.1"
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-validation") // Para validar DTOs y otros objetos con anotaciones.
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.modulith:spring-modulith-starter-core")
     implementation("org.springframework.modulith:spring-modulith-starter-jpa")
-    developmentOnly("org.springframework.boot:spring-boot-devtools")
-    runtimeOnly("com.mysql:mysql-connector-j")
+    // Para el cifrado de secretos en la base de datos y propiedades, como se define en el design.md
+    implementation("com.github.ulisesbocchio:jasypt-spring-boot-starter:3.0.5")
+    developmentOnly("org.springframework.boot:spring-boot-devtools")    
+    // runtimeOnly("com.mysql:mysql-connector-j") // Comentado para usar H2
+    runtimeOnly("com.h2database:h2") // Añadido para la base de datos en memoria
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.projectreactor:reactor-test")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test")

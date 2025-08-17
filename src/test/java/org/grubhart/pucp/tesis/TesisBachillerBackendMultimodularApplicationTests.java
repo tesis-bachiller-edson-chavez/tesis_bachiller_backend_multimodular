@@ -10,4 +10,9 @@ class TesisBachillerBackendMultimodularApplicationTests {
     void contextLoads() {
     }
 
+    @Test
+    void main() {
+        // Simplemente invoca al método main para la cobertura.
+        TesisBachillerBackendMultimodularApplication.main(new String[]{});
+    }
 }

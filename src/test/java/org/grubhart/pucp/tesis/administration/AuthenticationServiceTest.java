@@ -1,5 +1,6 @@
 package org.grubhart.pucp.tesis.administration;
 
+import org.grubhart.pucp.tesis.domain.RoleRepository;
 import org.grubhart.pucp.tesis.domain.Role;
 import org.grubhart.pucp.tesis.domain.RoleName;
 import org.grubhart.pucp.tesis.domain.User;
@@ -12,6 +13,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.env.Environment;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,18 +33,23 @@ class AuthenticationServiceTest {
 
     private AuthenticationService authenticationService;
 
+    @Mock
+    private RoleRepository roleRepository;
+
     private final String INITIAL_ADMIN_USERNAME = "edson";
 
     @BeforeEach
     void setUp() {
         // Instanciamos manualmente el servicio con sus dependencias mockeadas
-        authenticationService = new AuthenticationService(userRepository, environment);
+        authenticationService = new AuthenticationService(userRepository, environment, roleRepository);
 
         lenient().when(environment.getProperty("dora.initial-admin-username"))
                 .thenReturn(INITIAL_ADMIN_USERNAME);
-
         lenient().when(userRepository.save(any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(roleRepository.findByName(any(RoleName.class)))
+                .thenAnswer(invocation -> Optional.of(new Role(invocation.getArgument(0))));
+
     }
 
     @Test

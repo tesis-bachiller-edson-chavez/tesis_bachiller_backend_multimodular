@@ -2,6 +2,10 @@ HELP.md
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar
+
+ # Ficheros de entorno local - NUNCA versionar
+ .env
+
 !**/src/main/**/build/
 !**/src/test/**/build/
 

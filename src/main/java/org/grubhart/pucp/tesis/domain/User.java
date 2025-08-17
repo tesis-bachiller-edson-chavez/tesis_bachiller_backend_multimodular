@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.domain;
 import jakarta.persistence.*;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 @Entity
@@ -75,5 +76,18 @@ public class User {
 
     public void setRoles(Set<Role> roles) {
         this.roles = roles;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        User user = (User) o;
+        return Objects.equals(githubId, user.githubId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(githubId);
     }
 }
