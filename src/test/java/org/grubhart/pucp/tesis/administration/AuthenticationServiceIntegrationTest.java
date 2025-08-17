@@ -15,7 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 @SpringBootTest
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-@TestPropertySource(properties = {"dora.initial-admin-username=admin-user"})
+@TestPropertySource(properties = {
+        "dora.initial-admin-username=admin-user",
+        "spring.security.oauth2.client.registration.github.client-id=test-client-id",
+        "spring.security.oauth2.client.registration.github.client-secret=test-client-secret"
+})
 class AuthenticationServiceIntegrationTest {
 
     @Autowired

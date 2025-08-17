@@ -34,7 +34,7 @@ public class UserSynchronizationFilter extends OncePerRequestFilter {
             String username = oauthUser.getAttribute("login");
 
             // Si el username es válido, verificamos si existe en nuestra BD
-            if (username != null && !userRepository.findByGithubUsernameIgnoreCase(username).isPresent()) {
+            if (username != null && userRepository.findByGithubUsernameIgnoreCase(username).isEmpty()) { // .isEmpty() es más legible desde Java 11+
                 logger.warn("Usuario '{}' autenticado en la sesión pero no encontrado en la base de datos. " +
                         "Esto puede ocurrir después de un reinicio con una BD en memoria o por perdida de datos en la tabla USERS y USERS_ROLE. Invalidando sesión.", username);
 
