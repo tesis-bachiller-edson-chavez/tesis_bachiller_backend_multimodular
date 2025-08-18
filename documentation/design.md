@@ -1,8 +1,8 @@
 # Documento de Diseño de Software: Plataforma de Medición de Métricas DORA
 
-**Versión:** 10.4 (Idempotencia en todas las Recolecciones)
+**Versión:** 11.0 (Versión Consolidada y Corregida)
 **Autor:** Edson Abraham Chavez Montaño
-**Fecha:** 15 de agosto de 2025
+**Fecha:** 18 de agosto de 2025
 
 ---
 
@@ -185,6 +185,7 @@ El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estr
 
 - **Autenticación y Gestión de Sesión:** Se utilizará el protocolo **OAuth 2.0 con GitHub**. La sesión del usuario se gestionará a través de una **cookie segura (`HttpOnly`, `Secure`)** establecida por el backend. Esto mitiga el riesgo de robo de tokens por ataques XSS, ya que el token de sesión no es accesible desde el JavaScript del navegador.
 - **Restricción de Acceso:** El acceso a la aplicación estará restringido únicamente a los miembros de una organización de GitHub específica, configurada en el sistema.
+  ***Nota de Diseño (Seguridad vs. Disponibilidad):*** *Para el MVP, la verificación de pertenencia a la organización se realizará en tiempo real contra la API de GitHub en cada inicio de sesión. Este enfoque prioriza la seguridad, garantizando que el acceso sea siempre preciso. Sin embargo, crea una dependencia directa con la API de GitHub. Una evolución futura para mejorar la disponibilidad y el rendimiento sería implementar un sistema de caché que sincronice la lista de miembros periódicamente y verifique contra esa copia local.*
 - **Proceso de Arranque (Bootstrap) del Primer Administrador:** Para evitar una vulnerabilidad en el primer inicio de sesión, el proceso será más robusto.
     - Se requerirá una variable de entorno en el momento del despliegue (ej. `INITIAL_ADMIN_GITHUB_USERNAME=nombre-de-usuario`).
     - En el primer arranque, si la base de datos no contiene administradores, el sistema buscará esta variable. Solo el usuario de GitHub especificado en ella podrá convertirse en el primer administrador al iniciar sesión.
@@ -197,59 +198,6 @@ El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estr
     - **Variables de Entorno:** Se usarán para configuraciones de arranque e infraestructura que la aplicación necesita para iniciarse. Son estáticas y no se modifican en tiempo de ejecución. Ejemplos: `DATABASE_URL`, `JASYPT_ENCRYPTOR_PASSWORD`, `INITIAL_ADMIN_GITHUB_USERNAME`.
     - **Tabla `System_Configurations`:** Se usará para configuraciones de negocio y de la aplicación que pueden ser modificadas por un Administrador a través de la UI sin necesidad de reiniciar el sistema. Ejemplos: `GITHUB_ORGANIZATION_NAME`, `JIRA_PROJECT_KEY`, umbrales para alertas de métricas.
 - **Seguridad de la API para Grafana:** El token de sesión del usuario (en la cookie) será reenviado automáticamente por el navegador en las peticiones que Grafana haga a la API, asegurando que las consultas de datos respeten los permisos del usuario.
-
-### Diagrama de Flujo de Autorización (Normal)
-```mermaid
-sequenceDiagram
-    participant Usuario
-    participant Frontend
-    participant Backend
-    participant GitHub
-
-    Usuario->>Frontend: Clic en "Login con GitHub"
-    Frontend->>Usuario: Redirige a GitHub
-    Usuario->>GitHub: Autoriza la aplicación
-    GitHub->>Frontend: Redirige con código de autorización
-    Frontend->>Backend: Envía código de autorización
-    Backend->>GitHub: Intercambia código por Access Token
-    GitHub-->>Backend: Devuelve Access Token
-    Backend->>GitHub: Pide info del usuario
-    GitHub-->>Backend: Devuelve info (github_id, username)
-    
-    Backend->>Backend: **Verifica si usuario pertenece a la Org. configurada**
-    alt Usuario es Miembro
-        Backend->>Backend: Busca/Crea usuario, asigna rol
-        note over Backend: Genera token CSRF
-        Backend-->>Frontend: **Respuesta 200 OK**<br/>Header: `Set-Cookie` (HttpOnly, Secure)<br/>Body: { userInfo, csrfToken }
-        Frontend->>Usuario: Almacena userInfo y csrfToken, muestra UI
-    else Usuario NO es Miembro
-        Backend-->>Frontend: **Respuesta 403 Forbidden**
-        Frontend->>Usuario: Muestra mensaje de error
-    end
-```
-
-### Diagrama de Flujo de Autorización (Primer Administrador - Día Cero)
-```mermaid
-sequenceDiagram
-    participant Usuario
-    participant Frontend
-    participant Backend
-    participant GitHub
-
-    Usuario->>Frontend: Clic en "Login con GitHub"
-    note over Backend: Sistema detecta que no hay administradores.
-    Frontend->>Backend: Envía código de autorización
-    Backend->>GitHub: Obtiene Access Token e info de usuario
-    
-    Backend->>Backend: **Verifica si el username coincide con la variable de entorno INITIAL_ADMIN_GITHUB_USERNAME**
-    alt Username Coincide
-        Backend->>Backend: **Asigna rol de Administrador al usuario**
-        Backend-->>Frontend: **Respuesta 200 OK** con cookie y token CSRF
-        Frontend->>Usuario: Almacena info y redirige a la<br/>página de configuración inicial
-    else Username NO Coincide
-        Backend-->>Frontend: **Respuesta 403 Forbidden**
-    end
-```
 
 ---
 
@@ -371,59 +319,59 @@ graph
     - **AC 5.4:** Dado que estoy en la página de gestión de usuarios, cuando selecciono un usuario y le asigno el rol "Engineering Manager", entonces el cambio se persiste y se refleja en la lista.
     - **AC 5.5:** Dado que estoy en la página de gestión de usuarios, cuando selecciono un usuario y le asigno el rol "Administrador", entonces el cambio se persiste y se refleja en la lista.
 
-* **HU-7: Dashboard de Engineering Manager**
+* **HU-6: Dashboard de Engineering Manager**
     - **Como** Engineering Manager, **quiero** ver un dashboard con las métricas DORA agregadas a nivel de toda la organización, **para** entender el rendimiento general de la ingeniería.
-    - **AC 7.1:** Dado que he iniciado sesión como Engineering Manager, cuando accedo al dashboard, entonces los gráficos muestran por defecto los datos de todos los equipos.
-    - **AC 7.2:** Dado que estoy viendo el dashboard, cuando uso el filtro de equipo y selecciono "Equipo Alfa", entonces todos los gráficos se actualizan para mostrar solo los datos del "Equipo Alfa".
+    - **AC 6.1:** Dado que he iniciado sesión como Engineering Manager, cuando accedo al dashboard, entonces los gráficos muestran por defecto los datos de todos los equipos.
+    - **AC 6.2:** Dado que estoy viendo el dashboard, cuando uso el filtro de equipo y selecciono "Equipo Alfa", entonces todos los gráficos se actualizan para mostrar solo los datos del "Equipo Alfa".
 
-* **HU-8: Dashboard de Tech Lead**
+* **HU-7: Dashboard de Tech Lead**
     - **Como** Tech Lead, **quiero** ver un dashboard con las métricas DORA específicas de mi equipo y sus repositorios, **para** monitorear la salud y la eficiencia de mi equipo.
-    - **AC 8.1:** Dado que he iniciado sesión como Tech Lead del "Equipo Beta", cuando accedo al dashboard, entonces solo veo los datos del "Equipo Beta".
-    - **AC 8.2:** Dado que soy Tech Lead, cuando veo el dashboard, entonces no tengo la opción de filtrar por otros equipos.
+    - **AC 7.1:** Dado que he iniciado sesión como Tech Lead del "Equipo Beta", cuando accedo al dashboard, entonces solo veo los datos del "Equipo Beta".
+    - **AC 7.2:** Dado que soy Tech Lead, cuando veo el dashboard, entonces no tengo la opción de filtrar por otros equipos.
 
-* **HU-9: Dashboard de Desarrollador**
+* **HU-8: Dashboard de Desarrollador**
     - **Como** Desarrollador, **quiero** ver un dashboard con las métricas DORA de los repositorios en los que contribuyo, **para** entender el impacto de mi trabajo en el ciclo de entrega.
-    - **AC 9.1:** Dado que he iniciado sesión como Desarrollador, cuando accedo al dashboard, entonces los gráficos muestran por defecto los datos de todos los repositorios en los que he hecho commits.
+    - **AC 8.1:** Dado que he iniciado sesión como Desarrollador, cuando accedo al dashboard, entonces los gráficos muestran por defecto los datos de todos los repositorios en los que he hecho commits.
 
-* **HU-10: Enviar Notificación de Alerta de Métrica**
+* **HU-9: Enviar Notificación de Alerta de Métrica**
     * **Como** el sistema, **quiero** enviar una notificación por correo electrónico, **para** alertar a los usuarios relevantes sobre cambios significativos en el rendimiento.
-    * **AC 10.1:** Dado que el `module-processor` ha calculado una nueva métrica, cuando el valor de esta métrica excede un umbral predefinido, entonces se dispara un evento de notificación.
-    * **AC 10.2:** Dado que se ha disparado un evento de notificación, cuando el `module-notifications` lo recibe, entonces se envía un correo electrónico al Tech Lead o Engineering Manager responsable del repositorio o equipo afectado.
+    * **AC 9.1:** Dado que el `module-processor` ha calculado una nueva métrica, cuando el valor de esta métrica excede un umbral predefinido, entonces se dispara un evento de notificación.
+    * **AC 9.2:** Dado que se ha disparado un evento de notificación, cuando el `module-notifications` lo recibe, entonces se envía un correo electrónico al Tech Lead o Engineering Manager responsable del repositorio o equipo afectado.
 
-* **HU-11: Recolectar Datos de GitHub**
+* **HU-10: Recolectar Datos de GitHub**
     * **Como** el sistema, **quiero** conectarme a la API de GitHub de forma periódica, **para** recolectar eventos de PRs, commits y deployments.
-    * **AC 11.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de GitHub, entonces obtiene los eventos nuevos desde la última ejecución.
-    * **AC 11.2:** Dado que se obtiene un evento nuevo, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
+    * **AC 10.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de GitHub, entonces obtiene los eventos nuevos desde la última ejecución.
+    * **AC 10.2:** Dado que se obtiene un evento nuevo, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
 
-* **HU-12: Procesar Métricas de Velocidad**
+* **HU-11: Procesar Métricas de Velocidad**
     * **Como** el sistema, **quiero** procesar los datos de GitHub, **para** calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.
-    * **AC 12.1:** Dado que hay eventos de despliegue y commits en la base de datos, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Frecuencia de Despliegue.
-    * **AC 12.2:** Dado que hay eventos de commits y PRs, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo de Espera para Cambios.
+    * **AC 11.1:** Dado que hay eventos de despliegue y commits en la base de datos, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Frecuencia de Despliegue.
+    * **AC 11.2:** Dado que hay eventos de commits y PRs, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo de Espera para Cambios.
 
-* **HU-13: Recolectar Datos de Jira**
+* **HU-12: Recolectar Datos de Jira**
     * **Como** el sistema, **quiero** conectarme a la API de Jira de forma periódica, **para** enriquecer los datos de los commits.
-    * **AC 13.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de Jira, entonces obtiene los datos de los tickets mencionados en los commits.
-    * **AC 13.2:** Dado que se obtiene un evento de Jira, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
+    * **AC 12.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de Jira, entonces obtiene los datos de los tickets mencionados en los commits.
+    * **AC 12.2:** Dado que se obtiene un evento de Jira, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
 
-* **HU-14: Recolectar Datos de DataDog**
+* **HU-13: Recolectar Datos de DataDog**
     * **Como** el sistema, **quiero** conectarme a la API de DataDog de forma periódica, **para** recolectar eventos de incidentes.
-    * **AC 14.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de DataDog, entonces obtiene los incidentes nuevos y los guarda en la base de datos.
-    * **AC 14.2:** Dado que se obtiene un incidente de DataDog, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
+    * **AC 13.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de DataDog, entonces obtiene los incidentes nuevos y los guarda en la base de datos.
+    * **AC 13.2:** Dado que se obtiene un incidente de DataDog, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
 
-* **HU-15: Procesar Métricas de Estabilidad**
+* **HU-14: Procesar Métricas de Estabilidad**
     * **Como** el sistema, **quiero** procesar los datos de despliegues e incidentes, **para** calcular la Tasa de Fallo de Cambio y el Tiempo Medio de Recuperación.
-    * **AC 15.1:** Dado que hay eventos de despliegues e incidentes, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tasa de Fallo de Cambio.
-    * **AC 15.2:** Dado que hay eventos de incidentes, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo Medio de Recuperación.
+    * **AC 14.1:** Dado que hay eventos de despliegues e incidentes, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tasa de Fallo de Cambio.
+    * **AC 14.2:** Dado que hay eventos de incidentes, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo Medio de Recuperación.
 
-* **HU-16: Estructura Base del Frontend**
+* **HU-15: Estructura Base del Frontend**
     * **Como** desarrollador, **quiero** una estructura de proyecto React con ruteo y layouts, **para** tener una base sólida sobre la cual construir la UI.
-    * **AC 16.1:** Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la `LoginPage`.
-    * **AC 16.2:** Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el `AuthenticatedLayout` (header y sidebar) de forma persistente.
+    * **AC 15.1:** Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la `LoginPage`.
+    * **AC 15.2:** Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el `AuthenticatedLayout` (header y sidebar) de forma persistente.
 
-* **HU-17: Página de Administración**
+* **HU-16: Página de Administración**
     * **Como** Administrador, **quiero** una interfaz para gestionar los roles de los usuarios, **para** controlar los permisos de la aplicación.
-    * **AC 17.1:** Dado que he iniciado sesión como Administrador, cuando navego a la página de administración, entonces veo una tabla con los usuarios de la organización.
-    * **AC 17.2:** Dado que estoy viendo la tabla de usuarios, cuando cambio el rol de un usuario, entonces se realiza una llamada a la API y la UI se actualiza con el nuevo rol.
+    * **AC 16.1:** Dado que he iniciado sesión como Administrador, cuando navego a la página de administración, entonces veo una tabla con los usuarios de la organización.
+    * **AC 16.2:** Dado que estoy viendo la tabla de usuarios, cuando cambio el rol de un usuario, entonces se realiza una llamada a la API y la UI se actualiza con el nuevo rol.
 
 ---
 

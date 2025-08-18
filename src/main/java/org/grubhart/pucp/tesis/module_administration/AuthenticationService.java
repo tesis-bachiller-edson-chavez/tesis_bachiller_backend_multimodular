@@ -9,6 +9,7 @@ import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.springframework.core.env.Environment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,17 +19,32 @@ public class AuthenticationService {
     private final UserRepository userRepository;
     private final Environment environment;
     private final RoleRepository roleRepository;
+    private final GithubClient githubClient;
 
 
-    public AuthenticationService(UserRepository userRepository, Environment environment, RoleRepository roleRepository) {
+
+    public AuthenticationService(UserRepository userRepository, Environment environment, RoleRepository roleRepository, GithubClient githubClient) {
         this.userRepository = userRepository;
         this.environment = environment;
         this.roleRepository=roleRepository;
+        this.githubClient = githubClient;
     }
 
     @Transactional
     public LoginProcessingResult processNewLogin(GithubUserDto githubUser) {
         logger.info("Procesando login para el usuario de GitHub: {}", githubUser.username());
+
+        // AC 1.3: Verificar pertenencia a la organización ANTES de cualquier otra cosa,
+        // excepto para el flujo de bootstrap del primer admin.
+        String organizationName = environment.getProperty("dora.github.organization-name");
+        if (organizationName != null && !organizationName.isBlank()) {
+            // Solo verificamos si la organización está configurada y no estamos en el flujo de bootstrap
+            if (userRepository.existsByRoles_Name(RoleName.ADMIN)) {
+                if (!githubClient.isUserMemberOfOrganization(githubUser.username(), organizationName)) {
+                    throw new AccessDeniedException("Acceso denegado: El usuario '" + githubUser.username() + "' no es miembro de la organización '" + organizationName + "'.");
+                }
+            }
+        }
 
         // Si no hay administrador, manejamos el caso especial de arranque inicial.
         if (!userRepository.existsByRoles_Name(RoleName.ADMIN)) {
