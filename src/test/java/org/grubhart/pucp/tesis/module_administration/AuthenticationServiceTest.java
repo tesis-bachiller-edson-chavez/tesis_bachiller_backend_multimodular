@@ -163,10 +163,11 @@ class AuthenticationServiceTest {
 
         var githubUserDto = new GithubUserDto(999L, "existing-user", "existing@github.com");
         //WHEN
-        User returnedUser = authenticationService.processNewLogin(githubUserDto);
+        LoginProcessingResult result = authenticationService.processNewLogin(githubUserDto);
         //THEN
-        //1. El usuario devuelto debe ser el mismo que el existente
-        assertThat(returnedUser).isEqualTo(existingUser);
+        //1. El usuario devuelto debe ser el mismo que el existente y no debe ser el primer admin
+        assertThat(result.user()).isEqualTo(existingUser);
+        assertThat(result.isFirstAdmin()).isFalse();
         //2. NO se debe haber llamado a save(), porque el usuario ya existia
         verify(userRepository, org.mockito.Mockito.never()).save(any(User.class));
     }

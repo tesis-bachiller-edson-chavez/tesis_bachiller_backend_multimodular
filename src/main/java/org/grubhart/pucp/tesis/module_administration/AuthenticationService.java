@@ -27,18 +27,22 @@ public class AuthenticationService {
     }
 
     @Transactional
-    public User processNewLogin(GithubUserDto githubUser) {
+    public LoginProcessingResult processNewLogin(GithubUserDto githubUser) {
         logger.info("Procesando login para el usuario de GitHub: {}", githubUser.username());
 
         // Si no hay administrador, manejamos el caso especial de arranque inicial.
         if (!userRepository.existsByRoles_Name(RoleName.ADMIN)) {
             logger.debug("No se encontró ningún administrador. Ejecutando lógica de arranque inicial.");
-            return handleInitialBootstrap(githubUser);
+            User bootstrappedUser = handleInitialBootstrap(githubUser);
+            // El usuario es el "primer admin" si se le asignó el rol de ADMIN durante el bootstrap.
+            boolean isFirstAdmin = bootstrappedUser.getRoles().stream()
+                    .anyMatch(role -> role.getName() == RoleName.ADMIN);
+            return new LoginProcessingResult(bootstrappedUser, isFirstAdmin);
         }
         
         logger.debug("Sistema ya inicializado. Procesando login normal.");
         // Si el sistema ya está configurado, procesamos un login normal.
-        return userRepository.findByGithubUsernameIgnoreCase(githubUser.username())
+        User user = userRepository.findByGithubUsernameIgnoreCase(githubUser.username())
                 .map(existingUser -> {
                     logger.info("Usuario '{}' ya existe en la base de datos. Devolviendo usuario existente.", existingUser.getGithubUsername());
                     return existingUser;
@@ -46,6 +50,7 @@ public class AuthenticationService {
                     logger.info("Usuario '{}' no encontrado. Creando nuevo usuario con rol por defecto.", githubUser.username());
                     return createNewUserWithDefaultRole(githubUser);
                 });
+        return new LoginProcessingResult(user, false);
     }
 
     /**

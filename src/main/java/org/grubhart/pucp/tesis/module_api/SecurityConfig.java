@@ -28,13 +28,17 @@ public class SecurityConfig {
                 // verdaderamente nulo, antes de que Spring lo pueble con un token anónimo.
                 .addFilterBefore(userSynchronizationFilter, AnonymousAuthenticationFilter.class)
                 // Deshabilitamos CSRF para la consola H2, que no lo necesita.
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**"))
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**", "/logout"))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/error", "/h2-console/**").permitAll() // Permite acceso público a la consola H2 Home y pagina de error
                         .anyRequest().authenticated() // Requiere autenticación para cualquier otra petición
                 )
                 .oauth2Login(oauth2 ->
-                        oauth2.successHandler(oauth2LoginSuccessHandler))
+                        oauth2.successHandler(oauth2LoginSuccessHandler)
+                )
+                // AC 2.1: Hacemos explícita la configuración de logout.
+                // Al visitar /logout, la sesión se invalida y se redirige a la raíz.
+                .logout(logout -> logout.logoutSuccessUrl("/"))
                 // Permitimos que la consola H2 se muestre en un frame.
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin));
         return http.build();
