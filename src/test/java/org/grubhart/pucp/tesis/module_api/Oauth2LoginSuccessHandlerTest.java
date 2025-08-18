@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.grubhart.pucp.tesis.module_administration.AuthenticationService;
 import org.grubhart.pucp.tesis.module_administration.GithubUserDto;
+import org.grubhart.pucp.tesis.module_administration.LoginProcessingResult;
+import org.grubhart.pucp.tesis.module_domain.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +27,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class Oauth2LoginSuccessHandlerTest {
@@ -49,8 +53,8 @@ public class Oauth2LoginSuccessHandlerTest {
     }
 
     @Test
-    @DisplayName("Al loguearse exitosamente, debe procesar el usuario y redirigir a la raiz")
-    void onAuthenticationSuccess_shouldProcessUserAndRedirect() throws IOException, ServletException {
+    @DisplayName("S (Happy Path): Un usuario normal es redirigido al dashboard")
+    void onAuthenticationSuccess_whenNormalUser_shouldRedirectToDashboard() throws IOException, ServletException {
         // GIVEN
         // 1. Creamos un usuario OAuth2 simulado, como el que nos daría GitHub
         Map<String, Object> userAttributesWithEmail = Map.of(
@@ -60,6 +64,11 @@ public class Oauth2LoginSuccessHandlerTest {
         );
         OAuth2User oAuth2User = new DefaultOAuth2User(Collections.emptyList(), userAttributesWithEmail, "id");
         Authentication authentication = new OAuth2AuthenticationToken(oAuth2User, Collections.emptyList(), "github");
+
+        // Simulamos que el servicio devuelve un resultado de login normal (no es el primer admin)
+        User normalUser = new User(12345L, "github-user", "user@github.com");
+        when(authenticationService.processNewLogin(any(GithubUserDto.class)))
+                .thenReturn(new LoginProcessingResult(normalUser, false));
         // WHEN
         successHandler.onAuthenticationSuccess(request, response, authentication);
         // THEN
@@ -73,8 +82,8 @@ public class Oauth2LoginSuccessHandlerTest {
         assertThat(captureDto.username()).isEqualTo("github-user");
         assertThat(captureDto.email()).isEqualTo("user@github.com");
 
-        // 3. Verificamos que se redirige al usuario a la página principal
-        verify(response).sendRedirect("/api/v1/user/me");
+        // 3. Verificamos que se redirige al usuario al dashboard
+        verify(response).sendRedirect("/dashboard");
     }
 
 
@@ -91,6 +100,11 @@ public class Oauth2LoginSuccessHandlerTest {
 
         OAuth2User oAuth2User = new DefaultOAuth2User(Collections.emptyList(), attributes, "id");
         Authentication authentication = new OAuth2AuthenticationToken(oAuth2User, Collections.emptyList(), "github");
+
+        // Simulamos que el servicio devuelve un resultado de login normal
+        User normalUser = new User(54321L, "private-email-user", "no-email@placeholder.com");
+        when(authenticationService.processNewLogin(any(GithubUserDto.class)))
+                .thenReturn(new LoginProcessingResult(normalUser, false));
 
         // WHEN
         successHandler.onAuthenticationSuccess(request, response, authentication);
@@ -167,5 +181,30 @@ public class Oauth2LoginSuccessHandlerTest {
             successHandler.onAuthenticationSuccess(request, response, authentication);
         });
         assertThat(exception.getMessage()).contains("no devolvió un nombre de usuario");
+    }
+
+    @Test
+    @DisplayName("M (Many): El primer administrador es redirigido a la página de setup")
+    void onAuthenticationSuccess_whenFirstAdmin_shouldRedirectToSetupPage() throws IOException, ServletException {
+        // GIVEN
+        Map<String, Object> userAttributes = Map.of(
+                "id", 1L,
+                "login", "first-admin",
+                "email", "admin@test.com"
+        );
+        OAuth2User oAuth2User = new DefaultOAuth2User(Collections.emptyList(), userAttributes, "id");
+        Authentication authentication = new OAuth2AuthenticationToken(oAuth2User, Collections.emptyList(), "github");
+
+        // 1. Simulamos que el servicio de autenticación nos dice que este es el primer admin.
+        User adminUser = new User(1L, "first-admin", "admin@test.com");
+        LoginProcessingResult firstAdminResult = new LoginProcessingResult(adminUser, true);
+        when(authenticationService.processNewLogin(any(GithubUserDto.class))).thenReturn(firstAdminResult);
+
+        // WHEN
+        successHandler.onAuthenticationSuccess(request, response, authentication);
+
+        // THEN
+        // 2. Verificamos que se redirige a la página de configuración.
+        verify(response).sendRedirect("/admin/setup");
     }
 }

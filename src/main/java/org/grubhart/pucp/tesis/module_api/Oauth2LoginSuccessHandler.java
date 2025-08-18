@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.grubhart.pucp.tesis.module_administration.AuthenticationService;
 import org.grubhart.pucp.tesis.module_administration.GithubUserDto;
+import org.grubhart.pucp.tesis.module_administration.LoginProcessingResult;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -48,10 +49,16 @@ public class Oauth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
         // 3. creamos nuestro DTO y Llamamos a nuestro servicio de Negocio.
         var githubUserDto = new GithubUserDto(id,username,email);
-        authenticationService.processNewLogin(githubUserDto);
+        LoginProcessingResult result = authenticationService.processNewLogin(githubUserDto);
 
         //4. Redirigimos al usuario a la pagina principal de la aplicacion.
-        response.sendRedirect("/api/v1/user/me");
+        if (result.isFirstAdmin()) {
+            // AC 3.2: Redirigir al primer administrador a la página de configuración.
+            response.sendRedirect("/admin/setup");
+        } else {
+            // AC 1.2: Redirigir a los usuarios normales a un dashboard principal.
+            response.sendRedirect("/dashboard");
+        }
 
     }
 

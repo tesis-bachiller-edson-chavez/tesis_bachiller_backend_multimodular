@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -218,9 +219,65 @@ class UserSynchronizationFilterTest {
 
     }
 
+    @Test
+    @DisplayName("S (Happy Path): POST a /logout invalida la sesión y redirige a la raíz")
+    void whenLoggingOut_sessionIsInvalidatedAndRedirectsToRoot() throws Exception {
+        // Act & Assert: Realizamos una petición POST a /logout.
+        // Spring Security requiere POST para logout por protección CSRF.
+        // Esperamos una redirección a la URL de éxito de logout, que debería ser "/".
+        mockMvc.perform(post("/logout").with(csrf()))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/"));
+    }
 
+    @Test
+    @DisplayName("B (Boundary): El endpoint /dashboard está protegido para usuarios anónimos")
+    void dashboardIsProtectedForAnonymousUsers() throws Exception {
+        // Act & Assert: Un usuario anónimo que intenta acceder al dashboard debe ser redirigido al login.
+        mockMvc.perform(get("/dashboard"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("http://localhost/oauth2/authorization/github"));
+    }
 
+    @Test
+    @DisplayName("S (Happy Path): El endpoint /dashboard es accesible para usuarios autenticados")
+    void dashboardIsAccessibleForAuthenticatedUsers() throws Exception {
+        // Arrange: Simulamos un usuario autenticado que existe en la BD.
+        User mockUser = new User(1L, "authed-user", "authed@test.com");
+        when(userRepository.findByGithubUsernameIgnoreCase("authed-user")).thenReturn(Optional.of(mockUser));
 
+        // Act & Assert: El usuario autenticado debe poder acceder al dashboard.
+        mockMvc.perform(get("/dashboard")
+                        .with(oauth2Login().attributes(attrs -> {
+                            attrs.put("login", "authed-user");
+                            attrs.put("id", 1L);
+                        })))
+                .andExpect(status().isOk());
+    }
 
+    @Test
+    @DisplayName("B (Boundary): El endpoint /admin/setup está protegido para usuarios anónimos")
+    void adminSetupIsProtectedForAnonymousUsers() throws Exception {
+        // Act & Assert: Un usuario anónimo que intenta acceder a la página de setup debe ser redirigido al login.
+        mockMvc.perform(get("/admin/setup"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("http://localhost/oauth2/authorization/github"));
+    }
+
+    @Test
+    @DisplayName("S (Happy Path): El endpoint /admin/setup es accesible para usuarios autenticados")
+    void adminSetupIsAccessibleForAuthenticatedUsers() throws Exception {
+        // Arrange: Simulamos un usuario autenticado que existe en la BD.
+        User mockUser = new User(1L, "authed-admin", "admin@test.com");
+        when(userRepository.findByGithubUsernameIgnoreCase("authed-admin")).thenReturn(Optional.of(mockUser));
+
+        // Act & Assert: El usuario autenticado debe poder acceder a la página de setup.
+        mockMvc.perform(get("/admin/setup")
+                        .with(oauth2Login().attributes(attrs -> {
+                            attrs.put("login", "authed-admin");
+                            attrs.put("id", 1L);
+                        })))
+                .andExpect(status().isOk());
+    }
 
 }
