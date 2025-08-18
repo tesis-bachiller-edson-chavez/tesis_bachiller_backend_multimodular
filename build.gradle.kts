@@ -35,6 +35,7 @@ dependencies {
     developmentOnly("org.springframework.boot:spring-boot-devtools")    
     // runtimeOnly("com.mysql:mysql-connector-j") // Comentado para usar H2
     runtimeOnly("com.h2database:h2") // Añadido para la base de datos en memoria
+    testImplementation("org.springframework.cloud:spring-cloud-starter-contract-stub-runner")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.projectreactor:reactor-test")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test")
@@ -44,6 +45,7 @@ dependencies {
 
 dependencyManagement {
     imports {
+        mavenBom("org.springframework.cloud:spring-cloud-dependencies:2023.0.4")
         mavenBom("org.springframework.modulith:spring-modulith-bom:${property("springModulithVersion")}")
     }
 }
