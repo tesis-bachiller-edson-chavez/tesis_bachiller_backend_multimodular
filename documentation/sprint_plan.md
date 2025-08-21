@@ -30,6 +30,18 @@ Este documento desglosa las historias de usuario y sus tareas correspondientes e
 - **AC 3.2: Redirección a la página de configuración para el primer administrador**
     - *Dado que soy el primer administrador, después de iniciar sesión, entonces soy redirigido a la página de 'Configuración del Sistema'.*
 
+### HU-17: Implementar un Modelo de Acceso "Cerrado por Defecto" en el Arranque
+*Como administrador del sistema,
+necesito que la aplicación bloquee por defecto todos los inicios de sesión, excepto el del administrador inicial designado, cuando aún no he configurado una organización de GitHub,
+para garantizar la máxima seguridad desde el primer despliegie y prevenir cualquier registro de usuario no autorizado antes de que el sistema esté completamente configurado.*
+
+- **AC 17.1: Implementar y Probar el Bloqueo de Usuarios No Autorizados**
+    - *Dado que el sistema está en su estado de arranque inicial (no hay ADMIN en la BD). Y la variable dora.github.organization-name NO está definida. Cuando un usuario que NO es el dora.initial-admin-username intenta iniciar sesión. Entonces el acceso debe ser denegado y no se debe crear ningún registro de usuario para él.*
+- **AC 17.2: Asignación del rol por defecto 'Desarrollador'**
+    - *Dado que el sistema está en su estado de arranque inicial. Y la variable dora.github.organization-name NO está definida. cuando el usuario que SÍ es el dora.initial-admin-username intenta iniciar sesión. entonces debe ser creado exitosamente con el rol de ADMIN.*
+- **AC 17.3: Asignación del rol por defecto 'Desarrollador'**
+  - *Dado que un ADMIN ya existe en el sistema. y la variable dora.github.organization-name sigue sin estar definida. cuando un nuevo usuario (que no es el admin) intenta iniciar sesión. entonces su acceso debe ser denegado.*
+
 ### HU-10: Recolectar Datos de GitHub
 *Como el sistema, quiero conectarme a la API de GitHub de forma periódica, para recolectar eventos de PRs, commits y deployments.*
 

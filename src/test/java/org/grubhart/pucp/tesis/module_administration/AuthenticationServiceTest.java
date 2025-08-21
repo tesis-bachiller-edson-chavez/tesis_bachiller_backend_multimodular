@@ -1,25 +1,24 @@
 package org.grubhart.pucp.tesis.module_administration;
 
-import org.grubhart.pucp.tesis.module_domain.RoleRepository;
-import org.grubhart.pucp.tesis.module_domain.Role;
-import org.grubhart.pucp.tesis.module_domain.RoleName;
-import org.grubhart.pucp.tesis.module_domain.User;
-import org.grubhart.pucp.tesis.module_domain.UserRepository;
+import org.grubhart.pucp.tesis.module_domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.env.Environment;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,227 +26,212 @@ class AuthenticationServiceTest {
 
     @Mock
     private UserRepository userRepository;
-
+    @Mock
+    private RoleRepository roleRepository;
+    @Mock
+    private GithubClient githubClient;
     @Mock
     private Environment environment;
 
+    @InjectMocks
     private AuthenticationService authenticationService;
 
-    @Mock
-    private RoleRepository roleRepository;
-
-    @Mock
-    private GithubClient githubClient;
-
-    private final String INITIAL_ADMIN_USERNAME = "edson";
+    private GithubUserDto githubUserDto;
+    private User existingUser;
+    private Role developerRole;
+    private Role adminRole;
 
     @BeforeEach
     void setUp() {
-        // Instanciamos manualmente el servicio con sus dependencias mockeadas
-        authenticationService = new AuthenticationService(userRepository, environment, roleRepository, githubClient);
-
-        lenient().when(environment.getProperty("dora.github.organization-name")).thenReturn(null);
-        lenient().when(environment.getProperty("dora.initial-admin-username"))
-                .thenReturn(INITIAL_ADMIN_USERNAME);
-        lenient().when(userRepository.save(any(User.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-        lenient().when(roleRepository.findByName(any(RoleName.class)))
-                .thenAnswer(invocation -> Optional.of(new Role(invocation.getArgument(0))));
-
+        githubUserDto = new GithubUserDto(1L, "testuser", "test@example.com");
+        existingUser = new User(1L, "testuser", "test@example.com");
+        developerRole = new Role(RoleName.DEVELOPER);
+        adminRole = new Role(RoleName.ADMIN);
     }
 
-    @Test
-    @DisplayName("Z (Zero): Lanza excepción si no hay admin y la variable de entorno no está configurada")
-    void processNewLogin_whenNoAdminAndNoEnvVar_shouldThrowException() {
-        // GIVEN
-        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
-        // Simulamos que la variable de entorno no existe
-        when(environment.getProperty("dora.initial-admin-username")).thenReturn(null);
-
-        var githubUser = new GithubUserDto(123L, "any-user", "any@github.com");
-
-        // WHEN & THEN
-        // Verificamos que se lanza la excepción esperada
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> {
-            authenticationService.processNewLogin(githubUser);
-        }, "Debería lanzarse una excepción si el admin inicial no está configurado");
-    }
+    // =====================================================================================
+    // TESTS FOR EXISTING USERS
+    // =====================================================================================
 
     @Test
-    @DisplayName("O (One): Un nuevo usuario no administrador obtiene el rol por defecto")
-    void processNewLogin_whenFirstUserIsNotAdmin_shouldAssignDefaultRole() {
-        // GIVEN
-        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
-        // Simulamos que la organización está configurada desde el día cero.
-        // La lógica de negocio debe ignorar esta verificación durante el bootstrap.
-        when(environment.getProperty("dora.github.organization-name")).thenReturn("some-org");
-        var githubUser = new GithubUserDto(456L, "a-regular-developer", "dev@github.com");
+    @DisplayName("HU-1 / AC-1.1: GIVEN an existing user logs in, WHEN processing login, THEN return the existing user")
+    void processNewLogin_whenUserExists_shouldReturnExistingUser() {
+        // GIVEN: An existing user is found in the repository
+        when(userRepository.findByGithubUsernameIgnoreCase("testuser")).thenReturn(Optional.of(existingUser));
 
-        // WHEN
-        authenticationService.processNewLogin(githubUser);
-
-        // THEN
-        // 1. Verificamos que se guarda el usuario con el rol correcto.
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-
-        User savedUser = userCaptor.getValue();
-        assertThat(savedUser.getGithubUsername()).isEqualTo("a-regular-developer");
-        assertThat(savedUser.getRoles()).extracting(Role::getName).containsExactly(RoleName.DEVELOPER);
-
-        // 2. Verificamos que NUNCA se llamó al cliente de GitHub, porque estamos en modo bootstrap.
-        verify(githubClient, never()).isUserMemberOfOrganization(anyString(), anyString());
-
-    }
-
-
-    @Test
-    @DisplayName("S (Happy Path): El primer usuario coincidente se convierte en administrador")
-    void processNewLogin_whenFirstUserIsAdmin_shouldAssignAdminRole() {
-        // GIVEN
-        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
-        var githubUser = new GithubUserDto(123L, INITIAL_ADMIN_USERNAME, "edson@github.com");
-
-        // WHEN
-        authenticationService.processNewLogin(githubUser);
-
-        // THEN
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-
-        User savedUser = userCaptor.getValue();
-        assertThat(savedUser.getGithubUsername()).isEqualTo(INITIAL_ADMIN_USERNAME);
-        assertThat(savedUser.getRoles()).extracting(Role::getName).containsExactly(RoleName.ADMIN);
-    }
-
-    @Test
-    @DisplayName("M (Many): Un nuevo usuario en un sistema ya configurado obtiene el rol por defecto")
-    void processNewLogin_whenAdminExistsAndNewUserLogsIn_shouldAssignDefaultRole() {
-        // GIVEN
-        // 1. Ya existe un administrador en el sistema
-        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
-        // 2. El usuario que se loguea no existe todavía
-        when(userRepository.findByGithubUsernameIgnoreCase("new-developer")).thenReturn(java.util.Optional.empty());
-        // 3. La organización está configurada y el usuario es miembro (el "happy path" completo)
-        when(environment.getProperty("dora.github.organization-name")).thenReturn("some-org");
-        when(githubClient.isUserMemberOfOrganization("new-developer", "some-org")).thenReturn(true);
-
-
-        var githubUser = new GithubUserDto(789L, "new-developer", "new-dev@github.com");
-
-        // WHEN
-        authenticationService.processNewLogin(githubUser);
-
-        // THEN
-        // 1. Se debe haber guardado un nuevo usuario
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-
-        // 2. El usuario guardado debe tener el rol de DEVELOPER
-        User savedUser = userCaptor.getValue();
-        assertThat(savedUser.getGithubUsername()).isEqualTo("new-developer");
-        assertThat(savedUser.getRoles()).extracting(Role::getName).containsExactly(RoleName.DEVELOPER);
-    }
-
-    @Test
-    @DisplayName("Z (Zero): lanza excepcion si la variable de entorno del admin esta vacia")
-    void processNewLogin_whenNoAdminAndEmptyEnvVar_shouldThrowException() {
-        //Given
-        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
-        //Simulamos que la variable de entorno esta presente pero esta vacia
-        when(environment.getProperty("dora.initial-admin-username")).thenReturn("    ");
-
-        var githubUser = new GithubUserDto(123L, "any-user", "any@github.com");
-
-        //When & Then
-        //Verificamos que se lanza la excepcion
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> {
-            authenticationService.processNewLogin(githubUser);
-        }, "Deberia lanzarse una excepcion, si el admin inicial esta configurado como vacio");
-    }
-
-    @Test
-    @DisplayName("M (Many): Un usuario existente que vuelve a iniciar sesion es recuperado correctamente")
-    void processNewLogin_whenAdminExistsAndExistingUserLogsIn_ShouldReturnExistingUser(){
-        //Given
-        // 1. Ya existe un Administrador en el sistema
-        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
-        //2. El usuario que se loguea ya existe en la BD
-        User existingUser = new User(999L, "existing-user", "existing@github.com");
-        existingUser.getRoles().add(new Role(RoleName.DEVELOPER));
-        when(userRepository.findByGithubUsernameIgnoreCase("existing-user")).thenReturn(java.util.Optional.of(existingUser));
-        // 3. La organización está configurada y el usuario es miembro (el "happy path" completo)
-        when(environment.getProperty("dora.github.organization-name")).thenReturn("some-org");
-        when(githubClient.isUserMemberOfOrganization("existing-user", "some-org")).thenReturn(true);
-
-        var githubUserDto = new GithubUserDto(999L, "existing-user", "existing@github.com");
-        //WHEN
+        // WHEN: The login is processed
         LoginProcessingResult result = authenticationService.processNewLogin(githubUserDto);
-        //THEN
-        //1. El usuario devuelto debe ser el mismo que el existente y no debe ser el primer admin
+
+        // THEN: The result contains the existing user and is not marked as the first admin
         assertThat(result.user()).isEqualTo(existingUser);
         assertThat(result.isFirstAdmin()).isFalse();
-        //2. NO se debe haber llamado a save(), porque el usuario ya existia
-        verify(userRepository, org.mockito.Mockito.never()).save(any(User.class));
+        verify(userRepository, never()).save(any(User.class)); // Verify no new user is saved
+    }
+
+    // =====================================================================================
+    // TESTS FOR INITIAL BOOTSTRAP (NO ADMIN EXISTS)
+    // =====================================================================================
+
+    @Test
+    @DisplayName("HU-17 / AC-17.2: GIVEN no organization AND no admin, WHEN the initial admin logs in, THEN create user with ADMIN role")
+    void processNewLogin_whenNoOrganizationAndIsAdminDuringBootstrap_shouldCreateAdminUser() {
+        // GIVEN: No admin exists (initial bootstrap) and no organization is set
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
+        when(environment.getProperty("dora.github.organization-name")).thenReturn("");
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn("testuser");
+        when(roleRepository.findByName(RoleName.ADMIN)).thenReturn(Optional.of(adminRole));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // WHEN: The initial admin logs in
+        LoginProcessingResult result = authenticationService.processNewLogin(githubUserDto);
+
+        // THEN: A new user is created with the ADMIN role
+        assertThat(result.user().getGithubUsername()).isEqualTo("testuser");
+        assertThat(result.user().getRoles()).contains(adminRole);
+        assertThat(result.isFirstAdmin()).isTrue();
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getRoles()).extracting("name").containsExactly(RoleName.ADMIN);
     }
 
     @Test
-    @DisplayName("B (Boundary): Dado un usuario que NO pertenece a la organización, debe lanzar AccessDeniedException")
-    void processNewLogin_whenUserIsNotInOrganization_shouldThrowException() {
-        // GIVEN
-        // 1. El sistema ya está configurado (existe un admin)
-        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
-        // 2. La organización está configurada en las propiedades
-        when(environment.getProperty("dora.github.organization-name")).thenReturn("some-org");
-        // 3. El GithubClient nos dice que el usuario NO es miembro
-        when(githubClient.isUserMemberOfOrganization("external-user", "some-org")).thenReturn(false);
+    @DisplayName("HU-17 / AC-17.1: GIVEN no organization AND no admin, WHEN a non-admin user logs in, THEN access is denied")
+    void processNewLogin_whenNoOrganizationAndNotAdminDuringBootstrap_shouldDenyAccess() {
+        // GIVEN: No admin exists, no organization is set, and the user is NOT the initial admin
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
+        when(environment.getProperty("dora.github.organization-name")).thenReturn("");
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn("the-real-admin");
 
-        var githubUser = new GithubUserDto(1L, "external-user", "external@user.com");
-
-        // WHEN & THEN
-        // Verificamos que se lanza la excepción correcta
-        AccessDeniedException exception = org.junit.jupiter.api.Assertions.assertThrows(AccessDeniedException.class, () -> authenticationService.processNewLogin(githubUser));
-        assertThat(exception.getMessage()).isEqualTo("Acceso denegado: El usuario 'external-user' no es miembro de la organización 'some-org'.");
+        // WHEN/THEN: Processing the login throws AccessDeniedException
+        assertThatThrownBy(() -> authenticationService.processNewLogin(githubUserDto))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("not configured with an organization and you are not the initial administrator");
     }
 
     @Test
-    @DisplayName("B (Boundary): Dado un usuario que SÍ pertenece a la organización, NO debe lanzar excepción")
-    void processNewLogin_whenUserIsInOrganization_shouldNotThrowException() {
-        // GIVEN
-        // 1. El sistema ya está configurado (existe un admin)
+    @DisplayName("HU-17 / AC-17.3: GIVEN an organization is set AND no admin, WHEN a non-admin member logs in, THEN create user with DEVELOPER role")
+    void processNewLogin_whenOrganizationExistsAndNotAdminDuringBootstrap_shouldCreateDeveloperUser() {
+        // GIVEN: No admin exists, but an organization is set
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
+        when(environment.getProperty("dora.github.organization-name")).thenReturn("my-org");
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn("the-real-admin");
+        when(roleRepository.findByName(RoleName.DEVELOPER)).thenReturn(Optional.of(developerRole));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // WHEN: A user who is not the initial admin logs in
+        LoginProcessingResult result = authenticationService.processNewLogin(githubUserDto);
+
+        // THEN: A new user is created with the DEVELOPER role
+        assertThat(result.user().getGithubUsername()).isEqualTo("testuser");
+        assertThat(result.user().getRoles()).contains(developerRole);
+        assertThat(result.isFirstAdmin()).isFalse();
+    }
+
+
+    // =====================================================================================
+    // TESTS FOR REGULAR LOGIN (ADMIN EXISTS)
+    // =====================================================================================
+
+    @Test
+    @DisplayName("HU-1 / AC-1.3: GIVEN admin exists AND organization is set, WHEN a member logs in, THEN create user with DEVELOPER role")
+    void processNewLogin_whenAdminExistsAndUserIsInOrg_shouldCreateDeveloperUser() {
+        // GIVEN: An admin already exists (regular login) and the user is a member of the org
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
-        // 2. La organización está configurada en las propiedades
-        when(environment.getProperty("dora.github.organization-name")).thenReturn("some-org");
-        // 3. El GithubClient nos dice que el usuario SÍ es miembro
-        when(githubClient.isUserMemberOfOrganization("internal-user", "some-org")).thenReturn(true);
-        // 4. El usuario ya existe en la BD
-        when(userRepository.findByGithubUsernameIgnoreCase("internal-user")).thenReturn(Optional.of(new User(2L, "internal-user", "internal@user.com")));
+        when(environment.getProperty("dora.github.organization-name")).thenReturn("my-org");
+        when(githubClient.isUserMemberOfOrganization("testuser", "my-org")).thenReturn(true);
+        when(roleRepository.findByName(RoleName.DEVELOPER)).thenReturn(Optional.of(developerRole));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var githubUser = new GithubUserDto(2L, "internal-user", "internal@user.com");
+        // WHEN: The login is processed
+        LoginProcessingResult result = authenticationService.processNewLogin(githubUserDto);
 
-        // WHEN & THEN
-        // Verificamos que NO se lanza la excepción
-        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> authenticationService.processNewLogin(githubUser));
+        // THEN: A new user is created with the DEVELOPER role
+        assertThat(result.user().getGithubUsername()).isEqualTo("testuser");
+        assertThat(result.user().getRoles()).contains(developerRole);
+        assertThat(result.isFirstAdmin()).isFalse();
     }
 
     @Test
-    @DisplayName("B (Boundary): Cuando el nombre de la organización es blanco, la verificación se omite")
-    void processNewLogin_whenOrganizationNameIsBlank_shouldSkipVerification() {
-        // GIVEN
-        // 1. El sistema ya está configurado
+    @DisplayName("HU-1 / AC-1.4: GIVEN admin exists AND organization is set, WHEN a non-member logs in, THEN access is denied")
+    void processNewLogin_whenAdminExistsAndUserIsNotInOrg_shouldDenyAccess() {
+        // GIVEN: An admin exists and the user is NOT a member of the org
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
-        // 2. La propiedad de la organización está presente pero en blanco
-        when(environment.getProperty("dora.github.organization-name")).thenReturn("   ");
-        // 3. El usuario ya existe en la BD
-        when(userRepository.findByGithubUsernameIgnoreCase("any-user")).thenReturn(Optional.of(new User(1L, "any-user", "any@user.com")));
+        when(environment.getProperty("dora.github.organization-name")).thenReturn("my-org");
+        when(githubClient.isUserMemberOfOrganization("testuser", "my-org")).thenReturn(false);
 
-        var githubUser = new GithubUserDto(1L, "any-user", "any@user.com");
+        // WHEN/THEN: Processing the login throws AccessDeniedException
+        assertThatThrownBy(() -> authenticationService.processNewLogin(githubUserDto))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("not a member of the required organization");
+    }
 
-        // WHEN & THEN
-        // Verificamos que el login es exitoso y no se lanza ninguna excepción
-        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> authenticationService.processNewLogin(githubUser));
+    @Test
+    @DisplayName("HU-17 / AC-17.4: GIVEN admin exists AND no organization is set, WHEN a new user logs in, THEN access is denied")
+    void processNewLogin_whenAdminExistsAndNoOrgSet_shouldDenyAccess() {
+        // GIVEN: An admin exists but the organization is not configured
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
+        when(environment.getProperty("dora.github.organization-name")).thenReturn(""); // Blank organization
 
-        // Verificamos que NUNCA se llamó al cliente de GitHub, porque la verificación debe omitirse
-        verify(githubClient, never()).isUserMemberOfOrganization(anyString(), anyString());
+        // WHEN/THEN: Processing the login throws AccessDeniedException
+        assertThatThrownBy(() -> authenticationService.processNewLogin(githubUserDto))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("New users cannot be created because the organization is not defined");
+    }
+
+    @Test
+    @DisplayName("GIVEN an existing user with roles, WHEN they log in, THEN their roles are preserved")
+    void processNewLogin_withExistingUserWithRoles_shouldPreserveRoles() {
+        // GIVEN: An existing user with a specific role (e.g., ADMIN)
+        User adminUser = new User(1L, "testuser", "test@example.com");
+        adminUser.setRoles(Set.of(adminRole));
+        when(userRepository.findByGithubUsernameIgnoreCase("testuser")).thenReturn(Optional.of(adminUser));
+
+        // WHEN: The user logs in
+        LoginProcessingResult result = authenticationService.processNewLogin(githubUserDto);
+
+        // THEN: The returned user has their original roles, and no save operation was performed
+        assertThat(result.user().getRoles()).containsExactly(adminRole);
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+
+    @DisplayName("GIVEN initial bootstrap mode AND admin username is not set or blank, WHEN processing login, THEN throw IllegalStateException")
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullSource
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"", "   "})
+    void processNewLogin_whenInitialAdminNotSetOrBlank_shouldThrowException(String invalidAdminUsername) {
+        // GIVEN: The initial admin username environment variable is invalid
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn(invalidAdminUsername);
+
+        // WHEN/THEN: A critical configuration error is thrown
+        assertThatThrownBy(() -> authenticationService.processNewLogin(githubUserDto))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("La configuración del administrador inicial (dora.initial-admin-username) no está definida");
+    }
+
+
+    @Test
+    @DisplayName("GIVEN a new user is being created AND a required role is missing, WHEN processing login, THEN throw IllegalStateException")
+    void processNewLogin_whenRequiredRoleIsMissing_shouldThrowException() {
+        // GIVEN: The DEVELOPER role is missing from the database
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true); // Regular login mode
+        when(environment.getProperty("dora.github.organization-name")).thenReturn("my-org");
+        when(githubClient.isUserMemberOfOrganization(anyString(), anyString())).thenReturn(true);
+        when(roleRepository.findByName(RoleName.DEVELOPER)).thenReturn(Optional.empty()); // Role is missing
+
+        // WHEN/THEN: A critical database integrity error is thrown
+        assertThatThrownBy(() -> authenticationService.processNewLogin(githubUserDto))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("El rol DEVELOPER no se encontró en la base de datos");
     }
 }
