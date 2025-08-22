@@ -73,7 +73,7 @@ class AuthenticationServiceTest {
     // =====================================================================================
 
     @Test
-    @DisplayName("HU-17 / AC-17.2: GIVEN no organization AND no admin, WHEN the initial admin logs in, THEN create user with ADMIN role")
+    @DisplayName("AC-3.1 / AC-3.2 / AC-17.2: GIVEN no organization AND no admin, WHEN the initial admin logs in, THEN create user with ADMIN role")
     void processNewLogin_whenNoOrganizationAndIsAdminDuringBootstrap_shouldCreateAdminUser() {
         // GIVEN: No admin exists (initial bootstrap) and no organization is set
         when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
