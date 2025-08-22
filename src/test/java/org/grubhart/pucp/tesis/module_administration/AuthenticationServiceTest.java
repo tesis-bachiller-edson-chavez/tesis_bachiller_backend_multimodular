@@ -234,4 +234,50 @@ class AuthenticationServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("El rol DEVELOPER no se encontró en la base de datos");
     }
+
+    @Test
+    @DisplayName("AC-17.2: GIVEN no admin exists AND organization property is null, WHEN initial admin logs in, THEN user is created")
+    void processNewLogin_whenInitialAdminAndOrgIsNull_shouldCreateAdminUser() {
+        // GIVEN: A complete scenario for initial admin creation
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false);
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn("admin_user");
+        when(environment.getProperty("dora.github.organization-name")).thenReturn(null);
+        when(roleRepository.findByName(RoleName.ADMIN)).thenReturn(Optional.of(new Role(RoleName.ADMIN)));
+
+        // --- LA LÍNEA CLAVE QUE FALTABA ---
+        // Simula que el metodo save devuelve el usuario que se le pasó
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // ------------------------------------
+
+        GithubUserDto initialAdminDto = new GithubUserDto(1L, "admin_user", "user@mail.com");
+
+        // WHEN: The initial admin logs in
+        LoginProcessingResult result = authenticationService.processNewLogin(initialAdminDto);
+
+        // THEN: The result indicates this was the first admin creation and contains the correctly formed user
+        assertThat(result.isFirstAdmin()).isTrue();
+
+        User resultUser = result.user();
+        assertThat(resultUser).isNotNull();
+        assertThat(resultUser.getGithubUsername()).isEqualTo("admin_user");
+        assertThat(resultUser.getRoles()).extracting("name").contains(RoleName.ADMIN);
+    }
+
+    @Test
+    @DisplayName("AC-17.3: GIVEN admin exists AND organization property is null, WHEN a new user logs in, THEN access is denied")
+    void processNewLogin_whenRegularLoginAndOrgIsNull_shouldDenyAccess() {
+        // GIVEN: An admin already exists, but the organization property is completely missing (null)
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
+        when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(environment.getProperty("dora.github.organization-name")).thenReturn(null); // The specific case we are testing
+
+        GithubUserDto newUserDto = new GithubUserDto(2L, "new_user", "new@mail.com");
+
+        // WHEN / THEN: Attempting to process the login should throw an AccessDeniedException
+        assertThatThrownBy(() -> authenticationService.processNewLogin(newUserDto))
+                .isInstanceOf(AccessDeniedException.class)
+                // --- MENSAJE CORREGIDO ---
+                .hasMessageContaining("New users cannot be created because the organization is not defined");
+    }
+
 }
