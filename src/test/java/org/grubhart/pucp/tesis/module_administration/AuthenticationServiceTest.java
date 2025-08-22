@@ -157,7 +157,7 @@ class AuthenticationServiceTest {
     }
 
     @Test
-    @DisplayName("HU-1 / AC-1.4: GIVEN admin exists AND organization is set, WHEN a non-member logs in, THEN access is denied")
+    @DisplayName("HU-1 / AC-1.3: GIVEN admin exists AND organization is set, WHEN a non-member logs in, THEN access is denied")
     void processNewLogin_whenAdminExistsAndUserIsNotInOrg_shouldDenyAccess() {
         // GIVEN: An admin exists and the user is NOT a member of the org
         when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
@@ -172,7 +172,7 @@ class AuthenticationServiceTest {
     }
 
     @Test
-    @DisplayName("HU-17 / AC-17.4: GIVEN admin exists AND no organization is set, WHEN a new user logs in, THEN access is denied")
+    @DisplayName("HU-17 / AC-17.3: GIVEN admin exists AND no organization is set, WHEN a new user logs in, THEN access is denied")
     void processNewLogin_whenAdminExistsAndNoOrgSet_shouldDenyAccess() {
         // GIVEN: An admin exists but the organization is not configured
         when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
