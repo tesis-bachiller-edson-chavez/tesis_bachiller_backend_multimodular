@@ -7,39 +7,43 @@ Este documento desglosa las historias de usuario y sus tareas correspondientes e
 ---
 
 ### HU-1: Iniciar Sesión
+Status: Completada
 *Como un usuario no autenticado, quiero poder iniciar sesión con mi cuenta de GitHub, para acceder a la aplicación de forma segura.*
 
-- **AC 1.1: Redirección a GitHub para autorización**
+- **AC 1.1: Redirección a GitHub para autorización** Status: Completada
     - *Dado que no estoy logueado, cuando hago clic en 'Iniciar Sesión con GitHub', entonces soy redirigido a la página de autorización de GitHub.*
-- **AC 1.2: Sesión activa y redirección al dashboard post-autorización**
+- **AC 1.2: Sesión activa y redirección al dashboard post-autorización** Status: Completada
     - *Dado que he autorizado la aplicación en GitHub, cuando soy redirigido de vuelta, entonces debo ver el dashboard principal y mi sesión debe estar activa.*
-- **AC 1.3: Mensaje de error para usuarios no miembros de la organización**
+- **AC 1.3: Mensaje de error para usuarios no miembros de la organización** Status: Completada
     - *Dado que no soy miembro de la organización configurada, cuando intento iniciar sesión, entonces veo un mensaje de error de 'Acceso Denegado'.*
 
 ### HU-2: Cerrar Sesión
+Status: Completada
 *Como un usuario autenticado, quiero poder cerrar mi sesión, para proteger mi cuenta cuando termine de usar la aplicación.*
 
-- **AC 2.1: Invalidación de sesión y redirección a la página de login**
+- **AC 2.1: Invalidación de sesión y redirección a la página de login** Status: Completada
     - *Dado que estoy logueado, cuando hago clic en 'Cerrar Sesión', entonces mi sesión se invalida y soy redirigido a la página de inicio de sesión.*
 
 ### HU-3: Configuración Inicial
+Status: Completada
 *Como el primer usuario de la aplicación, quiero ser asignado automáticamente como Administrador, para poder realizar la configuración inicial del sistema.*
 
-- **AC 3.1: Asignación automática del rol de Administrador al primer usuario**
+- **AC 3.1: Asignación automática del rol de Administrador al primer usuario** Status: Completada
     - *Dado que la aplicación no tiene una organización configurada ni administradores, cuando inicio sesión por primera vez, entonces mi usuario es creado con el rol de 'Administrador'.*
-- **AC 3.2: Redirección a la página de configuración para el primer administrador**
+- **AC 3.2: Redirección a la página de configuración para el primer administrador** Status: Completada
     - *Dado que soy el primer administrador, después de iniciar sesión, entonces soy redirigido a la página de 'Configuración del Sistema'.*
 
 ### HU-17: Implementar un Modelo de Acceso "Cerrado por Defecto" en el Arranque
+Status: Completada
 *Como administrador del sistema,
 necesito que la aplicación bloquee por defecto todos los inicios de sesión, excepto el del administrador inicial designado, cuando aún no he configurado una organización de GitHub,
 para garantizar la máxima seguridad desde el primer despliegie y prevenir cualquier registro de usuario no autorizado antes de que el sistema esté completamente configurado.*
 
-- **AC 17.1: Implementar y Probar el Bloqueo de Usuarios No Autorizados**
+- **AC 17.1: Implementar y Probar el Bloqueo de Usuarios No Autorizados** Status: Completada
     - *Dado que el sistema está en su estado de arranque inicial (no hay ADMIN en la BD). Y la variable dora.github.organization-name NO está definida. Cuando un usuario que NO es el dora.initial-admin-username intenta iniciar sesión. Entonces el acceso debe ser denegado y no se debe crear ningún registro de usuario para él.*
-- **AC 17.2: Asignación del rol por defecto 'Desarrollador'**
+- **AC 17.2: Asignación del rol por defecto 'Desarrollador'** Status: Completada
     - *Dado que el sistema está en su estado de arranque inicial. Y la variable dora.github.organization-name NO está definida. cuando el usuario que SÍ es el dora.initial-admin-username intenta iniciar sesión. entonces debe ser creado exitosamente con el rol de ADMIN.*
-- **AC 17.3: Asignación del rol por defecto 'Desarrollador'**
+- **AC 17.3: Asignación del rol por defecto 'Desarrollador'** Status: Completada
   - *Dado que un ADMIN ya existe en el sistema. y la variable dora.github.organization-name sigue sin estar definida. cuando un nuevo usuario (que no es el admin) intenta iniciar sesión. entonces su acceso debe ser denegado.*
 
 ### HU-10: Recolectar Datos de GitHub
@@ -65,6 +69,55 @@ para garantizar la máxima seguridad desde el primer despliegie y prevenir cualq
     - *Dado que estoy en la página de gestión de usuarios, cuando la página carga, entonces veo una tabla con todos los miembros de la organización de GitHub sincronizados.*
 - **AC 5.2: Asignación del rol por defecto 'Desarrollador'**
     - *Dado que estoy viendo la lista de usuarios, entonces cada usuario que no tiene un rol explícitamente asignado se muestra con el rol por defecto 'Desarrollador'.*
+
+### HU-15: Estructura Base del Frontend
+*Como desarrollador, quiero una estructura de proyecto React con ruteo y layouts, para tener una base sólida sobre la cual construir la UI.*
+
+- **AC 15.1: Mostrar LoginPage para usuarios no autenticados**
+    - *Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la LoginPage.*
+- **AC 15.2: Mostrar AuthenticatedLayout para usuarios autenticados**
+    - *Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el AuthenticatedLayout (header y sidebar) de forma persistente.*
+
+### HU-18: Interfaz de Usuario para Cerrar Sesión
+
+Como usuario autenticado, quiero poder cerrar mi sesión de forma segura, para proteger mi cuenta de accesos no autorizados, especialmente en dispositivos
+
+- **AC 18.1: Visibilidad del Botón de Logout**
+    - **DADO** que he iniciado sesión correctamente.
+    - **CUANDO** navego por la aplicación.
+    - **ENTONCES** debo ver un elemento claramente identificable (botón o enlace) con el texto "Cerrar Sesión" en un lugar predecible (ej. en la barra de navegación o en un menú de perfil).
+- **AC 18.2: Funcionalidad del Botón de Logout**
+    - **DADO** que estoy viendo el botón "Cerrar Sesión".
+    - **CUANDO** hago clic en él.
+    - **ENTONCES** soy redirigido inmediatamente a la página de inicio (`/`).
+- **AC 18.3: Verificación de Sesión Terminada**
+    - **DADO** que he hecho clic en "Cerrar Sesión" y he sido redirigido.
+    - **CUANDO** intento acceder a una ruta protegida que antes podía ver.
+    - **ENTONCES** se me debe denegar el acceso y ser redirigido a la página de inicio de sesión.
+
+### HU-19: Crear Página de Inicio de Sesión
+*Como usuario no autenticado, quiero ver una página de bienvenida simple que me invite a iniciar sesión con mi cuenta de GitHub para poder acceder a la aplicación.*
+
+- **AC 19.1: Mostrar Página de Inicio**
+    - **DADO** que no he iniciado sesión.
+    - **CUANDO** visito la raíz de la aplicación (`/`).
+    - **ENTONCES** se me presenta una página de bienvenida.
+- **AC 19.2: Botón de Login Funcional**
+    - **DADO** que estoy en la página de bienvenida.
+    - **CUANDO** hago clic en el botón "Iniciar Sesión con GitHub".
+    - **ENTONCES** soy redirigido al flujo de autorización de GitHub.
+
+### HU-20: Crear Página Principal (Home) para Usuarios Autenticados
+*Como usuario que ha iniciado sesión, quiero ser dirigido a una página principal o "Home" donde pueda ver contenido exclusivo y acceder a acciones como "Cerrar Sesión".*
+
+- **AC 20.1: Redirección a la Página Principal**
+    - **DADO** que he completado el inicio de sesión con éxito.
+    - **CUANDO** soy redirigido por el sistema.
+    - **ENTONCES** aterrizo en una URL protegida (ej. `/home` o `/dashboard`).
+- **AC 20.2: Contenido y Botón de Logout**
+    - **DADO** que estoy en la página principal.
+    - **CUANDO** observo el contenido.
+    - **ENTONCES** veo un mensaje de bienvenida simple y el botón "Cerrar Sesión".
 
 ---
 
@@ -120,13 +173,7 @@ para garantizar la máxima seguridad desde el primer despliegie y prevenir cualq
 
 ---
 
-### HU-15: Estructura Base del Frontend
-*Como desarrollador, quiero una estructura de proyecto React con ruteo y layouts, para tener una base sólida sobre la cual construir la UI.*
 
-- **AC 15.1: Mostrar LoginPage para usuarios no autenticados**
-    - *Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la LoginPage.*
-- **AC 15.2: Mostrar AuthenticatedLayout para usuarios autenticados**
-    - *Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el AuthenticatedLayout (header y sidebar) de forma persistente.*
 
 ### HU-16: Página de Administración de Roles
 *Como Administrador, quiero una interfaz para gestionar los roles de los usuarios, para controlar los permisos de la aplicación.*
