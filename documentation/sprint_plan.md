@@ -46,30 +46,6 @@ para garantizar la máxima seguridad desde el primer despliegie y prevenir cualq
 - **AC 17.3: Asignación del rol por defecto 'Desarrollador'** Status: Completada
   - *Dado que un ADMIN ya existe en el sistema. y la variable dora.github.organization-name sigue sin estar definida. cuando un nuevo usuario (que no es el admin) intenta iniciar sesión. entonces su acceso debe ser denegado.*
 
-### HU-10: Recolectar Datos de GitHub
-*Como el sistema, quiero conectarme a la API de GitHub de forma periódica, para recolectar eventos de PRs, commits y deployments.*
-
-- **AC 10.1: Obtención de eventos nuevos desde la última ejecución**
-    - *Dado que el job de recolección se ejecuta, cuando se conecta a la API de GitHub, entonces obtiene los eventos nuevos desde la última ejecución.*
-- **AC 10.2: Prevención de inserción de eventos duplicados**
-    - *Dado que se obtiene un evento nuevo, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.*
-
-### HU-11: Procesar Métricas de Velocidad
-*Como el sistema, quiero procesar los datos de GitHub, para calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.*
-
-- **AC 11.1: Cálculo y almacenamiento de la Frecuencia de Despliegue**
-    - *Dado que hay eventos de despliegue y commits en la base de datos, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Frecuencia de Despliegue.*
-- **AC 11.2: Cálculo y almacenamiento del Tiempo de Espera para Cambios**
-    - *Dado que hay eventos de commits y PRs, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo de Espera para Cambios.*
-
-### HU-5: Gestionar Roles
-*Como Administrador, quiero poder ver una lista de todos los usuarios pertenecientes a la organización y asignarles roles, para controlar el acceso a la aplicación.*
-
-- **AC 5.1: Sincronización y visualización de miembros de la organización**
-    - *Dado que estoy en la página de gestión de usuarios, cuando la página carga, entonces veo una tabla con todos los miembros de la organización de GitHub sincronizados.*
-- **AC 5.2: Asignación del rol por defecto 'Desarrollador'**
-    - *Dado que estoy viendo la lista de usuarios, entonces cada usuario que no tiene un rol explícitamente asignado se muestra con el rol por defecto 'Desarrollador'.*
-
 ### HU-15: Estructura Base del Frontend
 *Como desarrollador, quiero una estructura de proyecto React con ruteo y layouts, para tener una base sólida sobre la cual construir la UI.*
 
@@ -77,23 +53,6 @@ para garantizar la máxima seguridad desde el primer despliegie y prevenir cualq
     - *Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la LoginPage.*
 - **AC 15.2: Mostrar AuthenticatedLayout para usuarios autenticados**
     - *Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el AuthenticatedLayout (header y sidebar) de forma persistente.*
-
-### HU-18: Interfaz de Usuario para Cerrar Sesión
-
-Como usuario autenticado, quiero poder cerrar mi sesión de forma segura, para proteger mi cuenta de accesos no autorizados, especialmente en dispositivos
-
-- **AC 18.1: Visibilidad del Botón de Logout**
-    - **DADO** que he iniciado sesión correctamente.
-    - **CUANDO** navego por la aplicación.
-    - **ENTONCES** debo ver un elemento claramente identificable (botón o enlace) con el texto "Cerrar Sesión" en un lugar predecible (ej. en la barra de navegación o en un menú de perfil).
-- **AC 18.2: Funcionalidad del Botón de Logout**
-    - **DADO** que estoy viendo el botón "Cerrar Sesión".
-    - **CUANDO** hago clic en él.
-    - **ENTONCES** soy redirigido inmediatamente a la página de inicio (`/`).
-- **AC 18.3: Verificación de Sesión Terminada**
-    - **DADO** que he hecho clic en "Cerrar Sesión" y he sido redirigido.
-    - **CUANDO** intento acceder a una ruta protegida que antes podía ver.
-    - **ENTONCES** se me debe denegar el acceso y ser redirigido a la página de inicio de sesión.
 
 ### HU-19: Crear Página de Inicio de Sesión
 *Como usuario no autenticado, quiero ver una página de bienvenida simple que me invite a iniciar sesión con mi cuenta de GitHub para poder acceder a la aplicación.*
@@ -118,6 +77,47 @@ Como usuario autenticado, quiero poder cerrar mi sesión de forma segura, para p
     - **DADO** que estoy en la página principal.
     - **CUANDO** observo el contenido.
     - **ENTONCES** veo un mensaje de bienvenida simple y el botón "Cerrar Sesión".
+
+### HU-18: Interfaz de Usuario para Cerrar Sesión
+
+Como usuario autenticado, quiero poder cerrar mi sesión de forma segura, para proteger mi cuenta de accesos no autorizados, especialmente en dispositivos
+
+- **AC 18.1: Visibilidad del Botón de Logout**
+    - **DADO** que he iniciado sesión correctamente.
+    - **CUANDO** navego por la aplicación.
+    - **ENTONCES** debo ver un elemento claramente identificable (botón o enlace) con el texto "Cerrar Sesión" en un lugar predecible (ej. en la barra de navegación o en un menú de perfil).
+- **AC 18.2: Funcionalidad del Botón de Logout**
+    - **DADO** que estoy viendo el botón "Cerrar Sesión".
+    - **CUANDO** hago clic en él.
+    - **ENTONCES** soy redirigido inmediatamente a la página de inicio (`/`).
+- **AC 18.3: Verificación de Sesión Terminada**
+    - **DADO** que he hecho clic en "Cerrar Sesión" y he sido redirigido.
+    - **CUANDO** intento acceder a una ruta protegida que antes podía ver.
+    - **ENTONCES** se me debe denegar el acceso y ser redirigido a la página de inicio de sesión.
+
+### HU-10: Recolectar Datos de GitHub
+*Como el sistema, quiero conectarme a la API de GitHub de forma periódica, para recolectar eventos de PRs, commits y deployments.*
+
+- **AC 10.1: Obtención de eventos nuevos desde la última ejecución**
+    - *Dado que el job de recolección se ejecuta, cuando se conecta a la API de GitHub, entonces obtiene los eventos nuevos desde la última ejecución.*
+- **AC 10.2: Prevención de inserción de eventos duplicados**
+    - *Dado que se obtiene un evento nuevo, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.*
+
+### HU-11: Procesar Métricas de Velocidad
+*Como el sistema, quiero procesar los datos de GitHub, para calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.*
+
+- **AC 11.1: Cálculo y almacenamiento de la Frecuencia de Despliegue**
+    - *Dado que hay eventos de despliegue y commits en la base de datos, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Frecuencia de Despliegue.*
+- **AC 11.2: Cálculo y almacenamiento del Tiempo de Espera para Cambios**
+    - *Dado que hay eventos de commits y PRs, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo de Espera para Cambios.*
+
+### HU-5: Gestionar Roles
+*Como Administrador, quiero poder ver una lista de todos los usuarios pertenecientes a la organización y asignarles roles, para controlar el acceso a la aplicación.*
+
+- **AC 5.1: Sincronización y visualización de miembros de la organización**
+    - *Dado que estoy en la página de gestión de usuarios, cuando la página carga, entonces veo una tabla con todos los miembros de la organización de GitHub sincronizados.*
+- **AC 5.2: Asignación del rol por defecto 'Desarrollador'**
+    - *Dado que estoy viendo la lista de usuarios, entonces cada usuario que no tiene un rol explícitamente asignado se muestra con el rol por defecto 'Desarrollador'.*
 
 ---
 

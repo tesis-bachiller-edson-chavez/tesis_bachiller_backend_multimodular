@@ -1,6 +1,6 @@
 # Documento de Diseño de Software: Plataforma de Medición de Métricas DORA
 
-**Versión:** 11.1 (Sincronización Completa de Historias de Usuario)
+**Versión:** 12.2 (Integración de Estrategia de Frontend)
 **Autor:** Edson Abraham Chavez Montaño
 **Fecha:** 22 de agosto de 2025
 
@@ -211,6 +211,7 @@ El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estr
 | **Visualización** | Grafana | Estándar de la industria para dashboards de monitoreo y métricas. |
 | **Frontend** | React (con Vite) | Framework moderno, declarativo y basado en componentes, ideal para SPAs complejas. Vite ofrece una experiencia de desarrollo ultrarrápida. |
 | **Frontend (Estado del Servidor)** | **TanStack Query** | Estándar de facto para gestionar la comunicación con APIs, el cacheo de datos y los estados de carga/error, simplificando el código y mejorando la experiencia de usuario. |
+| **Frontend (Componentes)** | **Shadcn/UI** | Librería de componentes accesibles y componibles que se integra perfectamente con Tailwind CSS, acelerando el desarrollo de la UI. |
 | **Contenerización** | Docker | Para empaquetar la aplicación y sus dependencias, garantizando consistencia. |
 | **CI/CD** | GitHub Actions | Para automatizar la integración, pruebas y despliegue continuo. |
 | **IaC** | Terraform | Para definir y provisionar la infraestructura de nube de forma declarativa. |
@@ -368,10 +369,16 @@ graph
     * **AC 15.1:** Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la `LoginPage`.
     * **AC 15.2:** Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el `AuthenticatedLayout` (header y sidebar) de forma persistente.
 
-* **HU-16: Página de Administración**
+* **HU-16: Página de Administración de Roles**
     * **Como** Administrador, **quiero** una interfaz para gestionar los roles de los usuarios, **para** controlar los permisos de la aplicación.
     * **AC 16.1:** Dado que he iniciado sesión como Administrador, cuando navego a la página de administración, entonces veo una tabla con los usuarios de la organización.
     * **AC 16.2:** Dado que estoy viendo la tabla de usuarios, cuando cambio el rol de un usuario, entonces se realiza una llamada a la API y la UI se actualiza con el nuevo rol.
+
+* **HU-17: Implementar un Modelo de Acceso "Cerrado por Defecto" en el Arranque**
+    * **Como** administrador del sistema, **necesito** que la aplicación bloquee por defecto todos los inicios de sesión, excepto el del administrador inicial designado, cuando aún no he configurado una organización de GitHub, **para** garantizar la máxima seguridad desde el primer despliegue y prevenir cualquier registro de usuario no autorizado antes de que el sistema esté completamente configurado.
+    * **AC 17.1:** Dado que el sistema está en su estado de arranque inicial, cuando un usuario que no es el administrador inicial intenta iniciar sesión, entonces el acceso debe ser denegado.
+    * **AC 17.2:** Dado que el sistema está en su estado de arranque inicial, cuando el usuario que es el administrador inicial intenta iniciar sesión, entonces debe ser creado exitosamente con el rol de ADMIN.
+    * **AC 17.3:** Dado que un ADMIN ya existe en el sistema y la organización aún no está configurada, cuando un nuevo usuario intenta iniciar sesión, entonces su acceso debe ser denegado.
 
 * **HU-18: Interfaz de Usuario para Cerrar Sesión**
     * **Como** usuario autenticado, **quiero** poder cerrar mi sesión de forma segura, **para** proteger mi cuenta de accesos no autorizados.
@@ -393,15 +400,16 @@ graph
 
 ## 11. Diseño del Frontend
 
-Esta sección detalla la arquitectura y los componentes de la aplicación de frontend.
-
 ### 11.1. Framework y Herramientas
 - **Framework:** **React (con Vite)**. Se elige React por su robusto ecosistema, su modelo de componentes declarativo y el amplio soporte de la comunidad. Vite se utilizará como herramienta de build por su experiencia de desarrollo extremadamente rápida (Hot Module Replacement).
 - **Lenguaje:** **TypeScript**. Para añadir seguridad de tipos y mejorar la mantenibilidad del código.
 - **Estilos:** **Tailwind CSS**. Un framework CSS "utility-first" que permite construir diseños complejos rápidamente sin salir del HTML, promoviendo la consistencia visual.
+- **Librería de Componentes:** **Shadcn/UI**. Para acelerar el desarrollo de la UI, se utilizará esta librería de componentes accesibles y componibles que se integra perfectamente con Tailwind CSS.
 - **Gestión de Estado:**
     - **Estado Global de UI:** **React Context API con Hooks**. Para gestionar el estado de la sesión del usuario (información del usuario, rol), que es global y cambia con poca frecuencia.
     - **Estado del Servidor:** **TanStack Query (React Query)**. Para gestionar todo el ciclo de vida de las peticiones a la API: fetching, caching, sincronización y actualización de datos del servidor.
+
+***Nota de Diseño (Monolito Frontend vs. Microfrontends):*** *Para el alcance del MVP, se ha elegido un enfoque de **monolito de frontend**. Esta decisión prioriza la velocidad de desarrollo y la simplicidad operativa. Una evolución futura para una organización con múltiples equipos de frontend podría ser la descomposición de la aplicación en **microfrontends** (ej. un microfrontend para la administración y otro para los dashboards) para permitir un desarrollo y despliegue independientes.*
 
 ### 11.2. Estructura de Componentes Principales
 La aplicación se organizará en una jerarquía de componentes reutilizables.
@@ -438,6 +446,34 @@ graph TD
 2.  La información del usuario (nombre, rol) se almacena en un **React Context** global (`AuthContext`) para controlar la UI. El token CSRF se almacena en memoria.
 3.  Para obtener datos del servidor (ej. la lista de usuarios en `UserManagement`), los componentes utilizarán los hooks de **TanStack Query** (ej. `useQuery`). TanStack Query se encargará de gestionar los estados de carga y error.
 4.  Para las peticiones que modifican el estado (ej. cambiar un rol), los componentes usarán los hooks de mutación de TanStack Query (ej. `useMutation`), asegurándose de incluir el **token CSRF** en una cabecera HTTP.
+
+### 11.4. Estrategia de Implementación por Fases
+La construcción del frontend seguirá un enfoque pragmático en tres fases principales:
+
+* **Fase 1: La Fundación - Flujo de Sesión Completo (HU-15, HU-18, HU-19, HU-20)**
+  El objetivo es tener una aplicación donde un usuario pueda entrar, ser reconocido y salir.
+
+    1. **Configuración y Página de Aterrizaje:** Crear el proyecto React, configurar las herramientas y construir la `LoginPage` con el botón de login.
+
+    2. **Rutas Protegidas y Contexto de Autenticación:** Implementar el `Router` y el `AuthenticatedLayout`. Este último verificará la sesión del usuario llamando a un endpoint `/api/user/me` y gestionará la redirección a la página de login si no está autenticado.
+
+    3. **Página Principal y Cierre de Sesión:** Crear una página principal simple y el `Header` con la información del usuario y el botón de logout funcional.
+
+* **Fase 2: El Panel de Administración (HU-16)**
+  El objetivo es construir la funcionalidad que requiere más interacción con la API (lectura y escritura).
+
+    1. **Crear Componentes de UI:** Construir la `AdminPage` y el componente `UserManagement` utilizando componentes de Shadcn/UI (como la tabla).
+
+    2. **Integrar con TanStack Query:** Usar `useQuery` para leer la lista de usuarios y `useMutation` para actualizar los roles, asegurando que la UI se actualice automáticamente.
+
+* **Fase 3: Los Dashboards (HU-6, 7, 8)**
+  El objetivo es integrar la visualización de datos.
+
+    1. **Crear `DashboardPage`:** Este componente consumirá el `AuthContext` para obtener el rol del usuario.
+
+    2. **Integrar Grafana:** Embeber los paneles de Grafana usando un `iframe`.
+
+    3. **Hacer Dashboards Dinámicos:** Construir la URL del `iframe` dinámicamente basándose en el rol del usuario para mostrar la vista de datos correcta.
 
 ---
 
