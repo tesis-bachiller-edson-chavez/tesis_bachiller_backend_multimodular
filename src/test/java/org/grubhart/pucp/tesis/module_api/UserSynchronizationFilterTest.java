@@ -73,6 +73,28 @@ class UserSynchronizationFilterTest {
     }
 
     @Test
+    @DisplayName("Filtro: Dado un usuario ya logueado, en peticiones subsecuentes no se vuelve a loguear el LOGIN_SUCCESS")
+    void givenLoggedInUser_whenLoginAlreadyLogged_filterDoesNotLogAgain() throws Exception {
+        // Arrange: Simulamos un usuario que existe y una sesión donde el login ya fue logueado.
+        User mockUser = new User(123L, "testuser", "test@user.com");
+        when(userRepository.findByGithubUsernameIgnoreCase("testuser")).thenReturn(Optional.of(mockUser));
+
+        // Act & Assert: Realizamos una petición con el atributo de sesión 'LOGIN_LOGGED' ya establecido.
+        // Esperamos que la petición sea exitosa (200 OK), lo que prueba que el filtro
+        // manejó correctamente el caso donde el flag ya está presente y no entró en el 'if'.
+        mockMvc.perform(get("/api/v1/user/me")
+                        .with(oauth2Login().attributes(attrs -> {
+                            attrs.put("login", "testuser");
+                            attrs.put("id", 123L);
+                        }))
+                        .sessionAttr("LOGIN_LOGGED", true)) // <-- Esta es la clave del test
+                .andExpect(status().isOk());
+
+        // Verificamos que el filtro aun así buscó al usuario en la BD, como debe ser.
+        verify(userRepository, times(2)).findByGithubUsernameIgnoreCase("testuser");
+    }
+
+    @Test
     @DisplayName("Filtro: Dado un usuario autenticado que NO existe en la BD, la sesión se invalida y se redirige al login")
     void whenUserNotInDb_sessionIsInvalidatedAndRedirectsToLogin() throws Exception {
         // Arrange: Simulamos que el usuario "ghostuser" NO existe en la base de datos.
@@ -95,13 +117,12 @@ class UserSynchronizationFilterTest {
     }
 
     @Test
-    @DisplayName("Filtro: Dada una petición anónima, el filtro no realiza ninguna acción de sincronización")
+    @DisplayName("Filtro: Dada una petición anónima, el filtro no actúa y la API devuelve 401")
     void whenRequestIsAnonymous_filterDoesNothing() throws Exception {
-        // Act & Assert: Realizamos una petición anónima a un endpoint protegido.
-        // Esperamos la redirección normal al login, sin que nuestro filtro haga nada especial.
+        // Act & Assert: Realizamos una petición anónima a un endpoint protegido de la API.
+        // Esperamos un 401 Unauthorized, que es la respuesta correcta para una API REST.
         mockMvc.perform(get("/api/v1/user/me"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("http://localhost/oauth2/authorization/github"));
+                .andExpect(status().isUnauthorized());
 
         // Verificamos que el filtro ni siquiera intentó buscar un usuario en la BD.
         verify(userRepository, never()).findByGithubUsernameIgnoreCase(anyString());
@@ -220,23 +241,21 @@ class UserSynchronizationFilterTest {
     }
 
     @Test
-    @DisplayName("S (Happy Path): POST a /logout invalida la sesión y redirige a la raíz")
-    void whenLoggingOut_sessionIsInvalidatedAndRedirectsToRoot() throws Exception {
+    @DisplayName("Logout: POST a /logout invalida la sesión y devuelve 200 OK")
+    void whenLoggingOut_sessionIsInvalidatedAndReturnsOk() throws Exception {
         // Act & Assert: Realizamos una petición POST a /logout.
         // Spring Security requiere POST para logout por protección CSRF.
-        // Esperamos una redirección a la URL de éxito de logout, que debería ser "/".
+        // Para una API REST, esperamos un 200 OK, no una redirección.
         mockMvc.perform(post("/logout").with(csrf()))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/"));
+                .andExpect(status().isOk());
     }
 
     @Test
-    @DisplayName("B (Boundary): El endpoint /dashboard está protegido para usuarios anónimos")
+    @DisplayName("B (Boundary): El endpoint /dashboard devuelve 401 para usuarios anónimos")
     void dashboardIsProtectedForAnonymousUsers() throws Exception {
-        // Act & Assert: Un usuario anónimo que intenta acceder al dashboard debe ser redirigido al login.
+        // Act & Assert: Un usuario anónimo que intenta acceder al dashboard debe recibir un 401.
         mockMvc.perform(get("/dashboard"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("http://localhost/oauth2/authorization/github"));
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -256,12 +275,11 @@ class UserSynchronizationFilterTest {
     }
 
     @Test
-    @DisplayName("B (Boundary): El endpoint /admin/setup está protegido para usuarios anónimos")
+    @DisplayName("B (Boundary): El endpoint /admin/setup devuelve 401 para usuarios anónimos")
     void adminSetupIsProtectedForAnonymousUsers() throws Exception {
-        // Act & Assert: Un usuario anónimo que intenta acceder a la página de setup debe ser redirigido al login.
+        // Act & Assert: Un usuario anónimo que intenta acceder a la página de setup debe recibir un 401.
         mockMvc.perform(get("/admin/setup"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("http://localhost/oauth2/authorization/github"));
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
