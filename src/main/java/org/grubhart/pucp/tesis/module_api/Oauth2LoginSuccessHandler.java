@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.grubhart.pucp.tesis.module_administration.AuthenticationService;
 import org.grubhart.pucp.tesis.module_administration.GithubUserDto;
 import org.grubhart.pucp.tesis.module_administration.LoginProcessingResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -19,9 +20,11 @@ import java.util.Objects;
 public class Oauth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final AuthenticationService authenticationService;
+    private final String frontendUrl;
 
-    public Oauth2LoginSuccessHandler(AuthenticationService authenticationService) {
+    public Oauth2LoginSuccessHandler(AuthenticationService authenticationService, @Value("${app.frontend.url}") String frontendUrl) {
         this.authenticationService = authenticationService;
+        this.frontendUrl = frontendUrl;
     }
 
     @Override
@@ -57,7 +60,7 @@ public class Oauth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             response.sendRedirect("/admin/setup");
         } else {
             // AC 1.2: Redirigir a los usuarios normales a un dashboard principal.
-            response.sendRedirect("/dashboard");
+            response.sendRedirect(frontendUrl + "/home");
         }
 
     }
