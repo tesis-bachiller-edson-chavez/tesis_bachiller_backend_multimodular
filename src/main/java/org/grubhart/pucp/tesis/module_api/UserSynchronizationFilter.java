@@ -33,20 +33,25 @@ public class UserSynchronizationFilter extends OncePerRequestFilter {
             OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
             String username = oauthUser.getAttribute("login");
 
-            // Si el username es válido, verificamos si existe en nuestra BD
-            if (username != null && userRepository.findByGithubUsernameIgnoreCase(username).isEmpty()) { // .isEmpty() es más legible desde Java 11+
-                logger.warn("Usuario '{}' autenticado en la sesión pero no encontrado en la base de datos. " +
-                        "Esto puede ocurrir después de un reinicio con una BD en memoria o por perdida de datos en la tabla USERS y USERS_ROLE. Invalidando sesión.", username);
+            if (username != null) {
+                if (userRepository.findByGithubUsernameIgnoreCase(username).isEmpty()) {
+                    logger.warn("Usuario '{}' autenticado en la sesión pero no encontrado en la base de datos. " +
+                            "Esto puede ocurrir después de un reinicio con una BD en memoria. Invalidando sesión.", username);
 
-                // El usuario no existe en la BD, lo que indica una sesión desincronizada.
-                // Invalidamos la sesión para forzar un nuevo login.
-                request.getSession().invalidate();
-                SecurityContextHolder.clearContext();
+                    request.getSession().invalidate();
+                    SecurityContextHolder.clearContext();
 
-                // IMPORTANTE: Detenemos la cadena de filtros aquí y forzamos la redirección.
-                // Esto evita que la petición continúe hacia el controlador con un contexto de seguridad nulo.
-                response.sendRedirect("/oauth2/authorization/github");
-                return;
+                    response.sendRedirect("/oauth2/authorization/github");
+                    return;
+                } else {
+                    // El usuario existe en la BD, la sesión es válida.
+                    // Para evitar logs en cada petición, solo lo mostramos una vez por sesión.
+                    Object loginLoggedFlag = request.getSession().getAttribute("LOGIN_LOGGED");
+                    if (loginLoggedFlag == null) {
+                        logger.info("LOGIN_SUCCESS: Nueva sesión verificada para el usuario '{}'.", username);
+                        request.getSession().setAttribute("LOGIN_LOGGED", true);
+                    }
+                }
             }
         }
 
