@@ -11,7 +11,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
@@ -43,18 +42,18 @@ public class Oauth2LoginSuccessHandlerTest {
     @Mock
     private HttpServletResponse response;
 
-    @InjectMocks
     private Oauth2LoginSuccessHandler successHandler;
 
     @BeforeEach
     public void setUp() {
-        // No es estrictamente necesario para este test, pero es buena práctica
-        successHandler = new Oauth2LoginSuccessHandler(authenticationService);
+        // Creamos manualmente la instancia del handler, proveyendo el mock y la URL de prueba.
+        String frontendUrlForTest = "http://localhost:5173";
+        successHandler = new Oauth2LoginSuccessHandler(authenticationService, frontendUrlForTest);
     }
 
     @Test
-    @DisplayName("S (Happy Path): Un usuario normal es redirigido al dashboard")
-    void onAuthenticationSuccess_whenNormalUser_shouldRedirectToDashboard() throws IOException, ServletException {
+    @DisplayName("S (Happy Path): Un usuario normal es redirigido a la home del frontend")
+    void onAuthenticationSuccess_whenNormalUser_shouldRedirectToFrontendHome() throws IOException, ServletException {
         // GIVEN
         // 1. Creamos un usuario OAuth2 simulado, como el que nos daría GitHub
         Map<String, Object> userAttributesWithEmail = Map.of(
@@ -82,8 +81,8 @@ public class Oauth2LoginSuccessHandlerTest {
         assertThat(captureDto.username()).isEqualTo("github-user");
         assertThat(captureDto.email()).isEqualTo("user@github.com");
 
-        // 3. Verificamos que se redirige al usuario al dashboard
-        verify(response).sendRedirect("/dashboard");
+        // 3. Verificamos que se redirige al usuario a la home del frontend
+        verify(response).sendRedirect("http://localhost:5173/home");
     }
 
 
