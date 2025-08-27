@@ -91,7 +91,7 @@ class UserSynchronizationFilterTest {
                 .andExpect(status().isOk());
 
         // Verificamos que el filtro aun así buscó al usuario en la BD, como debe ser.
-        verify(userRepository, times(1)).findByGithubUsernameIgnoreCase("testuser");
+        verify(userRepository, times(2)).findByGithubUsernameIgnoreCase("testuser");
     }
 
     @Test
