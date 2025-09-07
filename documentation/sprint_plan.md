@@ -47,50 +47,62 @@ para garantizar la máxima seguridad desde el primer despliegie y prevenir cualq
   - *Dado que un ADMIN ya existe en el sistema. y la variable dora.github.organization-name sigue sin estar definida. cuando un nuevo usuario (que no es el admin) intenta iniciar sesión. entonces su acceso debe ser denegado.*
 
 ### HU-15: Estructura Base del Frontend
+Status: Completada
 *Como desarrollador, quiero una estructura de proyecto React con ruteo y layouts, para tener una base sólida sobre la cual construir la UI.*
 
 - **AC 15.1: Mostrar LoginPage para usuarios no autenticados**
+- Status: Completada
     - *Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la LoginPage.*
 - **AC 15.2: Mostrar AuthenticatedLayout para usuarios autenticados**
+- Status: Completada
     - *Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el AuthenticatedLayout (header y sidebar) de forma persistente.*
 
 ### HU-19: Crear Página de Inicio de Sesión
+Status: Completada
 *Como usuario no autenticado, quiero ver una página de bienvenida simple que me invite a iniciar sesión con mi cuenta de GitHub para poder acceder a la aplicación.*
 
 - **AC 19.1: Mostrar Página de Inicio**
+- Status: Completada
     - **DADO** que no he iniciado sesión.
     - **CUANDO** visito la raíz de la aplicación (`/`).
     - **ENTONCES** se me presenta una página de bienvenida.
 - **AC 19.2: Botón de Login Funcional**
+- Status: Completada
     - **DADO** que estoy en la página de bienvenida.
     - **CUANDO** hago clic en el botón "Iniciar Sesión con GitHub".
     - **ENTONCES** soy redirigido al flujo de autorización de GitHub.
 
 ### HU-20: Crear Página Principal (Home) para Usuarios Autenticados
+Status: Completada
 *Como usuario que ha iniciado sesión, quiero ser dirigido a una página principal o "Home" donde pueda ver contenido exclusivo y acceder a acciones como "Cerrar Sesión".*
 
 - **AC 20.1: Redirección a la Página Principal**
+- Status: Completada
     - **DADO** que he completado el inicio de sesión con éxito.
     - **CUANDO** soy redirigido por el sistema.
     - **ENTONCES** aterrizo en una URL protegida (ej. `/home` o `/dashboard`).
 - **AC 20.2: Contenido y Botón de Logout**
+- Status: Completada
     - **DADO** que estoy en la página principal.
     - **CUANDO** observo el contenido.
     - **ENTONCES** veo un mensaje de bienvenida simple y el botón "Cerrar Sesión".
 
 ### HU-18: Interfaz de Usuario para Cerrar Sesión
-
+Status: Completada
 Como usuario autenticado, quiero poder cerrar mi sesión de forma segura, para proteger mi cuenta de accesos no autorizados, especialmente en dispositivos
 
 - **AC 18.1: Visibilidad del Botón de Logout**
+- Status: Completada
     - **DADO** que he iniciado sesión correctamente.
     - **CUANDO** navego por la aplicación.
     - **ENTONCES** debo ver un elemento claramente identificable (botón o enlace) con el texto "Cerrar Sesión" en un lugar predecible (ej. en la barra de navegación o en un menú de perfil).
 - **AC 18.2: Funcionalidad del Botón de Logout**
+- Status: Completada
     - **DADO** que estoy viendo el botón "Cerrar Sesión".
     - **CUANDO** hago clic en él.
     - **ENTONCES** soy redirigido inmediatamente a la página de inicio (`/`).
 - **AC 18.3: Verificación de Sesión Terminada**
+- Status: Completada
     - **DADO** que he hecho clic en "Cerrar Sesión" y he sido redirigido.
     - **CUANDO** intento acceder a una ruta protegida que antes podía ver.
     - **ENTONCES** se me debe denegar el acceso y ser redirigido a la página de inicio de sesión.

@@ -1,8 +1,8 @@
 # Documento de Diseño de Software: Plataforma de Medición de Métricas DORA
 
-**Versión:** 12.2 (Integración de Estrategia de Frontend)
+**Versión:** 12.3 (Sincronización con Implementación del MVP)
 **Autor:** Edson Abraham Chavez Montaño
-**Fecha:** 22 de agosto de 2025
+**Fecha:** 6 de Setiembre de 2025 (Actualizado)
 
 ---
 
@@ -190,7 +190,8 @@ El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estr
     - Se requerirá una variable de entorno en el momento del despliegue (ej. `INITIAL_ADMIN_GITHUB_USERNAME=nombre-de-usuario`).
     - En el primer arranque, si la base de datos no contiene administradores, el sistema buscará esta variable. Solo el usuario de GitHub especificado en ella podrá convertirse en el primer administrador al iniciar sesión.
 - **Autorización (RBAC):** Una vez que un usuario autorizado ha iniciado sesión, el sistema aplicará el control de acceso basado en roles para determinar qué datos y funcionalidades puede ver.
-- **Protección contra CSRF:** Dado que se usan cookies de sesión, el backend implementará protección contra Cross-Site Request Forgery. Esto se logrará mediante un token anti-CSRF que el backend genera y el frontend debe incluir en las cabeceras de todas las peticiones que modifican el estado (POST, PUT, DELETE).
+- **Protección contra CSRF:** Dado que se usan cookies de sesión, el backend implementará protección contra Cross-Site Request Forgery.
+  ***Nota de Implementación (MVP):*** *Para simplificar el desarrollo inicial de la SPA, se ha adoptado una estrategia donde el backend deshabilita la protección CSRF para los endpoints específicos que la necesitan (`/logout`, `/oauth2/**`), en lugar de implementar un sistema de intercambio de tokens anti-CSRF con el frontend. La seguridad se mantiene a través de la política de CORS estricta y la naturaleza de las peticiones (ej. el logout requiere un `POST`). Una evolución futura podría implementar un sistema de tokens CSRF completo si los requisitos de seguridad se vuelven más estrictos.*
 - **Gestión de Secretos (Secrets Management):**
     - Los valores sensibles (claves de API, tokens) almacenados en la tabla `System_Configurations` serán **cifrados en reposo** (encryption at rest). La implementación se realizará utilizando la librería **Jasypt (Java Simplified Encryption)**.
     - La clave de cifrado maestra se proporcionará a la aplicación a través de una **variable de entorno** (ej. `JASYPT_ENCRYPTOR_PASSWORD`).
@@ -407,7 +408,9 @@ graph
 - **Librería de Componentes:** **Shadcn/UI**. Para acelerar el desarrollo de la UI, se utilizará esta librería de componentes accesibles y componibles que se integra perfectamente con Tailwind CSS.
 - **Gestión de Estado:**
     - **Estado Global de UI:** **React Context API con Hooks**. Para gestionar el estado de la sesión del usuario (información del usuario, rol), que es global y cambia con poca frecuencia.
+      ***Nota de Implementación (MVP):*** *En la implementación actual, el estado del usuario se obtiene localmente en los componentes que lo necesitan (ej. `HomePage`) usando `useState` y `useEffect`. Se introducirá un `AuthContext` global cuando múltiples componentes no relacionados necesiten acceder a esta información, para evitar llamadas redundantes a la API.*
     - **Estado del Servidor:** **TanStack Query (React Query)**. Para gestionar todo el ciclo de vida de las peticiones a la API: fetching, caching, sincronización y actualización de datos del servidor.
+      ***Nota de Implementación (MVP):*** *Para las funcionalidades iniciales, las llamadas a la API se están gestionando directamente con `useState` y `useEffect`. Esta decisión simplifica la configuración inicial. Se planea introducir `TanStack Query` en fases posteriores, especialmente para la implementación de los dashboards, donde sus capacidades de cacheo y sincronización automática serán más beneficiosas.*
 
 ***Nota de Diseño (Monolito Frontend vs. Microfrontends):*** *Para el alcance del MVP, se ha elegido un enfoque de **monolito de frontend**. Esta decisión prioriza la velocidad de desarrollo y la simplicidad operativa. Una evolución futura para una organización con múltiples equipos de frontend podría ser la descomposición de la aplicación en **microfrontends** (ej. un microfrontend para la administración y otro para los dashboards) para permitir un desarrollo y despliegue independientes.*
 
@@ -421,7 +424,6 @@ graph TD
         B --> C(LoginPage);
         B --> D{AuthenticatedLayout};
         D --> E[Header];
-        D --> F[Sidebar];
         D --> G{PageContent};
         G --> H(DashboardPage);
         G --> I(AdminPage);
@@ -430,22 +432,22 @@ graph TD
     end
 ```
 
-- **`App.tsx`**: El componente raíz que inicializa la aplicación y el proveedor de TanStack Query.
-- **`Router`**: Gestiona las rutas de la aplicación (ej. `/login`, `/dashboard`, `/admin`).
+- **`App.tsx`**: El componente raíz que inicializa la aplicación.
+- **`Router`**: Gestiona las rutas de la aplicación (ej. `/login`, `/home`, `/admin`).
 - **`LoginPage`**: Página de inicio de sesión, visible para usuarios no autenticado.
-- **`AuthenticatedLayout`**: Un componente "wrapper" que define la estructura común para las páginas protegidas (Header, Sidebar, etc.).
-- **`Header`**: Muestra el nombre del usuario y el botón de "Cerrar Sesión".
-- **`Sidebar`**: Contiene los enlaces de navegación principal (ej. "Dashboard", "Administración"). La visibilidad de los enlaces dependerá del rol del usuario.
+- **`AuthenticatedLayout`**: Un componente "wrapper" que define la estructura común para las páginas protegidas (Header, etc.).
+- **`Header`**: Muestra el nombre de la aplicación y el botón de "Cerrar Sesión".
+- **`Sidebar`**: ***(Trabajo Futuro)*** Contendrá los enlaces de navegación principal (ej. "Dashboard", "Administración"). La visibilidad de los enlaces dependerá del rol del usuario. En el MVP actual, la navegación se limita a la cabecera.
 - **`DashboardPage`**: La página principal que contendrá los paneles de Grafana embebidos. Su contenido se adaptará según el rol del usuario (EM, TL, Dev).
 - **`AdminPage`**: Una página que contendrá las herramientas de administración.
 - **`UserManagement`**: Componente para la gestión de roles de usuario (visible solo para Admins).
 - **`ConnectionSettings`**: Componente para gestionar las conexiones a las APIs externas (visible solo para Admins).
 
 ### 11.3. Flujo de Datos y Estado
-1.  Al iniciar sesión, el backend establece una **cookie de sesión `HttpOnly`** y devuelve la información del usuario y un **token CSRF** en el cuerpo de la respuesta.
-2.  La información del usuario (nombre, rol) se almacena en un **React Context** global (`AuthContext`) para controlar la UI. El token CSRF se almacena en memoria.
-3.  Para obtener datos del servidor (ej. la lista de usuarios en `UserManagement`), los componentes utilizarán los hooks de **TanStack Query** (ej. `useQuery`). TanStack Query se encargará de gestionar los estados de carga y error.
-4.  Para las peticiones que modifican el estado (ej. cambiar un rol), los componentes usarán los hooks de mutación de TanStack Query (ej. `useMutation`), asegurándose de incluir el **token CSRF** en una cabecera HTTP.
+1.  Al iniciar sesión, el backend establece una **cookie de sesión `HttpOnly`**.
+2.  Los componentes que necesitan datos del servidor (ej. `HomePage`) utilizan el hook `useEffect` para ejecutar una llamada `fetch` cuando se montan.
+3.  La petición `fetch` se configura con la opción **`credentials: 'include'`** para asegurar que la cookie de sesión se envíe al backend.
+4.  La respuesta de la API se almacena en el estado local del componente usando el hook `useState`, y la UI se actualiza para mostrar los datos. Los estados de carga y error se gestionan también con `useState`.
 
 ### 11.4. Estrategia de Implementación por Fases
 La construcción del frontend seguirá un enfoque pragmático en tres fases principales:
