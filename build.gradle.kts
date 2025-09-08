@@ -37,6 +37,7 @@ dependencies {
     runtimeOnly("com.h2database:h2") // Añadido para la base de datos en memoria
     testImplementation("org.springframework.cloud:spring-cloud-starter-contract-stub-runner")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.1.0")
     testImplementation("io.projectreactor:reactor-test")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
