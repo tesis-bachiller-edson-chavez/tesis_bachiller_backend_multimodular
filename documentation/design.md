@@ -429,12 +429,18 @@ graph
 
 * **HU-10: Recolectar Datos de GitHub**
     * **Como** el sistema, **quiero** conectarme a la API de GitHub de forma periódica, **para** recolectar eventos de PRs, commits y deployments.
-    * **AC 10.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de GitHub, entonces obtiene los eventos nuevos desde la última ejecución.
-    * **AC 10.2:** Dado que se obtiene un evento nuevo, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
-    * **AC 10.3:** Dado un repositorio configurado, el sistema debe ser capaz de recolectar y almacenar la información de los commits, incluyendo como mínimo: el `SHA` (ID único), el `autor`, el `mensaje`, la `fecha del commit` y una referencia al `Pull Request` al que pertenece.
-    * **AC 10.4:** Dado un repositorio, el sistema debe recolectar y almacenar la información de los Pull Requests, incluyendo como mínimo: el `número de PR`, el `título`, el `estado` (abierto, cerrado, fusionado), la `fecha de creación`, la `fecha de fusión` (si aplica) y la lista de `commits` asociados.
-    * **AC 10.5:** El sistema debe proveer un mecanismo (p. ej., un endpoint de webhook) para recibir y almacenar eventos de despliegue desde el sistema de CI/CD, y la información almacenada debe incluir como mínimo: un `ID de despliegue`, la `fecha del despliegue`, el `resultado` (éxito/fallo) y una referencia a los `commits` o `Pull Request` que se están desplegando.
-    * **AC 10.6:** El proceso de recolección debe ser resiliente, de modo que si ocurre un error (p. ej., la API de GitHub no está disponible), el error debe ser registrado de forma clara y el sistema debe poder reanudar la recolección desde el último punto exitoso en la siguiente ejecución.
+    * **AC 10.1:** Dado que la aplicación se inicia y el esquema de la base de datos es gestionado por JPA/Hibernate.
+      Cuando un desarrollador inspecciona el esquema de la base de datos.
+      Entonces las tablas REPOSITORY_CONFIG y SYNC_STATUS deben existir con sus columnas correctamente definidas, listas para ser usadas por los servicios de sincronización.
+    * **AC 10.2:** Dado que el framework de sincronización está implementado y existe una configuración de repositorio.
+      Cuando se ejecuta el CommitSyncService.
+      Entonces los nuevos commits del repositorio de GitHub se guardan en la tabla COMMIT, y la tabla SYNC_STATUS se actualiza con la nueva fecha de lastSuccessfulRun para el job "COMMIT_SYNC".
+    * **AC 10.3:** Dado que el framework de sincronización está implementado.
+      Cuando se ejecuta el PullRequestSyncService.
+      Entonces los nuevos Pull Requests del repositorio de GitHub se guardan en la base de datos, y la tabla SYNC_STATUS se actualiza para el job "PULL_REQUEST_SYNC".
+    * **AC 10.4:** Dado que el framework está implementado y la aplicación está configurada con el nombre del workflow de despliegue.
+      Cuando se ejecuta el DeploymentSyncService.
+      Entonces las nuevas ejecuciones exitosas de dicho workflow se guardan como registros de Deployment, y la tabla SYNC_STATUS se actualiza para el job "DEPLOYMENT_SYNC".
 
 * **HU-11: Procesar Métricas de Velocidad**
     * **Como** el sistema, **quiero** procesar los datos de GitHub, **para** calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.
