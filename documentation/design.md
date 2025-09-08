@@ -2,7 +2,7 @@
 
 **Versión:** 12.3 (Sincronización con Implementación del MVP)
 **Autor:** Edson Abraham Chavez Montaño
-**Fecha:** 6 de Setiembre de 2025 (Actualizado)
+**Fecha:** 7 de Setiembre de 2025 (Actualizado)
 
 ---
 
@@ -70,20 +70,24 @@ Para asegurar la entrega de un producto funcional en el tiempo estipulado, la im
 ---
 
 ## 4. Personas y Roles de Usuario (RBAC)
-El sistema implementará un Control de Acceso Basado en Roles (RBAC) estricto.
+El sistema implementará un Control de Acceso Basado en Roles (RBAC) estricto con una clara separación de responsabilidades.
 
 - **Administrador:**
-    - **Acceso:** Tiene acceso a **todas las funcionalidades del sistema**, incluyendo la gestión de roles, la configuración del sistema y la visualización de todos los dashboards de métricas.
-    - **Función:** Configurar, mantener y verificar el correcto funcionamiento de la aplicación, además de gestionar los roles de otros usuarios.
+    - **Acceso:** Total a las funcionalidades de **configuración del sistema** (gestión de roles, conexiones, etc.).
+    - **Visibilidad de Datos:** Acceso de lectura a todos los dashboards y métricas.
+    - **Función (Técnica):** Su propósito principal es **configurar, mantener y depurar la plataforma**. La visualización de datos le sirve para verificar que el sistema funciona correctamente y para investigar posibles problemas en la recolección o procesamiento.
 - **Engineering Manager:**
-    - **Acceso:** Tiene una visión global de todas las métricas, de todos los equipos y todos los repositorios de la organización.
-    - **Función:** Analizar el rendimiento organizacional, comparar equipos e identificar tendencias estratégicas.
+    - **Acceso:** Acceso de solo lectura a los dashboards. No tiene acceso a las pantallas de configuración del sistema.
+    - **Visibilidad de Datos:** Tiene una visión global de todas las métricas, de todos los equipos y todos los repositorios.
+    - **Función (Estratégica):** Su propósito es **analizar el rendimiento de la organización**, comparar equipos e identificar tendencias para la toma de decisiones estratégicas.
 - **Tech Lead:**
-    - **Acceso:** Tiene acceso únicamente a las métricas de los repositorios y desarrolladores que pertenecen a su equipo.
-    - **Función:** Monitorear la salud y el rendimiento de su equipo.
+    - **Acceso:** Acceso de solo lectura a los dashboards de su equipo.
+    - **Visibilidad de Datos:** Tiene acceso únicamente a las métricas de los repositorios y desarrolladores que pertenecen a su equipo.
+    - **Función (Táctica):** Monitorear la salud y el rendimiento de su equipo para guiar mejoras a corto y mediano plazo.
 - **Desarrollador:**
-    - **Acceso:** Visualiza las métricas relacionadas con su trabajo directo. Rol por defecto.
-    - **Función:** Obtener feedback rápido sobre el impacto de su trabajo.
+    - **Acceso:** Acceso de solo lectura a los dashboards de los repositorios en los que participa.
+    - **Visibilidad de Datos:** Visualiza las métricas relacionadas con su trabajo directo. Rol por defecto.
+    - **Función (Operativa):** Obtener feedback rápido sobre el impacto de su trabajo en el ciclo de entrega.
 
 ---
 
@@ -101,7 +105,7 @@ Para el backend, se ha elegido un enfoque de **Monolito Modular**. Esta decisió
     - **Preparado para el futuro:** Facilita la extracción de un módulo a un microservicio si fuera necesario en el futuro.
 
 La comunicación entre los procesos de recolección y procesamiento de datos será **asíncrona y mediada por la base de datos**.
-***Nota de Diseño (Comunicación Asíncrona):*** *Este enfoque es una simplificación pragmática para el alcance de este proyecto. Una evolución natural para un sistema a mayor escala sería incorporar un message broker dedicado (como RabbitMQ o Kafka) para un desacoplamiento aún más robusto.*
+***Nota de Diseño (Comunicación Asíncrona):*** *Este enfoque es una simplificación pragmatica para el alcance de este proyecto. Una evolución natural para un sistema a mayor escala sería incorporar un message broker dedicado (como RabbitMQ o Kafka) para un desacoplamiento aún más robusto.*
 
 ***Nota de Diseño (API REST vs. GraphQL):*** *Para la comunicación entre el frontend y el backend, se ha elegido una API REST por su simplicidad de implementación y su robusto ecosistema en Spring Boot. Si bien GraphQL podría ofrecer una mayor eficiencia en la obtención de datos para dashboards complejos, la combinación de una API REST bien diseñada con TanStack Query en el frontend mitiga los problemas de "over-fetching" y "under-fetching" de manera efectiva para el alcance de este proyecto. GraphQL se considera una posible evolución futura si los requisitos de consulta de datos se vuelven significativamente más complejos.*
 
@@ -152,7 +156,8 @@ graph TD;
 
 * **6.2.2. `module-collector`**
     * **Responsabilidad:** Conectarse a las APIs externas para recolectar eventos de forma **idempotente**. Su función es guardar cada evento externo una única vez en la tabla `Raw_Events`. Utiliza DTOs específicos para cada fuente externa, implementando el patrón **Anticorruption Layer (ACL)**.
-    * **Componentes:** Clases de servicio para cada integración, DTOs específicos para las APIs externas, lógica de scheduling con manejo de errores de duplicados.
+    * **Componentes:** Clases de servicio para cada integration, DTOs específicos para las APIs externas, lógica de scheduling con manejo de errores de duplicados.
+    * ***Nota de Diseño (Estrategia de API Externa):*** *La elección de la API (REST vs. GraphQL) para la recolección de datos dependerá de la herramienta externa. Para **GitHub**, se priorizará el uso de su **API GraphQL (v4)** debido a su alta eficiencia, ya que permite obtener datos complejos y anidados (como PRs con sus commits y despliegues asociados) en una sola petición, minimizando el número de llamadas y el riesgo de alcanzar los límites de tasa. Para **Jira y DataDog**, se utilizarán sus **APIs REST** estándar, ya que son la principal interfaz que ofrecen.*
 
 * **6.2.3. `module-processor`**
     * **Responsabilidad:** Orquestar el pipeline de datos interno de forma resiliente.
@@ -163,6 +168,53 @@ graph TD;
         5.  Marca los `Raw_Events` exitosos como `COMPLETED`.
         6.  **Publica un evento de dominio** (ej. `MetricThresholdExceededEvent`) si se detectan cambios significativos en las métricas.
     * **Componentes:** Calculadoras de métricas, lógica de agregación, lógica de scheduling transaccional, manejo de errores.
+
+    * **6.2.3.1. Lógica de Cálculo de Métricas**
+        - **Métricas de Velocidad (Velocity)**
+            - **A. Frecuencia de Despliegue (Deployment Frequency)**
+                - **Definición:** Mide la frecuencia con la que el software se despliega exitosamente en producción. Indica la capacidad de entrega del equipo.
+                - **Eventos a Extraer:** Despliegues exitosos al entorno de producción.
+                - **Fórmula:** `Frecuencia de Despliegue = NÚMERO_TOTAL_DE_DESPLIEGUES_EXITOSOS / PERÍODO_DE_TIEMPO_EN_DÍAS`
+                - **Agregación:** Se calcula como una cuenta de eventos durante un período (ej. despliegues por semana).
+                - **Datos Necesarios:** `deployment_id`, `timestamp_deployment`, `status ('success')`, `environment ('production')`.
+                - ***Nota de Diseño (Fuente de Verdad del Despliegue):*** *Un despliegue se define como un evento explícito proveniente del sistema de CI/CD (ej. un workflow de GitHub Actions que termina de forma exitosa). **No se debe inferir un despliegue a partir de un merge commit a la rama principal.** El `module-collector` debe buscar eventos específicos como los generados por la API de Deployments de GitHub, que indican un despliegue real a un entorno específico.*
+
+            - **B. Tiempo de Espera para Cambios (Lead Time for Changes)**
+                - **Definición (Por Commit):** Mide el tiempo que transcurre desde que se hace un commit hasta que ese mismo commit se despliega exitosamente en producción. Mide la eficiencia del proceso de desarrollo y entrega.
+                - **Eventos a Extraer:**
+                    1.  **Timestamp del Commit:** La fecha y hora en que se crea cada commit.
+                    2.  **Timestamp del Despliegue Exitoso:** La fecha y hora en que un despliegue que *incluye* ese commit llega a producción.
+                - **Fórmula:** `Lead Time (commit) = TIMESTAMP_DESPLIEGUE - TIMESTAMP_COMMIT`
+                - **Agregación:** Se calcula como el **promedio** o la **mediana** del `Lead Time` de todos los commits desplegados en un período.
+                - **Datos Necesarios:** `commit_sha`, `commit_timestamp`, `deployment_id`, `deployment_timestamp`, y la relación entre commits y despliegues.
+                - ***Nota de Diseño (Fuente de Verdad del Despliegue):*** *El `TIMESTAMP_DESPLIEGUE` debe provenir de un evento de despliegue real del pipeline de CI/CD, no del timestamp de un merge commit.*
+
+                - **Definición (Por Pull Request - Métrica Complementaria):** Mide el tiempo que transcurre desde la creación de un Pull Request hasta que todos los cambios de ese PR son desplegados exitosamente en producción. Esta métrica es útil para entender el ciclo de vida completo de una funcionalidad, incluyendo el tiempo de revisión.
+                - **Eventos a Extraer:**
+                    1. **Timestamp de Creación del PR:** La fecha y hora en que se abre el Pull Request.
+                    2. **Timestamp del Despliegue Exitoso:** La fecha y hora del primer despliegue que contiene el *merge commit* de ese PR.
+                - **Fórmula:** `Lead Time (PR) = TIMESTAMP_DESPLIEGUE_FINAL - TIMESTAMP_PR_CREACIÓN`
+                - **Agregación:** Se calcula como el **promedio** o la **mediana** del `Lead Time` de todos los PRs desplegados en un período.
+                - **Datos Necesarios:** `pr_id`, `pr_creation_timestamp`, `pr_merge_commit_sha`, `deployment_id`, `deployment_timestamp`, y la relación entre los commits de un despliegue y el `pr_merge_commit_sha`.
+
+        - **Métricas de Estabilidad (Stability)**
+            - **C. Tasa de Fallo de Cambio (Change Fail Rate)**
+                - **Definición:** Mide el porcentaje de despliegues a producción que resultan en una degradación del servicio y requieren una acción para ser remediados (ej. un hotfix, un rollback, un parche).
+                - **Eventos a Extraer:**
+                    1.  **Número Total de Despliegues:** La cuenta de todos los despliegues a producción en un período.
+                    2.  **Número de Fallos:** La cuenta de incidentes (de DataDog) que están directamente correlacionados con un despliegue. Esta correlación se puede establecer si un incidente se crea poco después de un despliegue en el mismo servicio.
+                - **Fórmula:** `Tasa de Fallo de Cambio = (NÚMERO_DE_FALLOS / NÚMERO_TOTAL_DE_DESPLIEGUES) * 100`
+                - **Agregación:** Un porcentaje calculado sobre un período de tiempo (ej. la tasa de fallo del último mes).
+                - **Datos Necesarios:** `deployment_id`, `deployment_timestamp`, `incident_id`, `incident_creation_timestamp`. Se necesita una lógica para vincular un `incident_id` a un `deployment_id`.
+
+            - **D. Tiempo de Restauración del Servicio (Time to Restore Service)**
+                - **Definición:** Mide el tiempo que toma recuperarse de un fallo en producción. Indica la capacidad de resiliencia del sistema y del equipo.
+                - **Eventos a Extraer:**
+                    1.  **Timestamp de Creación del Incidente:** La fecha y hora en que se detecta y registra un incidente en DataDog.
+                    2.  **Timestamp de Resolución del Incidente:** La fecha y hora en que el incidente es marcado como resuelto en DataDog.
+                - **Fórmula:** Para cada incidente: `Tiempo de Restauración (incidente) = TIMESTAMP_RESOLUCIÓN_INCIDENTE - TIMESTAMP_CREACIÓN_INCIDENTE`
+                - **Agregación:** La métrica final es el **promedio** o la **mediana** del `Tiempo de Restauración` de todos los incidentes ocurridos en un período de tiempo.
+                - **Datos Necesarios:** `incident_id`, `incident_creation_timestamp`, `incident_resolution_timestamp`.
 
 * **6.2.4. `module-notifications`**
     * **Responsabilidad:** **Escuchar eventos de dominio** y gestionar el envío de notificaciones salientes en respuesta a ellos.
@@ -181,7 +233,42 @@ El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estr
 
 ---
 
-## 7. Modelo de Seguridad
+## 7. Estrategia de Agregación y Visualización de Datos
+El valor real de las métricas se obtiene al poder analizarlas desde diferentes perspectivas. Esta sección define cómo se agregarán y desagregarán los datos para servir a los distintos roles de usuario.
+
+### 7.1. Niveles de Agregación
+La plataforma soportará una jerarquía de agregación de datos para proporcionar vistas desde lo más general a lo más específico.
+
+- **Nivel 1: Organización:** La vista de más alto nivel. Todas las métricas de todos los equipos y repositorios se agregan para mostrar el rendimiento global de la ingeniería.
+- **Nivel 2: Equipo:** Las métricas de todos los repositorios que pertenecen a un equipo específico se agregan para mostrar el rendimiento de dicho equipo.
+- **Nivel 3: Repositorio:** Es el nivel más granular donde se calculan las métricas. Muestra el rendimiento de un componente o servicio individual.
+
+### 7.2. Ejes de Desagregación (Filtrado)
+Los usuarios podrán filtrar y segmentar los datos en los dashboards a través de varios ejes para un análisis más profundo.
+
+- **Por Período de Tiempo:** El eje principal para el análisis de tendencias. Los usuarios podrán seleccionar rangos predefinidos (ej. últimos 7 días, último mes, último trimestre) o un rango de fechas personalizado.
+- **Por Equipo:** Permitirá comparar el rendimiento entre diferentes equipos.
+- **Por Repositorio:** Permitirá analizar en detalle el rendimiento de un proyecto o servicio específico.
+
+### 7.3. Mapeo a Roles y Permisos
+La capacidad de ver ciertos niveles de agregación y aplicar filtros estará directamente controlada por el rol del usuario, en línea con el modelo RBAC.
+
+- **Administrador:**
+    - **Vista por defecto:** Métricas agregadas a nivel de **Organización**.
+    - **Filtros:** Acceso completo a todos los filtros (tiempo, equipo, repositorio) para facilitar la depuración y verificación del sistema.
+- **Engineering Manager:**
+    - **Vista por defecto:** Métricas agregadas a nivel de **Organización**.
+    - **Filtros:** Acceso completo a todos los filtros (tiempo, equipo, repositorio) para permitir un análisis estratégico exhaustivo.
+- **Tech Lead:**
+    - **Vista por defecto:** Métricas agregadas a nivel de **Equipo**.
+    - **Filtros:** Puede filtrar por período de tiempo y desagregar los datos para ver las métricas de cada **Repositorio** individual dentro de su equipo.
+- **Desarrollador:**
+    - **Vista por defecto:** Métricas a nivel de **Repositorio** para los proyectos en los que contribuye.
+    - **Filtros:** Puede filtrar por período de tiempo. No puede ver datos de otros equipos o repositorios a los que no tiene acceso.
+
+---
+
+## 8. Modelo de Seguridad
 
 - **Autenticación y Gestión de Sesión:** Se utilizará el protocolo **OAuth 2.0 con GitHub**. La sesión del usuario se gestionará a través de una **cookie segura (`HttpOnly`, `Secure`)** establecida por el backend. Esto mitiga el riesgo de robo de tokens por ataques XSS, ya que el token de sesión no es accesible desde el JavaScript del navegador.
 - **Restricción de Acceso:** El acceso a la aplicación estará restringido únicamente a los miembros de una organización de GitHub específica, configurada en el sistema.
@@ -202,7 +289,7 @@ El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estr
 
 ---
 
-## 8. Stack Tecnológico
+## 9. Stack Tecnológico
 
 | Componente | Herramienta/Tecnología | Justificación |
 | :--- | :--- | :--- |
@@ -219,10 +306,10 @@ El modelo de datos detallado, incluyendo las entidades, sus relaciones y la estr
 
 ---
 
-## 9. Casos de Uso Principales
+## 10. Casos de Uso Principales
 A continuación se describen los casos de uso de alto nivel, agrupados por el actor principal que los inicia.
 
-### 9.1. Casos de Uso Generales (Cualquier Usuario Autenticado)
+### 10.1. Casos de Uso Generales (Cualquier Usuario Autenticado)
 
 | Caso de Uso | Actor Principal | Resumen |
 | :--- | :--- | :--- |
@@ -238,7 +325,7 @@ graph
     end
 ```
 
-### 9.2. Casos de Uso de Administración (Rol: Administrador)
+### 10.2. Casos de Uso de Administración (Rol: Administrador)
 
 | Caso de Uso | Actor Principal | Resumen |
 | :--- | :--- | :--- |
@@ -256,7 +343,7 @@ graph
     end
 ```
 
-### 9.3. Casos de Uso de Consulta (Roles: Engineering Manager, Tech Lead, Desarrollador)
+### 10.3. Casos de Uso de Consulta (Roles: Engineering Manager, Tech Lead, Desarrollador)
 
 | Caso de Uso | Actor Principal | Resumen |
 | :--- | :--- | :--- |
@@ -275,7 +362,7 @@ graph
     end
 ```
 
-### 9.4. Casos de Uso del Sistema (Procesos Automatizados)
+### 10.4. Casos de Uso del Sistema (Procesos Automatizados)
 
 | Caso de Uso | Actor Principal | Resumen |
 | :--- | :--- | :--- |
@@ -291,7 +378,7 @@ graph
 
 ---
 
-## 10. Detalle de Historias de Usuario
+## 11. Detalle de Historias de Usuario
 
 * **HU-1: Iniciar Sesión**
     - **Como** un usuario no autenticado, **quiero** poder iniciar sesión con mi cuenta de GitHub, **para** acceder a la aplicación de forma segura.
@@ -344,6 +431,10 @@ graph
     * **Como** el sistema, **quiero** conectarme a la API de GitHub de forma periódica, **para** recolectar eventos de PRs, commits y deployments.
     * **AC 10.1:** Dado que el job de recolección se ejecuta, cuando se conecta a la API de GitHub, entonces obtiene los eventos nuevos desde la última ejecución.
     * **AC 10.2:** Dado que se obtiene un evento nuevo, cuando se intenta guardar en la base de datos, entonces se previene la inserción de duplicados.
+    * **AC 10.3:** Dado un repositorio configurado, el sistema debe ser capaz de recolectar y almacenar la información de los commits, incluyendo como mínimo: el `SHA` (ID único), el `autor`, el `mensaje`, la `fecha del commit` y una referencia al `Pull Request` al que pertenece.
+    * **AC 10.4:** Dado un repositorio, el sistema debe recolectar y almacenar la información de los Pull Requests, incluyendo como mínimo: el `número de PR`, el `título`, el `estado` (abierto, cerrado, fusionado), la `fecha de creación`, la `fecha de fusión` (si aplica) y la lista de `commits` asociados.
+    * **AC 10.5:** El sistema debe proveer un mecanismo (p. ej., un endpoint de webhook) para recibir y almacenar eventos de despliegue desde el sistema de CI/CD, y la información almacenada debe incluir como mínimo: un `ID de despliegue`, la `fecha del despliegue`, el `resultado` (éxito/fallo) y una referencia a los `commits` o `Pull Request` que se están desplegando.
+    * **AC 10.6:** El proceso de recolección debe ser resiliente, de modo que si ocurre un error (p. ej., la API de GitHub no está disponible), el error debe ser registrado de forma clara y el sistema debe poder reanudar la recolección desde el último punto exitoso en la siguiente ejecución.
 
 * **HU-11: Procesar Métricas de Velocidad**
     * **Como** el sistema, **quiero** procesar los datos de GitHub, **para** calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.
@@ -373,7 +464,7 @@ graph
 * **HU-16: Página de Administración de Roles**
     * **Como** Administrador, **quiero** una interfaz para gestionar los roles de los usuarios, **para** controlar los permisos de la aplicación.
     * **AC 16.1:** Dado que he iniciado sesión como Administrador, cuando navego a la página de administración, entonces veo una tabla con los usuarios de la organización.
-    * **AC 16.2:** Dado que estoy viendo la tabla de usuarios, cuando cambio el rol de un usuario, entonces se realiza una llamada a la API y la UI se actualiza con el nuevo rol.
+    - **AC 16.2:** Dado que estoy viendo la tabla de usuarios, cuando cambio el rol de un usuario, entonces se realiza una llamada a la API y la UI se actualiza con el nuevo rol.
 
 * **HU-17: Implementar un Modelo de Acceso "Cerrado por Defecto" en el Arranque**
     * **Como** administrador del sistema, **necesito** que la aplicación bloquee por defecto todos los inicios de sesión, excepto el del administrador inicial designado, cuando aún no he configurado una organización de GitHub, **para** garantizar la máxima seguridad desde el primer despliegue y prevenir cualquier registro de usuario no autorizado antes de que el sistema esté completamente configurado.
@@ -399,9 +490,9 @@ graph
 
 ---
 
-## 11. Diseño del Frontend
+## 12. Diseño del Frontend
 
-### 11.1. Framework y Herramientas
+### 12.1. Framework y Herramientas
 - **Framework:** **React (con Vite)**. Se elige React por su robusto ecosistema, su modelo de componentes declarativo y el amplio soporte de la comunidad. Vite se utilizará como herramienta de build por su experiencia de desarrollo extremadamente rápida (Hot Module Replacement).
 - **Lenguaje:** **TypeScript**. Para añadir seguridad de tipos y mejorar la mantenibilidad del código.
 - **Estilos:** **Tailwind CSS**. Un framework CSS "utility-first" que permite construir diseños complejos rápidamente sin salir del HTML, promoviendo la consistencia visual.
@@ -414,7 +505,7 @@ graph
 
 ***Nota de Diseño (Monolito Frontend vs. Microfrontends):*** *Para el alcance del MVP, se ha elegido un enfoque de **monolito de frontend**. Esta decisión prioriza la velocidad de desarrollo y la simplicidad operativa. Una evolución futura para una organización con múltiples equipos de frontend podría ser la descomposición de la aplicación en **microfrontends** (ej. un microfrontend para la administración y otro para los dashboards) para permitir un desarrollo y despliegue independientes.*
 
-### 11.2. Estructura de Componentes Principales
+### 12.2. Estructura de Componentes Principales
 La aplicación se organizará en una jerarquía de componentes reutilizables.
 
 ```mermaid
@@ -443,13 +534,13 @@ graph TD
 - **`UserManagement`**: Componente para la gestión de roles de usuario (visible solo para Admins).
 - **`ConnectionSettings`**: Componente para gestionar las conexiones a las APIs externas (visible solo para Admins).
 
-### 11.3. Flujo de Datos y Estado
+### 12.3. Flujo de Datos y Estado
 1.  Al iniciar sesión, el backend establece una **cookie de sesión `HttpOnly`**.
 2.  Los componentes que necesitan datos del servidor (ej. `HomePage`) utilizan el hook `useEffect` para ejecutar una llamada `fetch` cuando se montan.
 3.  La petición `fetch` se configura con la opción **`credentials: 'include'`** para asegurar que la cookie de sesión se envíe al backend.
 4.  La respuesta de la API se almacena en el estado local del componente usando el hook `useState`, y la UI se actualiza para mostrar los datos. Los estados de carga y error se gestionan también con `useState`.
 
-### 11.4. Estrategia de Implementación por Fases
+### 12.4. Estrategia de Implementación por Fases
 La construcción del frontend seguirá un enfoque pragmático en tres fases principales:
 
 * **Fase 1: La Fundación - Flujo de Sesión Completo (HU-15, HU-18, HU-19, HU-20)**
@@ -613,6 +704,8 @@ sequenceDiagram
     deactivate Job
 ```
 
+---
+
 ## Apéndice B: Estrategia de Integración y Despliegue Continuo (CI/CD)
 
 La estrategia de CI/CD se implementará utilizando **GitHub Actions**. La documentación detallada y los scripts de los workflows se mantendrán directamente en el repositorio de código, siguiendo el principio de "Docs as Code".
@@ -622,31 +715,19 @@ La estrategia de CI/CD se implementará utilizando **GitHub Actions**. La docume
 El pipeline de CI/CD se diseñará para automatizar el proceso de construcción, prueba y despliegue de la aplicación.
 
 * **Disparadores (Triggers):**
-
     * El workflow principal se ejecutará automáticamente en cada `push` a la rama `main`.
-
     * También se ejecutará en la creación de `Pull Requests` que apunten a `main`, para validar los cambios antes de que se integren.
 
 * **Etapas Principales (Jobs):**
-
-    1. **Build & Test:**
-
+    1.  **Build & Test:**
         * Se compilará el backend de Spring Boot utilizando Gradle.
-
         * Se ejecutarán todas las pruebas unitarias y de integración, incluyendo las pruebas de verificación de la arquitectura de Spring Modulith.
-
-    2. **Build Docker Image:**
-
+    2.  **Build Docker Image:**
         * Si la etapa anterior es exitosa, se construirá la imagen de Docker de la aplicación.
-
         * La imagen se etiquetará con el SHA del commit y se subirá a un registro de contenedores (ej. GitHub Container Registry).
-
-    3. **Deploy:**
-
+    3.  **Deploy:**
         * Esta etapa se ejecutará solo en los `push` a `main`.
-
         * Utilizará Terraform para provisionar o actualizar la infraestructura en la nube.
-
         * Desplegará la nueva versión de la imagen de Docker en el entorno de producción.
 
 ### B.2: Documentación Detallada
