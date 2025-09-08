@@ -1,6 +1,7 @@
 package org.grubhart.pucp.tesis.module_api;
 
 import org.grubhart.pucp.tesis.module_administration.AuthenticationService;
+import org.grubhart.pucp.tesis.module_collector.github.GithubClientImpl;
 import org.grubhart.pucp.tesis.module_domain.User;
 import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -36,6 +37,9 @@ class UserSynchronizationFilterTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private GithubClientImpl githubClient;
 
     @MockitoBean
     private UserRepository userRepository;

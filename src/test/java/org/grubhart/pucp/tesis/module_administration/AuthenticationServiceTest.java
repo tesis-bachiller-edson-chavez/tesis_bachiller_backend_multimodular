@@ -1,6 +1,7 @@
 package org.grubhart.pucp.tesis.module_administration;
 
 import org.grubhart.pucp.tesis.module_domain.*;
+import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ class AuthenticationServiceTest {
     @Mock
     private RoleRepository roleRepository;
     @Mock
-    private GithubClient githubClient;
+    private GithubUserAuthenticator githubUserAuthenticator;
     @Mock
     private Environment environment;
 
@@ -143,7 +144,7 @@ class AuthenticationServiceTest {
         when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
         when(environment.getProperty("dora.github.organization-name")).thenReturn("my-org");
-        when(githubClient.isUserMemberOfOrganization("testuser", "my-org")).thenReturn(true);
+        when(githubUserAuthenticator.isUserMemberOfOrganization("testuser", "my-org")).thenReturn(true);
         when(roleRepository.findByName(RoleName.DEVELOPER)).thenReturn(Optional.of(developerRole));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -163,7 +164,7 @@ class AuthenticationServiceTest {
         when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true);
         when(environment.getProperty("dora.github.organization-name")).thenReturn("my-org");
-        when(githubClient.isUserMemberOfOrganization("testuser", "my-org")).thenReturn(false);
+        when(githubUserAuthenticator.isUserMemberOfOrganization("testuser", "my-org")).thenReturn(false);
 
         // WHEN/THEN: Processing the login throws AccessDeniedException
         assertThatThrownBy(() -> authenticationService.processNewLogin(githubUserDto))
@@ -226,7 +227,7 @@ class AuthenticationServiceTest {
         when(userRepository.findByGithubUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true); // Regular login mode
         when(environment.getProperty("dora.github.organization-name")).thenReturn("my-org");
-        when(githubClient.isUserMemberOfOrganization(anyString(), anyString())).thenReturn(true);
+        when(githubUserAuthenticator.isUserMemberOfOrganization(anyString(), anyString())).thenReturn(true);
         when(roleRepository.findByName(RoleName.DEVELOPER)).thenReturn(Optional.empty()); // Role is missing
 
         // WHEN/THEN: A critical database integrity error is thrown

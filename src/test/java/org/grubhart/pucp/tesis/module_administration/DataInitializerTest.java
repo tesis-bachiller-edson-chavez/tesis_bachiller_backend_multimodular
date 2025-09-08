@@ -1,16 +1,26 @@
 package org.grubhart.pucp.tesis.module_administration;
 
+import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
+import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.grubhart.pucp.tesis.module_domain.RoleName;
 import org.grubhart.pucp.tesis.module_domain.RoleRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 class DataInitializerTest {
+
+    @MockitoBean
+    private GithubUserAuthenticator githubUserAuthenticator;
+
+    @MockitoBean
+    private GithubCommitCollector githubCommitCollector;
 
     @Autowired
     private DataInitializer dataInitializer;

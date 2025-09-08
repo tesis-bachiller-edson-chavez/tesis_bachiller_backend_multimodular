@@ -22,7 +22,7 @@ bin/
 !**/src/test/**/bin/
 
 ### IntelliJ IDEA ###
-.idea
+#.idea
 *.iws
 *.iml
 *.ipr
@@ -39,3 +39,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# IntelliJ HTTP Client environment file - Contains secrets!
+http-client.env.json

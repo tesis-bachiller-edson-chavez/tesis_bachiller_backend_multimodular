@@ -1,5 +1,7 @@
 package org.grubhart.pucp.tesis.module_api;
 
+import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
+import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -8,6 +10,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -19,6 +22,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class SecurityConfigTest {
+
+    @MockitoBean
+    private GithubUserAuthenticator githubUserAuthenticator;
+
+    @MockitoBean
+    private GithubCommitCollector githubCommitCollector;
 
     @Autowired
     private MockMvc mockMvc;

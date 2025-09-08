@@ -1,6 +1,7 @@
 package org.grubhart.pucp.tesis.module_administration;
 
 import jakarta.transaction.Transactional;
+import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.grubhart.pucp.tesis.module_domain.RoleRepository;
 import org.grubhart.pucp.tesis.module_domain.Role;
 import org.grubhart.pucp.tesis.module_domain.RoleName;
@@ -21,13 +22,13 @@ public class AuthenticationService {
     private final UserRepository userRepository;
     private final Environment environment;
     private final RoleRepository roleRepository;
-    private final GithubClient githubClient;
+    private final GithubUserAuthenticator githubUserAuthenticator;
 
-    public AuthenticationService(UserRepository userRepository, Environment environment, RoleRepository roleRepository, GithubClient githubClient) {
+    public AuthenticationService(UserRepository userRepository, Environment environment, RoleRepository roleRepository, GithubUserAuthenticator githubUserAuthenticator) {
         this.userRepository = userRepository;
         this.environment = environment;
         this.roleRepository = roleRepository;
-        this.githubClient = githubClient;
+        this.githubUserAuthenticator = githubUserAuthenticator;
     }
 
     @Transactional
@@ -100,7 +101,7 @@ public class AuthenticationService {
         }
 
         // CONTROL DE MEMBRESÍA: El usuario debe ser miembro de la organización.
-        boolean isMember = githubClient.isUserMemberOfOrganization(githubUser.username(), organizationName);
+        boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization(githubUser.username(), organizationName);
         if (!isMember) {
             logger.warn("Acceso denegado: El usuario '{}' no es miembro de la organización '{}'.", githubUser.username(), organizationName);
             throw new AccessDeniedException("Access Denied. User is not a member of the required organization.");
