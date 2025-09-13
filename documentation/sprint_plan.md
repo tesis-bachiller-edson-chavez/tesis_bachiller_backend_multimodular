@@ -110,18 +110,25 @@ Como usuario autenticado, quiero poder cerrar mi sesión de forma segura, para p
 ### HU-10: Recolectar Datos de GitHub
 *Como el sistema, quiero conectarme a la API de GitHub de forma periódica, para recolectar eventos de PRs, commits y deployments.*
 
-- **AC 10.1:** Dado que la aplicación se inicia y el esquema de la base de datos es gestionado por JPA/Hibernate.
+- **AC 10.1:** 
+- Status: Completada
+Dado que la aplicación se inicia y el esquema de la base de datos es gestionado por JPA/Hibernate.
   Cuando un desarrollador inspecciona el esquema de la base de datos.
   Entonces las tablas REPOSITORY_CONFIG y SYNC_STATUS deben existir con sus columnas correctamente definidas, listas para ser usadas por los servicios de sincronización. Status: Completada
-- **AC 10.2:** Dado que el framework de sincronización está implementado y existe una configuración de repositorio.
-  Cuando se ejecuta el CommitSyncService.
-  Entonces los nuevos commits del repositorio de GitHub se guardan en la tabla COMMIT, y la tabla SYNC_STATUS se actualiza con la nueva fecha de lastSuccessfulRun para el job "COMMIT_SYNC". Status: Completada
+- **AC 10.2:** 
+- Status: Completada
+  - Dado que el framework de sincronización está implementado y existe una configuración de repositorio.
+    Cuando se ejecuta el CommitSyncService.
+    Entonces los nuevos commits del repositorio de GitHub se guardan en la tabla COMMIT, y la tabla SYNC_STATUS se actualiza con la nueva fecha de lastSuccessfulRun para el job "COMMIT_SYNC". Status: Completada
 - **AC 10.3:** Dado que el framework de sincronización está implementado.
   Cuando se ejecuta el PullRequestSyncService.
   Entonces los nuevos Pull Requests del repositorio de GitHub se guardan en la base de datos, y la tabla SYNC_STATUS se actualiza para el job "PULL_REQUEST_SYNC".
 - **AC 10.4:** Dado que el framework está implementado y la aplicación está configurada con el nombre del workflow de despliegue.
   Cuando se ejecuta el DeploymentSyncService.
   Entonces las nuevas ejecuciones exitosas de dicho workflow se guardan como registros de Deployment, y la tabla SYNC_STATUS se actualiza para el job "DEPLOYMENT_SYNC".
+- **AC 10.5:** Implementar paginación en la recolección de commits
+- Status: Completada
+  Dado que un repositorio ha tenido más de 100 commits desde la última sincronización. Cuando se ejecuta el CommitSyncService. Entonces el GithubClientImpl debe realizar múltiples llamadas a la API de GitHub, siguiendo los enlaces de paginación (rel="next"). Y todos los commits nuevos (más de 100) deben ser guardados correctamente en la base de datos.
 
 ### HU-11: Procesar Métricas de Velocidad
 *Como el sistema, quiero procesar los datos de GitHub, para calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.*
