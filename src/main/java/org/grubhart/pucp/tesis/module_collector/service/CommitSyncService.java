@@ -50,11 +50,17 @@ public class CommitSyncService {
             return;
         }
 
-        // Por ahora, sincronizamos solo el primer repositorio configurado.
-        RepositoryConfig config = configs.get(0);
+        log.info("Iniciando ciclo de sincronización para {} repositorios configurados.", configs.size());
+        for (RepositoryConfig config : configs) {
+            syncRepository(config);
+        }
+        log.info("Ciclo de sincronización de commits finalizado.");
+    }
+
+    private void syncRepository(RepositoryConfig config) {
         String[] urlParts = config.getRepositoryUrl().split("/");
         if (urlParts.length < 2) {
-            log.error("La URL del repositorio no tiene el formato esperado: {}", config.getRepositoryUrl());
+            log.error("La URL del repositorio '{}' no tiene el formato esperado. Saltando sincronización para este repositorio.", config.getRepositoryUrl());
             return;
         }
         String owner = urlParts[urlParts.length - 2];
@@ -62,7 +68,8 @@ public class CommitSyncService {
 
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById("COMMIT_SYNC");
         LocalDateTime lastSync = syncStatus.map(SyncStatus::getLastSuccessfulRun)
-                .orElse(LocalDateTime.now().minusYears(1)); // Si nunca se ha sincronizado, trae los commits de hace un año.
+                // Si nunca se ha sincronizado, trae los commits de hace un año.
+                .orElse(LocalDateTime.now().minusYears(1));
 
         try {
             log.info("Iniciando sincronización de commits para {}/{}", owner, repo);
