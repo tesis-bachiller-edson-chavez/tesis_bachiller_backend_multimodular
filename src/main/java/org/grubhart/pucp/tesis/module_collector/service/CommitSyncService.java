@@ -58,13 +58,13 @@ public class CommitSyncService {
     }
 
     private void syncRepository(RepositoryConfig config) {
-        String[] urlParts = config.getRepositoryUrl().split("/");
-        if (urlParts.length < 2) {
+        String owner = config.getOwner();
+        String repo = config.getRepoName();
+
+        if (owner == null || repo == null) {
             log.error("La URL del repositorio '{}' no tiene el formato esperado. Saltando sincronización para este repositorio.", config.getRepositoryUrl());
             return;
         }
-        String owner = urlParts[urlParts.length - 2];
-        String repo = urlParts[urlParts.length - 1];
 
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById("COMMIT_SYNC");
         LocalDateTime lastSync = syncStatus.map(SyncStatus::getLastSuccessfulRun)
