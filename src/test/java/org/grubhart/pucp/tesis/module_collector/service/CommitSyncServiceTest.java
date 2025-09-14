@@ -72,6 +72,22 @@ class CommitSyncServiceTest {
     }
 
     @Test
+    @DisplayName("Dado un repositorio con nombre de repo nulo, el servicio debe saltar la sincronización")
+    void syncCommits_whenRepoNameIsNull_shouldSkipSync() {
+        // GIVEN: Una configuración con una URL que resultará en un repoName nulo.
+        RepositoryConfig invalidConfig = new RepositoryConfig("https://github.com/owner/ "); // URL con repo en blanco
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(invalidConfig));
+
+        // WHEN: Se ejecuta el servicio de sincronización.
+        commitSyncService.syncCommits();
+
+        // THEN: No se debe intentar obtener commits ni guardar ningún estado.
+        verify(githubCommitCollector, never()).getCommits(anyString(), anyString(), any());
+        verify(syncStatusRepository, never()).save(any());
+        verify(commitRepository, never()).saveAll(any());
+    }
+
+    @Test
     @DisplayName("Dado un repositorio configurado, debe sincronizar los commits correctamente")
     void syncCommits_whenRepositoryIsConfigured_shouldSyncCommits() {
         // GIVEN: Una configuración de repositorio válida.

@@ -28,4 +28,28 @@ public class RepositoryConfig {
     public String getRepositoryUrl() {
         return repositoryUrl;
     }
+
+    public String getOwner() {
+        if (repositoryUrl == null || repositoryUrl.isBlank()) {
+            return null;
+        }
+        String[] parts = repositoryUrl.split("/");
+        if (parts.length < 2) {
+            return null;
+        }
+        String owner = parts[parts.length - 2];
+        return owner.isBlank() ? null : owner;
+    }
+
+    public String getRepoName() {
+        if (repositoryUrl == null || repositoryUrl.isBlank()) {
+            return null;
+        }
+        String[] parts = repositoryUrl.split("/");
+        if (parts.length < 1) {
+            return null;
+        }
+        String repoName = parts[parts.length - 1];
+        return repoName.isBlank() ? null : repoName;
+    }
 }

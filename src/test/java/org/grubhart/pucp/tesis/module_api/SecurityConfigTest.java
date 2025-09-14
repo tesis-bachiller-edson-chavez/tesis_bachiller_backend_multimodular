@@ -1,7 +1,6 @@
 package org.grubhart.pucp.tesis.module_api;
 
-import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
-import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
+import org.grubhart.pucp.tesis.module_collector.github.GithubClientImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -24,10 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SecurityConfigTest {
 
     @MockitoBean
-    private GithubUserAuthenticator githubUserAuthenticator;
-
-    @MockitoBean
-    private GithubCommitCollector githubCommitCollector;
+    private GithubClientImpl githubClient; // Mockeamos la clase concreta
 
     @Autowired
     private MockMvc mockMvc;
