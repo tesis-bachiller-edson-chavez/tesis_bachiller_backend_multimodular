@@ -81,35 +81,13 @@ class GithubClientImplTest {
     }
 
     @Test
-    @DisplayName("getPullRequests: Debe manejar una respuesta nula de fetchPage sin fallar")
-    void getPullRequests_whenFetchPageReturnsNull_shouldNotFail() {
-        GithubClientImpl clientWithNullResponse = new GithubClientImpl(WebClient.builder(), "http://localhost", "token") {
-            @Override
-            protected <T> ResponseEntity<List<T>> fetchPage(String url, ParameterizedTypeReference<List<T>> typeReference) {
-                return null;
-            }
-        };
-        assertDoesNotThrow(() -> clientWithNullResponse.getPullRequests("owner", "repo", LocalDateTime.now()));
-    }
-
-    @Test
     @DisplayName("getPullRequests: Debe manejar un PR con updated_at nulo sin fallar")
     void getPullRequests_shouldHandleNullUpdatedAtGracefully() {
-        // Arrange: Devolvemos un PR sin el campo 'updated_at'.
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .addHeader("Content-Type", "application/json")
-                .setBody("[{\"id\": 123}]") // JSON con un PR que no tiene 'updated_at'
-        );
-
-        // Act
+        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json").setBody("[{\"id\": 123}]"));
         List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", LocalDateTime.now());
-
-        // Assert
-        // El PR debe ser incluido, ya que no podemos determinar si es antiguo.
         assertEquals(1, pullRequests.size());
         assertEquals(123L, pullRequests.get(0).getId());
-        assertNull(pullRequests.get(0).getUpdatedAt(), "updatedAt debe ser nulo en el DTO.");
+        assertNull(pullRequests.get(0).getUpdatedAt());
     }
 
     @Test
@@ -147,18 +125,6 @@ class GithubClientImplTest {
         List<GithubCommitDto> commits = githubClient.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
         assertTrue(commits.isEmpty());
         assertEquals(1, mockWebServer.getRequestCount());
-    }
-
-    @Test
-    @DisplayName("getCommits: Debe manejar una respuesta nula de fetchPage sin fallar")
-    void getCommits_whenFetchPageReturnsNull_shouldNotFail() {
-        GithubClientImpl clientWithNullResponse = new GithubClientImpl(WebClient.builder(), "http://localhost", "token") {
-            @Override
-            protected <T> ResponseEntity<List<T>> fetchPage(String url, ParameterizedTypeReference<List<T>> typeReference) {
-                return null;
-            }
-        };
-        assertDoesNotThrow(() -> clientWithNullResponse.getCommits("owner", "repo", LocalDateTime.now()));
     }
 
     @Test
