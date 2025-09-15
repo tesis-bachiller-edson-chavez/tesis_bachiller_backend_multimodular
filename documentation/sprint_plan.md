@@ -120,7 +120,9 @@ Dado que la aplicación se inicia y el esquema de la base de datos es gestionado
   - Dado que el framework de sincronización está implementado y existe una configuración de repositorio.
     Cuando se ejecuta el CommitSyncService.
     Entonces los nuevos commits del repositorio de GitHub se guardan en la tabla COMMIT, y la tabla SYNC_STATUS se actualiza con la nueva fecha de lastSuccessfulRun para el job "COMMIT_SYNC". Status: Completada
-- **AC 10.3:** Dado que el framework de sincronización está implementado.
+- **AC 10.3:** 
+- - Status: Completada
+- Dado que el framework de sincronización está implementado.
   Cuando se ejecuta el PullRequestSyncService.
   Entonces los nuevos Pull Requests del repositorio de GitHub se guardan en la base de datos, y la tabla SYNC_STATUS se actualiza para el job "PULL_REQUEST_SYNC".
 - **AC 10.4:** Dado que el framework está implementado y la aplicación está configurada con el nombre del workflow de despliegue.
