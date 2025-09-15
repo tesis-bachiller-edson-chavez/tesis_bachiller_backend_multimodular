@@ -10,7 +10,7 @@ description = "tesis_bachiller_backend_multimodular"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(24)
     }
 }
 
@@ -33,8 +33,8 @@ dependencies {
     // Para el cifrado de secretos en la base de datos y propiedades, como se define en el design.md
     implementation("com.github.ulisesbocchio:jasypt-spring-boot-starter:3.0.5")
     developmentOnly("org.springframework.boot:spring-boot-devtools")    
-    // runtimeOnly("com.mysql:mysql-connector-j") // Comentado para usar H2
-    runtimeOnly("com.h2database:h2") // Añadido para la base de datos en memoria
+    runtimeOnly("com.mysql:mysql-connector-j") // Habilitado para usar MySQL
+    // runtimeOnly("com.h2database:h2") // Deshabilitado para usar MySQL en su lugar
     testImplementation("org.springframework.cloud:spring-cloud-starter-contract-stub-runner")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
