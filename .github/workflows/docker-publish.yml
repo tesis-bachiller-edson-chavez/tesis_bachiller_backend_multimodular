@@ -1,0 +1,42 @@
+# .github/workflows/docker-publish.yml
+
+name: Docker - Build and Push to ECR
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [ "main" ]
+
+env:
+  AWS_REGION: us-east-2 # La región donde creamos la infraestructura
+  ECR_REPOSITORY: tesis-backend # El nombre que le dimos en ecr.tf
+
+jobs:
+  build-and-push:
+    name: Build and Push
+    if: github.event.pull_request.merged == true # Ejecutar solo si el PR fue mergeado
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }} # Usamos el hash del commit como etiqueta
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG

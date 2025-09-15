@@ -741,3 +741,113 @@ El pipeline de CI/CD se diseñará para automatizar el proceso de construcción,
 La implementación específica y los scripts de los workflows de GitHub Actions se encuentran documentados en el siguiente archivo dentro del repositorio del proyecto:
 
 * `[Enlace al README.md en .github/workflows/ en tu repositorio]`
+
+---
+
+## 13. Arquitectura de Infraestructura en AWS
+
+La infraestructura de la aplicación se gestiona completamente como código utilizando Terraform, garantizando la reproducibilidad, el control de versiones y la automatización. La arquitectura está diseñada para ser segura, escalable y para operar dentro de la capa gratuita de AWS.
+
+### 13.1. Diagrama de Arquitectura
+
+```mermaid
+graph TD
+    subgraph "Internet"
+        User[<i class='fa fa-user'></i> Usuario]
+    end
+
+    subgraph "AWS Cloud (us-east-2)"
+        subgraph "VPC (tesis-vpc)"
+            IGW[<i class='fa fa-cloud'></i> Internet Gateway]
+            RT[<i class='fa fa-route'></i> Tabla de Rutas Pública]
+
+            subgraph "Zona de Disponibilidad: us-east-2a"
+                subgraph "Subred Pública A"
+                    ALB_A[ALB]
+                    EC2_A[<i class='fa fa-desktop'></i> EC2 / Docker]
+                end
+                subgraph "Subred Privada A"
+                    RDS_A["<i class='fa fa-database'></i> RDS MySQL <br> (Standby)"]
+                end
+            end
+
+            subgraph "Zona de Disponibilidad: us-east-2b"
+                subgraph "Subred Pública B"
+                    ALB_B[ALB]
+                    EC2_B[<i class='fa fa-desktop'></i> EC2 / Docker]
+                end
+                subgraph "Subred Privada B"
+                    RDS_B["<i class='fa fa-database'></i> RDS MySQL <br> (Principal)"]
+                end
+            end
+
+            subgraph "Firewalls (Security Groups)"
+                style Firewalls fill:#f9f,stroke:#333,stroke-width:2px,opacity:0.5
+                App_SG[App SG]
+                DB_SG[DB SG]
+            end
+        end
+    end
+
+    %% Flujo de Conexiones
+    User -- HTTPS --> ALB_A
+    User -- HTTPS --> ALB_B
+    ALB_A --> EC2_A
+    ALB_B --> EC2_B
+    EC2_A -- TCP 3306 --> RDS_B
+    EC2_B -- TCP 3306 --> RDS_B
+
+    %% Conexiones de Red
+    User <--> IGW
+    IGW <--> RT
+    RT --> ALB_A
+    RT --> ALB_B
+
+    %% Asociaciones de Security Groups
+    ALB_A -.- App_SG
+    ALB_B -.- App_SG
+    EC2_A --- App_SG
+    EC2_B --- App_SG
+    RDS_A --- DB_SG
+    RDS_B --- DB_SG
+    App_SG -- Permite TCP 3306 --> DB_SG
+
+    %% Estilos
+    linkStyle 0 stroke-width:2px,fill:none,stroke:blue;
+    linkStyle 1 stroke-width:2px,fill:none,stroke:blue;
+    linkStyle 2 stroke-width:2px,fill:none,stroke:green;
+    linkStyle 3 stroke-width:2px,fill:none,stroke:green;
+    linkStyle 4 stroke-width:2px,fill:none,stroke:orange;
+    linkStyle 5 stroke-width:2px,fill:none,stroke:orange;
+    linkStyle 12 stroke-width:1px,fill:none,stroke:gray,stroke-dasharray: 3 3;
+    linkStyle 13 stroke-width:1px,fill:none,stroke:gray,stroke-dasharray: 3 3;
+    linkStyle 14 stroke-width:1px,fill:none,stroke:gray,stroke-dasharray: 3 3;
+    linkStyle 15 stroke-width:1px,fill:none,stroke:gray,stroke-dasharray: 3 3;
+    linkStyle 16 stroke-width:1px,fill:none,stroke:gray,stroke-dasharray: 3 3;
+    linkStyle 7 stroke-width:1px,fill:none,stroke:gray,stroke-dasharray: 3 3;
+    linkStyle 8 stroke-width:2px,fill:none,stroke:red;
+```
+
+### 13.2. Descripción de Componentes
+
+*   **Virtual Private Cloud (VPC):** Se define una red privada y aislada en la nube para tener control total sobre el direccionamiento IP, las subredes y el enrutamiento. Esta decisión evita las ambigüedades y limitaciones de la VPC por defecto de AWS, resolviendo los problemas de visibilidad de recursos durante la creación.
+
+*   **Subredes (Subnets):** La VPC se divide en dos tipos de subredes, cada una desplegada en dos Zonas de Disponibilidad (`us-east-2a`, `us-east-2b`) para garantizar alta disponibilidad.
+    *   **Públicas:** Alojan los recursos que necesitan acceso directo a internet, como el Application Load Balancer y las instancias EC2 de la aplicación. Son "públicas" porque su tabla de rutas tiene una salida hacia el Internet Gateway.
+    *   **Privadas:** Alojan la base de datos RDS. Son "privadas" porque no tienen una ruta directa a internet, lo que las aísla completamente y maximiza la seguridad.
+
+*   **Internet Gateway (IGW):** Permite la comunicación entre los recursos en las subredes públicas e internet. Es el punto de entrada y salida de la VPC.
+
+*   **Tabla de Rutas (Route Table):** Se define una tabla de rutas explícita para las subredes públicas que dirige todo el tráfico saliente (`0.0.0.0/0`) hacia el Internet Gateway.
+
+*   **AWS Elastic Beanstalk:** Orquesta el despliegue de la aplicación Docker. Gestiona automáticamente los siguientes componentes dentro de nuestras subredes públicas:
+    *   Un **Application Load Balancer (ALB)** para distribuir el tráfico entrante de los usuarios.
+    *   Un **Auto Scaling Group** para gestionar las instancias EC2.
+    *   **Instancias EC2** (utilizando `t2.micro` para la capa gratuita) donde se ejecuta el contenedor Docker de la aplicación.
+
+*   **Amazon RDS (Relational Database Service):** Proporciona una base de datos MySQL gestionada. Al colocarla en las subredes privadas, se asegura que no sea accesible desde internet, y solo la aplicación pueda conectarse a ella.
+
+*   **Security Groups (Firewalls Virtuales):**
+    *   **`App SG`:** Actúa como el firewall para las instancias de Elastic Beanstalk. Permite el tráfico entrante en el puerto 80 (HTTP) desde cualquier lugar de internet, para que los usuarios puedan acceder a la aplicación a través del Load Balancer.
+    *   **`DB SG`:** Es el firewall de la base de datos. Es altamente restrictivo y bloquea todo el tráfico entrante por defecto.
+    *   **Regla de Conexión:** Se crea una regla de `ingress` (entrada) en el `DB SG` que permite el tráfico en el puerto 3306 (MySQL) **únicamente** si su origen es un recurso que pertenece al `App SG`. Este es el enlace de seguridad crucial que permite a la aplicación comunicarse con la base de datos, mientras se bloquea cualquier otro intento de conexión.

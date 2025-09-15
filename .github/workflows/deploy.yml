@@ -1,0 +1,68 @@
+# .github/workflows/deploy.yml
+
+name: Deploy - Manually Deploy to Elastic Beanstalk
+
+on:
+  workflow_dispatch: # Permite la activación manual desde la pestaña Actions de GitHub
+
+env:
+  AWS_REGION: us-east-2
+  EB_APPLICATION_NAME: "tesis-backend-app" # El nombre que le dimos en beanstalk.tf
+  EB_ENVIRONMENT_NAME: "tesis-backend-env" # El nombre que le dimos en beanstalk.tf
+  ECR_REPOSITORY: "tesis-backend"      # El nombre que le dimos en ecr.tf
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate Dockerrun.aws.json
+        id: generate-dockerrun
+        run: |
+          ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG=${{ github.sha }} # Por defecto, despliega la imagen del commit actual
+          
+          echo "Generating Dockerrun.aws.json for tag: $IMAGE_TAG"
+          
+          # Crear el archivo de definición para Elastic Beanstalk
+          echo '{' > Dockerrun.aws.json
+          echo '  "AWSEBDockerrunVersion": "1",' >> Dockerrun.aws.json
+          echo '  "Image": {' >> Dockerrun.aws.json
+          echo '    "Name": "'$ECR_REGISTRY'/'$ECR_REPOSITORY':'$IMAGE_TAG'",' >> Dockerrun.aws.json
+          echo '    "Update": "true"' >> Dockerrun.aws.json
+          echo '  },' >> Dockerrun.aws.json
+          echo '  "Ports": [' >> Dockerrun.aws.json
+          echo '    {' >> Dockerrun.aws.json
+          echo '      "ContainerPort": "8080"' >> Dockerrun.aws.json
+          echo '    }' >> Dockerrun.aws.json
+          echo '  ]' >> Dockerrun.aws.json
+          echo '}' >> Dockerrun.aws.json
+
+      - name: Zip deployment package
+        run: zip -r deploy.zip Dockerrun.aws.json
+
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v21
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: ${{ env.EB_APPLICATION_NAME }}
+          environment_name: ${{ env.EB_ENVIRONMENT_NAME }}
+          region: ${{ env.AWS_REGION }}
+          version_label: "v-${{ github.sha }}" # Una etiqueta única para esta versión
+          deployment_package: deploy.zip
