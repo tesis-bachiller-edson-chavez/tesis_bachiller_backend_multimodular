@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.module_domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -15,7 +16,7 @@ public class Commit {
     @Id
     private String sha;
     private String author;
-    @Column(length = 2048) // Aumentamos el tamaño para permitir mensajes de commit largos
+    @Lob // Usamos @Lob para textos largos, que se mapea a TEXT o CLOB
     private String message;
     private LocalDateTime date;
 

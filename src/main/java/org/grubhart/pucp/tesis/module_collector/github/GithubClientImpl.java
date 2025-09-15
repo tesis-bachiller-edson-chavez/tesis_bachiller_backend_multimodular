@@ -4,9 +4,7 @@ import org.grubhart.pucp.tesis.module_domain.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -16,7 +14,10 @@ import reactor.core.publisher.Mono;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,7 +50,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                 .uri("/orgs/{org}/members/{username}", organizationName, username)
                 .retrieve()
                 .toBodilessEntity()
-                .map(response -> response.getStatusCode() == HttpStatus.NO_CONTENT)
+                .map(response -> response.getStatusCode() == HttpStatus.NO_CONTENT) // Lógica corregida: 204 es miembro
                 .onErrorResume(WebClientResponseException.NotFound.class, e -> Mono.just(false)) // 404 significa que no es miembro
                 .doOnError(e -> logger.error("Error al verificar la membresía del usuario '{}' en la organización '{}'", username, organizationName, e))
                 .onErrorReturn(false) // Cualquier otro error se trata como si no fuera miembro
@@ -73,14 +74,24 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         while (nextPageUrl != null) {
             logger.debug("Obteniendo página de commits: {}", nextPageUrl);
 
-            ResponseEntity<List<GithubCommitDto>> response = fetchPage(nextPageUrl, new ParameterizedTypeReference<>() {});
+            final String currentUrl = nextPageUrl;
+            final AtomicReference<String> nextUrlFromHeader = new AtomicReference<>();
 
-            if (response != null && response.getBody() != null) {
-                allCommits.addAll(response.getBody());
-                nextPageUrl = parseNextPageUrl(response.getHeaders().get("Link"));
-            } else {
-                nextPageUrl = null;
-            }
+            List<GithubCommitDto> pageCommits = webClient.get()
+                    .uri(currentUrl)
+                    .exchangeToMono(response -> {
+                        nextUrlFromHeader.set(parseNextPageUrl(response.headers().header("Link")));
+                        if (response.statusCode().isError()) {
+                            logger.error("Error en la respuesta de la API: {} para la URL: {}", response.statusCode(), currentUrl);
+                            return Mono.just(Collections.<GithubCommitDto>emptyList());
+                        }
+                        return response.bodyToFlux(GithubCommitDto.class).collectList();
+                    })
+                    .onErrorReturn(Collections.emptyList())
+                    .block();
+
+            allCommits.addAll(pageCommits);
+            nextPageUrl = nextUrlFromHeader.get();
         }
 
         logger.info("Recolección paginada finalizada. Total de commits obtenidos: {}", allCommits.size());
@@ -92,7 +103,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         String initialUrl = UriComponentsBuilder.fromPath("/repos/{owner}/{repo}/pulls")
                 .queryParam("state", "all")
                 .queryParam("sort", "updated")
-                .queryParam("direction", "desc") // Ordenamos de más a menos reciente
+                .queryParam("direction", "desc")
                 .queryParam("per_page", 100)
                 .buildAndExpand(owner, repo)
                 .toString();
@@ -105,42 +116,43 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         while (nextPageUrl != null) {
             logger.debug("Obteniendo página de Pull Requests: {}", nextPageUrl);
 
-            ResponseEntity<List<GithubPullRequestDto>> response = fetchPage(nextPageUrl, new ParameterizedTypeReference<>() {});
+            final String currentUrl = nextPageUrl;
+            final AtomicReference<String> nextUrlFromHeader = new AtomicReference<>();
+            final AtomicBoolean stopPaginatingForNextIteration = new AtomicBoolean(false);
 
-            if (response != null && response.getBody() != null) {
-                List<GithubPullRequestDto> pagePrs = response.getBody();
-                boolean stopPaginating = false;
+            List<GithubPullRequestDto> processedPage = webClient.get()
+                    .uri(currentUrl)
+                    .exchangeToMono(response -> {
+                        nextUrlFromHeader.set(parseNextPageUrl(response.headers().header("Link")));
+                        if (response.statusCode().isError()) {
+                            logger.error("Error en la respuesta de la API: {} para la URL: {}", response.statusCode(), currentUrl);
+                            stopPaginatingForNextIteration.set(true);
+                            return Mono.just(Collections.<GithubPullRequestDto>emptyList());
+                        }
+                        return response.bodyToFlux(GithubPullRequestDto.class)
+                                .takeWhile(pr -> {
+                                    boolean isNewEnough = pr.getUpdatedAt() == null || !pr.getUpdatedAt().isBefore(since);
+                                    if (!isNewEnough) {
+                                        stopPaginatingForNextIteration.set(true);
+                                    }
+                                    return isNewEnough;
+                                })
+                                .collectList();
+                    })
+                    .onErrorReturn(Collections.emptyList())
+                    .block();
 
-                for (GithubPullRequestDto pr : pagePrs) {
-                    if (pr.getUpdatedAt() != null && pr.getUpdatedAt().isBefore(since)) {
-                        stopPaginating = true;
-                        break; // Detenemos el procesamiento de esta página
-                    }
-                    allPullRequests.add(pr);
-                }
+            allPullRequests.addAll(processedPage);
 
-                if (stopPaginating) {
-                    nextPageUrl = null; // Detenemos la paginación para las siguientes páginas
-                } else {
-                    nextPageUrl = parseNextPageUrl(response.getHeaders().get("Link"));
-                }
-            } else {
+            if (stopPaginatingForNextIteration.get()) {
                 nextPageUrl = null;
+            } else {
+                nextPageUrl = nextUrlFromHeader.get();
             }
         }
 
         logger.info("Recolección paginada finalizada. Total de Pull Requests obtenidos: {}", allPullRequests.size());
         return allPullRequests;
-    }
-
-    protected <T> ResponseEntity<List<T>> fetchPage(String url, ParameterizedTypeReference<List<T>> typeReference) {
-        return webClient.get()
-                .uri(url)
-                .retrieve()
-                .toEntity(typeReference)
-                .doOnError(e -> logger.error("Error al obtener una página desde la URL: {}", url, e))
-                .onErrorReturn(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(List.of()))
-                .block();
     }
 
     String parseNextPageUrl(List<String> linkHeader) {
