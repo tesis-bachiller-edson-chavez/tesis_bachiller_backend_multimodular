@@ -32,9 +32,11 @@ dependencies {
     implementation("org.springframework.modulith:spring-modulith-starter-jpa")
     // Para el cifrado de secretos en la base de datos y propiedades, como se define en el design.md
     implementation("com.github.ulisesbocchio:jasypt-spring-boot-starter:3.0.5")
-    developmentOnly("org.springframework.boot:spring-boot-devtools")    
+    developmentOnly("org.springframework.boot:spring-boot-devtools")
     runtimeOnly("com.mysql:mysql-connector-j") // Habilitado para usar MySQL
-    // runtimeOnly("com.h2database:h2") // Deshabilitado para usar MySQL en su lugar
+
+    // --- Dependencias solo para Tests ---
+    testRuntimeOnly("com.h2database:h2") // <-- CORRECCIÓN: Añadido H2 solo para el entorno de pruebas.
     testImplementation("org.springframework.cloud:spring-cloud-starter-contract-stub-runner")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
