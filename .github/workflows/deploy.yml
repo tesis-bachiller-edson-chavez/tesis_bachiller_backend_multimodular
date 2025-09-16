@@ -16,6 +16,7 @@ env:
   ECR_REPOSITORY: "tesis-backend"
   AWS_ROLE_TO_ASSUME: arn:aws:iam::467210048291:role/GitHubActions-ECR-Role # <-- Usamos el mismo rol
 
+
 jobs:
   deploy:
     name: Deploy to AWS
@@ -41,6 +42,7 @@ jobs:
           ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG=${{ github.sha }}
           echo "Generating Dockerrun.aws.json for tag: $IMAGE_TAG"
+
           echo '{' > Dockerrun.aws.json
           echo '  "AWSEBDockerrunVersion": "1",' >> Dockerrun.aws.json
           echo '  "Image": {' >> Dockerrun.aws.json
@@ -65,4 +67,5 @@ jobs:
           environment_name: ${{ env.EB_ENVIRONMENT_NAME }}
           region: ${{ env.AWS_REGION }}
           version_label: "v-${{ github.sha }}"
+
           deployment_package: deploy.zip
