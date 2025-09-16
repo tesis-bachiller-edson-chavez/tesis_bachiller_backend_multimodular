@@ -3,9 +3,9 @@
 name: Deploy - Manually Deploy to Elastic Beanstalk
 
 on:
-  workflow_dispatch: # Permite la activación manual
+  workflow_dispatch:
 
-permissions: # <-- AÑADIDO: Permisos necesarios para OIDC
+permissions:
   id-token: write
   contents: read
 
@@ -14,7 +14,8 @@ env:
   EB_APPLICATION_NAME: "tesis-backend-app"
   EB_ENVIRONMENT_NAME: "tesis-backend-env"
   ECR_REPOSITORY: "tesis-backend"
-  AWS_ROLE_TO_ASSUME: arn:aws:iam::467210048291:role/GitHubActions-ECR-Role # <-- Usamos el mismo rol
+  AWS_ROLE_TO_ASSUME: arn:aws:iam::467210048291:role/GitHubActions-ECR-Role
+  S3_BUCKET: elasticbeanstalk-us-east-2-467210048291 # <-- TU BUCKET
 
 jobs:
   deploy:
@@ -27,7 +28,6 @@ jobs:
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
-        id: login-aws # <-- AÑADIDO: Un ID para este paso
         with:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
@@ -58,15 +58,26 @@ jobs:
       - name: Zip deployment package
         run: zip -r deploy.zip Dockerrun.aws.json
 
-      - name: Deploy to Elastic Beanstalk
-        uses: einaregilsson/beanstalk-deploy@v21
-        with:
-          # <-- CORRECCIÓN: Pasamos explícitamente las credenciales temporales generadas por el paso 'login-aws'
-          aws_access_key: ${{ steps.login-aws.outputs.aws-access-key-id }}
-          aws_secret_key: ${{ steps.login-aws.outputs.aws-secret-access-key }}
-          aws_session_token: ${{ steps.login-aws.outputs.aws-session-token }}
-          application_name: ${{ env.EB_APPLICATION_NAME }}
-          environment_name: ${{ env.EB_ENVIRONMENT_NAME }}
-          region: ${{ env.AWS_REGION }}
-          version_label: "v-${{ github.sha }}"
-          deployment_package: deploy.zip
+      - name: Deploy to Elastic Beanstalk via AWS CLI
+        run: |
+          # 1. Definir nombres de archivo y versión
+          VERSION_LABEL="v-${{ github.sha }}"
+          ZIP_FILE="deploy.zip"
+          S3_KEY="$EB_APPLICATION_NAME/$VERSION_LABEL.zip"
+
+          # 2. Subir el paquete a S3
+          echo "Subiendo $ZIP_FILE a s3://$S3_BUCKET/$S3_KEY..."
+          aws s3 cp $ZIP_FILE s3://$S3_BUCKET/$S3_KEY
+
+          # 3. Crear una nueva versión de la aplicación en Beanstalk
+          echo "Creando nueva versión de la aplicación: $VERSION_LABEL..."
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APPLICATION_NAME" \
+            --version-label "$VERSION_LABEL" \
+            --source-bundle S3Bucket="$S3_BUCKET",S3Key="$S3_KEY"
+
+          # 4. Actualizar el entorno para que use la nueva versión
+          echo "Actualizando el entorno $EB_ENVIRONMENT_NAME..."
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENVIRONMENT_NAME" \
+            --version-label "$VERSION_LABEL"
