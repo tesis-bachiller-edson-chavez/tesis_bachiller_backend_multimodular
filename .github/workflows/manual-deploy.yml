@@ -1,4 +1,4 @@
-# .github/workflows/deploy.yml
+# .github/workflows/manual-deploy.yml
 
 name: Deploy - Manually Deploy to Elastic Beanstalk
 
