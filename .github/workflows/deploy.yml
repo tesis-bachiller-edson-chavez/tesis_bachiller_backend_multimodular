@@ -16,7 +16,6 @@ env:
   ECR_REPOSITORY: "tesis-backend"
   AWS_ROLE_TO_ASSUME: arn:aws:iam::467210048291:role/GitHubActions-ECR-Role # <-- Usamos el mismo rol
 
-
 jobs:
   deploy:
     name: Deploy to AWS
@@ -28,8 +27,9 @@ jobs:
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
+        id: login-aws # <-- AÑADIDO: Un ID para este paso
         with:
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }} # <-- CAMBIADO
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -42,7 +42,6 @@ jobs:
           ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG=${{ github.sha }}
           echo "Generating Dockerrun.aws.json for tag: $IMAGE_TAG"
-
           echo '{' > Dockerrun.aws.json
           echo '  "AWSEBDockerrunVersion": "1",' >> Dockerrun.aws.json
           echo '  "Image": {' >> Dockerrun.aws.json
@@ -62,10 +61,12 @@ jobs:
       - name: Deploy to Elastic Beanstalk
         uses: einaregilsson/beanstalk-deploy@v21
         with:
-          # Las claves ya no son necesarias, la acción las toma del entorno
+          # <-- CORRECCIÓN: Pasamos explícitamente las credenciales temporales generadas por el paso 'login-aws'
+          aws_access_key: ${{ steps.login-aws.outputs.aws-access-key-id }}
+          aws_secret_key: ${{ steps.login-aws.outputs.aws-secret-access-key }}
+          aws_session_token: ${{ steps.login-aws.outputs.aws-session-token }}
           application_name: ${{ env.EB_APPLICATION_NAME }}
           environment_name: ${{ env.EB_ENVIRONMENT_NAME }}
           region: ${{ env.AWS_REGION }}
           version_label: "v-${{ github.sha }}"
-
           deployment_package: deploy.zip
