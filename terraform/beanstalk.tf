@@ -88,4 +88,14 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     name      = "SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GITHUB_CLIENT_SECRET"
     value     = "dummy-secret"
   }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DORA_GITHUB_API_TOKEN"
+    value     = var.github_api_token
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "APP_CORS_ALLOWED_ORIGINS"
+    value     = var.app_cors_allowed_origins
+  }
 }
