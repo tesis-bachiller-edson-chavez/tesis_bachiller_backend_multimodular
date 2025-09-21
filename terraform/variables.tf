@@ -21,3 +21,16 @@ variable "app_frontend_url" {
   type        = string
   default     = "https://d14lcc05xzsyip.cloudfront.net"
 }
+
+variable "github_client_id" {
+  description = "client_id de la aplicación de GitHub"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_client_secret" {
+  description = "client_secret de la aplicación de GitHub"
+  type        = string
+  sensitive   = true
+}
+
