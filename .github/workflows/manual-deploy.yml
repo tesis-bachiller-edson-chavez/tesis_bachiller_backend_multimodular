@@ -69,12 +69,12 @@ jobs:
           echo "Subiendo $ZIP_FILE a s3://$S3_BUCKET/$S3_KEY..."
           aws s3 cp $ZIP_FILE s3://$S3_BUCKET/$S3_KEY
 
-          # 3. Crear una nueva versión de la aplicación en Beanstalk
+          # 3. Crear una nueva versión de la aplicación en Beanstalk (ignorando el error si ya existe)
           echo "Creando nueva versión de la aplicación: $VERSION_LABEL..."
           aws elasticbeanstalk create-application-version \
             --application-name "$EB_APPLICATION_NAME" \
             --version-label "$VERSION_LABEL" \
-            --source-bundle S3Bucket="$S3_BUCKET",S3Key="$S3_KEY"
+            --source-bundle S3Bucket="$S3_BUCKET",S3Key="$S3_KEY" || true
 
           # 4. Actualizar el entorno para que use la nueva versión
           echo "Actualizando el entorno $EB_ENVIRONMENT_NAME..."
