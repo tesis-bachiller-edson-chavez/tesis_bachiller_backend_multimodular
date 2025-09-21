@@ -81,12 +81,12 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GITHUB_CLIENT_ID"
-    value     = "dummy-id"
+    value     = var.github_client_id
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GITHUB_CLIENT_SECRET"
-    value     = "dummy-secret"
+    value     = var.github_client_secret
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
