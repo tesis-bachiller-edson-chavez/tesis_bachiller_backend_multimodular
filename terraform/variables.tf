@@ -34,3 +34,7 @@ variable "github_client_secret" {
   sensitive   = true
 }
 
+variable "oauth2_github_redirect_uri" {
+  description = "La URL de callback completa para el flujo de OAuth2 de GitHub."
+  type        = string
+}
