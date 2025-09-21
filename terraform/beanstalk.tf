@@ -103,4 +103,9 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     name      = "APP_FRONTEND_URL"
     value     = var.app_frontend_url
   }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "OAUTH2_GITHUB_REDIRECT_URI"
+    value     = var.oauth2_github_redirect_uri
+  }
 }
