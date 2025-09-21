@@ -43,6 +43,23 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
   }
 
+  # --- Configuración de HTTPS ---
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "ListenerEnabled"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "Protocol"
+    value     = "HTTPS"
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "SSLCertificateArns"
+    value     = var.ssl_certificate_arn
+  }
+
   # --- Roles de IAM ---
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
