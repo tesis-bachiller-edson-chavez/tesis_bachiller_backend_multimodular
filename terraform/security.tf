@@ -1,13 +1,21 @@
 # --- Security Group para la aplicación en Elastic Beanstalk ---
 resource "aws_security_group" "app_sg" {
   name        = "tesis-app-sg"
-  description = "Allows HTTP traffic to the application"
+  description = "Allows HTTP and HTTPS traffic to the application"
   vpc_id      = aws_vpc.main.id # <-- AÑADIDO: Asocia este SG a nuestra VPC
 
   # Permite el tráfico entrante en el puerto 80 (HTTP) desde cualquier lugar.
   ingress {
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Permite el tráfico entrante en el puerto 443 (HTTPS) desde cualquier lugar.
+  ingress {
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
