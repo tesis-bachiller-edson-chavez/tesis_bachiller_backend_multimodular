@@ -2,31 +2,37 @@
 resource "aws_security_group" "app_sg" {
   name        = "tesis-app-sg"
   description = "Allows HTTP and HTTPS traffic to the application"
-  vpc_id      = aws_vpc.main.id # <-- AÑADIDO: Asocia este SG a nuestra VPC
+  vpc_id      = aws_vpc.main.id
 
-  # Permite el tráfico entrante en el puerto 80 (HTTP) desde cualquier lugar.
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Permite el tráfico entrante en el puerto 443 (HTTPS) desde cualquier lugar.
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Permite todo el tráfico saliente.
+  # La regla de egreso puede permanecer aquí, ya que no cambia.
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+# --- REGLAS DE ENTRADA DEFINIDAS COMO RECURSOS SEPARADOS ---
+
+# Regla para permitir el tráfico entrante en el puerto 80 (HTTP)
+resource "aws_security_group_rule" "app_ingress_http" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.app_sg.id
+}
+
+# Regla para permitir el tráfico entrante en el puerto 443 (HTTPS)
+resource "aws_security_group_rule" "app_ingress_https" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.app_sg.id
 }
 
 # --- Security Group para la base de datos RDS ---
