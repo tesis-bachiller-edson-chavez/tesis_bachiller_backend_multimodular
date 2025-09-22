@@ -1,7 +1,7 @@
 # --- Security Group para la aplicación en Elastic Beanstalk ---
 resource "aws_security_group" "app_sg" {
   name        = "tesis-app-sg"
-  description = "Allows HTTP and HTTPS traffic to the application"
+  description = "Allows HTTP traffic to the application"
   vpc_id      = aws_vpc.main.id
 
   # La regla de egreso puede permanecer aquí, ya que no cambia.
