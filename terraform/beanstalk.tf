@@ -104,7 +104,7 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GITHU_CLIENT_SECRET"
+    name      = "SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GITHUB_CLIENT_SECRET"
     value     = var.github_client_secret
   }
   setting {
