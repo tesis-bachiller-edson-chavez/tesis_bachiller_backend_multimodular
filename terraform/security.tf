@@ -4,7 +4,14 @@ resource "aws_security_group" "app_sg" {
   description = "Allows HTTP traffic to the application"
   vpc_id      = aws_vpc.main.id
 
-  # La regla de egreso puede permanecer aquí, ya que no cambia.
+  # Dejamos la regla original aquí para no forzar un reemplazo
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -13,19 +20,8 @@ resource "aws_security_group" "app_sg" {
   }
 }
 
-# --- REGLAS DE ENTRADA DEFINIDAS COMO RECURSOS SEPARADOS ---
-
-# Regla para permitir el tráfico entrante en el puerto 80 (HTTP)
-resource "aws_security_group_rule" "app_ingress_http" {
-  type              = "ingress"
-  from_port         = 80
-  to_port           = 80
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.app_sg.id
-}
-
-# Regla para permitir el tráfico entrante en el puerto 443 (HTTPS)
+# --- REGLA ADICIONAL PARA HTTPS ---
+# Se añade solo la nueva regla como un recurso separado.
 resource "aws_security_group_rule" "app_ingress_https" {
   type              = "ingress"
   from_port         = 443
