@@ -8,42 +8,26 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   application         = aws_elastic_beanstalk_application.tesis_app.name
   solution_stack_name = "64bit Amazon Linux 2023 v4.7.0 running Docker"
 
-  # --- Configuración de la Capa Gratuita y Escalado ---
+  # --- CONFIGURACIÓN FUNDAMENTAL DE RED ---
   setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "InstanceType"
-    value     = "t2.micro"
-  }
-  setting {
-    namespace = "aws:autoscaling:asg"
-    name      = "MinSize"
-    value     = "1" # <-- AÑADIDO: Mínimo 1 instancia
-  }
-  setting {
-    namespace = "aws:autoscaling:asg"
-    name      = "MaxSize"
-    value     = "2" # <-- AÑADIDO: Máximo 2 instancias
+    namespace = "aws:elasticbeanstalk:environment"
+    name      = "LoadBalancerType"
+    value     = "application" # <-- CRÍTICO: Usa un Application Load Balancer
   }
 
-  # --- Configuración de Red (VPC) ---
+  # --- CONFIGURACIÓN DE REDIRECCIÓN HTTP -> HTTPS ---
   setting {
-    namespace = "aws:ec2:vpc"
-    name      = "VPCId"
-    value     = aws_vpc.main.id
+    namespace = "aws:elb:listener:80"
+    name      = "ListenerEnabled"
+    value     = "false" # Deshabilita el listener por defecto para reemplazarlo
   }
   setting {
-    namespace = "aws:ec2:vpc"
-    name      = "Subnets"
-    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
-  }
-  # Especificamos las subredes para el balanceador de carga
-  setting {
-    namespace = "aws:elbv2:loadbalancer"
-    name      = "Subnets"
-    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
+    namespace = "aws:elbv2:listener:80"
+    name      = "DefaultActions"
+    value     = "[{\"Type\":\"redirect\",\"RedirectConfig\":{\"Protocol\":\"HTTPS\",\"Port\":\"443\",\"StatusCode\":\"HTTP_301\"}}]^{1}"
   }
 
-  # --- Configuración de HTTPS ---
+  # --- CONFIGURACIÓN DEL LISTENER HTTPS ---
   setting {
     namespace = "aws:elbv2:listener:443"
     name      = "ListenerEnabled"
@@ -58,6 +42,47 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     namespace = "aws:elbv2:listener:443"
     name      = "SSLCertificateArns"
     value     = var.ssl_certificate_arn
+  }
+
+  # --- CONFIGURACIÓN DEL HEALTH CHECK ---
+  setting {
+    namespace = "aws:elasticbeanstalk:application"
+    name      = "Application Healthcheck URL"
+    value     = "/"
+  }
+
+  # --- Configuración de la Capa Gratuita y Escalado ---
+  setting {
+    namespace = "aws:autoscaling:launchconfiguration"
+    name      = "InstanceType"
+    value     = "t2.micro"
+  }
+  setting {
+    namespace = "aws:autoscaling:asg"
+    name      = "MinSize"
+    value     = "1"
+  }
+  setting {
+    namespace = "aws:autoscaling:asg"
+    name      = "MaxSize"
+    value     = "2"
+  }
+
+  # --- Configuración de Red (VPC) ---
+  setting {
+    namespace = "aws:ec2:vpc"
+    name      = "VPCId"
+    value     = aws_vpc.main.id
+  }
+  setting {
+    namespace = "aws:ec2:vpc"
+    name      = "Subnets"
+    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
+  }
+  setting {
+    namespace = "aws:elbv2:loadbalancer"
+    name      = "Subnets"
+    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
   }
 
   # --- Roles de IAM ---
