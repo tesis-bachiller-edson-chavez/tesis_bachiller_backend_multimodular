@@ -1,6 +1,6 @@
 resource "aws_elastic_beanstalk_application" "tesis_app" {
   name        = "tesis-backend-app"
-  description = "Aplicación backend para la tesis de bachiller"
+  description = "Backend application for the bachelor thesis"
 }
 
 resource "aws_elastic_beanstalk_environment" "tesis_env" {
@@ -8,24 +8,13 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   application         = aws_elastic_beanstalk_application.tesis_app.name
   solution_stack_name = "64bit Amazon Linux 2023 v4.7.0 running Docker"
 
-  # --- Configuración de la Capa Gratuita y Escalado ---
+  # --- Configuración Mínima para Forzar ALB en VPC ---
+  # El resto de la configuración (HTTPS, HealthCheck) se hará vía .ebextensions.
   setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "InstanceType"
-    value     = "t2.micro"
+    namespace = "aws:elasticbeanstalk:environment"
+    name      = "LoadBalancerType"
+    value     = "application"
   }
-  setting {
-    namespace = "aws:autoscaling:asg"
-    name      = "MinSize"
-    value     = "1" # <-- AÑADIDO: Mínimo 1 instancia
-  }
-  setting {
-    namespace = "aws:autoscaling:asg"
-    name      = "MaxSize"
-    value     = "2" # <-- AÑADIDO: Máximo 2 instancias
-  }
-
-  # --- Configuración de Red (VPC) ---
   setting {
     namespace = "aws:ec2:vpc"
     name      = "VPCId"
@@ -36,31 +25,28 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     name      = "Subnets"
     value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
   }
-  # Especificamos las subredes para el balanceador de carga
   setting {
-    namespace = "aws:elbv2:loadbalancer"
-    name      = "Subnets"
-    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
+    namespace = "aws:autoscaling:launchconfiguration"
+    name      = "SecurityGroups"
+    value     = aws_security_group.app_sg.id
   }
 
-  # --- Configuración de HTTPS ---
+  # --- Configuración de Instancia y Roles ---
   setting {
-    namespace = "aws:elbv2:listener:443"
-    name      = "ListenerEnabled"
-    value     = "true"
+    namespace = "aws:autoscaling:launchconfiguration"
+    name      = "InstanceType"
+    value     = "t2.micro"
   }
   setting {
-    namespace = "aws:elbv2:listener:443"
-    name      = "Protocol"
-    value     = "HTTPS"
+    namespace = "aws:autoscaling:asg"
+    name      = "MinSize"
+    value     = "1"
   }
   setting {
-    namespace = "aws:elbv2:listener:443"
-    name      = "SSLCertificateArns"
-    value     = var.ssl_certificate_arn
+    namespace = "aws:autoscaling:asg"
+    name      = "MaxSize"
+    value     = "2"
   }
-
-  # --- Roles de IAM ---
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "IamInstanceProfile"
@@ -72,14 +58,7 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     value     = aws_iam_role.beanstalk_service_role.name
   }
 
-  # --- Seguridad de Red ---
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "SecurityGroups"
-    value     = aws_security_group.app_sg.id
-  }
-
-  # --- Variables de Entorno para la Aplicación ---
+  # --- Variables de Entorno ---
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "JDBC_DATABASE_URL"
