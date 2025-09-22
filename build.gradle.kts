@@ -21,6 +21,8 @@ repositories {
 extra["springModulithVersion"] = "1.4.1"
 
 dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation") // Para validar DTOs y otros objetos con anotaciones.
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
