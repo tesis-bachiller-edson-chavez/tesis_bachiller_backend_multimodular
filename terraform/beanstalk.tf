@@ -8,8 +8,7 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   application         = aws_elastic_beanstalk_application.tesis_app.name
   solution_stack_name = "64bit Amazon Linux 2023 v4.7.0 running Docker"
 
-  # --- Configuración Mínima para Forzar ALB en VPC ---
-  # El resto de la configuración (HTTPS, HealthCheck) se hará vía .ebextensions.
+  # --- Configuración de Red y Tipo de Balanceador ---
   setting {
     namespace = "aws:elasticbeanstalk:environment"
     name      = "LoadBalancerType"
@@ -26,9 +25,38 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
   }
   setting {
+    namespace = "aws:elbv2:loadbalancer"
+    name      = "Subnets"
+    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
+  }
+  setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "SecurityGroups"
     value     = aws_security_group.app_sg.id
+  }
+
+  # --- Configuración de Listeners y Certificado ---
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "ListenerEnabled"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "Protocol"
+    value     = "HTTPS"
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "SSLCertificateArns"
+    value     = var.ssl_certificate_arn
+  }
+
+  # --- Configuración del Health Check ---
+  setting {
+    namespace = "aws:elasticbeanstalk:application"
+    name      = "Application Healthcheck URL"
+    value     = "/actuator/health" # <-- CORREGIDO
   }
 
   # --- Configuración de Instancia y Roles ---
