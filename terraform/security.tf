@@ -6,6 +6,7 @@ resource "aws_security_group" "app_sg" {
   vpc_id      = aws_vpc.main.id
 
   # Permite todo el tráfico saliente.
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -34,6 +35,7 @@ data "aws_lb" "tesis_alb" {
   arn = aws_elastic_beanstalk_environment.tesis_env.load_balancers[0]
   depends_on = [aws_elastic_beanstalk_environment.tesis_env]
 }
+
 
 
 # --- Security Group para la base de datos RDS ---
