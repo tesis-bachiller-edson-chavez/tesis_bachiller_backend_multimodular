@@ -1,6 +1,6 @@
 resource "aws_elastic_beanstalk_application" "tesis_app" {
   name        = "tesis-backend-app"
-  description = "Aplicación backend para la tesis de bachiller"
+  description = "Backend application for the bachelor thesis"
 }
 
 resource "aws_elastic_beanstalk_environment" "tesis_env" {
@@ -8,50 +8,30 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   application         = aws_elastic_beanstalk_application.tesis_app.name
   solution_stack_name = "64bit Amazon Linux 2023 v4.7.0 running Docker"
 
-  # --- CONFIGURACIÓN FUNDAMENTAL DE RED ---
+  # --- Configuración Mínima para Forzar ALB en VPC ---
+  # El resto de la configuración (HTTPS, HealthCheck) se hará vía .ebextensions.
   setting {
     namespace = "aws:elasticbeanstalk:environment"
     name      = "LoadBalancerType"
-    value     = "application" # <-- CRÍTICO: Usa un Application Load Balancer
+    value     = "application"
+  }
+  setting {
+    namespace = "aws:ec2:vpc"
+    name      = "VPCId"
+    value     = aws_vpc.main.id
+  }
+  setting {
+    namespace = "aws:ec2:vpc"
+    name      = "Subnets"
+    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
+  }
+  setting {
+    namespace = "aws:autoscaling:launchconfiguration"
+    name      = "SecurityGroups"
+    value     = aws_security_group.app_sg.id
   }
 
-  # --- CONFIGURACIÓN DE REDIRECCIÓN HTTP -> HTTPS ---
-  setting {
-    namespace = "aws:elb:listener:80"
-    name      = "ListenerEnabled"
-    value     = "false" # Deshabilita el listener por defecto para reemplazarlo
-  }
-  setting {
-    namespace = "aws:elbv2:listener:80"
-    name      = "DefaultActions"
-    value     = "[{\"Type\":\"redirect\",\"RedirectConfig\":{\"Protocol\":\"HTTPS\",\"Port\":\"443\",\"StatusCode\":\"HTTP_301\"}}]^{1}"
-  }
-
-  # --- CONFIGURACIÓN DEL LISTENER HTTPS ---
-  setting {
-    namespace = "aws:elbv2:listener:443"
-    name      = "ListenerEnabled"
-    value     = "true"
-  }
-  setting {
-    namespace = "aws:elbv2:listener:443"
-    name      = "Protocol"
-    value     = "HTTPS"
-  }
-  setting {
-    namespace = "aws:elbv2:listener:443"
-    name      = "SSLCertificateArns"
-    value     = var.ssl_certificate_arn
-  }
-
-  # --- CONFIGURACIÓN DEL HEALTH CHECK ---
-  setting {
-    namespace = "aws:elasticbeanstalk:application"
-    name      = "Application Healthcheck URL"
-    value     = "/"
-  }
-
-  # --- Configuración de la Capa Gratuita y Escalado ---
+  # --- Configuración de Instancia y Roles ---
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "InstanceType"
@@ -67,25 +47,6 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     name      = "MaxSize"
     value     = "2"
   }
-
-  # --- Configuración de Red (VPC) ---
-  setting {
-    namespace = "aws:ec2:vpc"
-    name      = "VPCId"
-    value     = aws_vpc.main.id
-  }
-  setting {
-    namespace = "aws:ec2:vpc"
-    name      = "Subnets"
-    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
-  }
-  setting {
-    namespace = "aws:elbv2:loadbalancer"
-    name      = "Subnets"
-    value     = join(",", [aws_subnet.public_a.id, aws_subnet.public_b.id])
-  }
-
-  # --- Roles de IAM ---
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "IamInstanceProfile"
@@ -97,14 +58,7 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     value     = aws_iam_role.beanstalk_service_role.name
   }
 
-  # --- Seguridad de Red ---
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "SecurityGroups"
-    value     = aws_security_group.app_sg.id
-  }
-
-  # --- Variables de Entorno para la Aplicación ---
+  # --- Variables de Entorno ---
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "JDBC_DATABASE_URL"
