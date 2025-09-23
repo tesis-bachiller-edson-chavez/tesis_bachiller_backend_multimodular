@@ -47,10 +47,10 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     value     = var.ssl_certificate_arn
   }
 
-  # --- FASE 3: Añadir el Health Check URL ---
+  # --- FASE 3: Añadir el Health Check URL para el Target Group del ALB ---
   setting {
-    namespace = "aws:elasticbeanstalk:application"
-    name      = "Application Healthcheck URL"
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "HealthCheckPath"
     value     = "/actuator/health"
   }
 

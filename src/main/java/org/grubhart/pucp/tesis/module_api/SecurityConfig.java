@@ -49,9 +49,11 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .addFilterBefore(userSynchronizationFilter, AnonymousAuthenticationFilter.class)
-                .csrf(csrf -> csrf.ignoringRequestMatchers(new AntPathRequestMatcher("/h2-console/**"), new AntPathRequestMatcher("/logout"), new AntPathRequestMatcher("/api/**")))
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**", "/logout", "/api/**"))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(new AntPathRequestMatcher("/"), new AntPathRequestMatcher("/error"), new AntPathRequestMatcher("/h2-console/**"), new AntPathRequestMatcher("/actuator/health")).permitAll()
+
+                        .requestMatchers("/", "/error", "/h2-console/**", "/actuator/health").permitAll()
+
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(e -> e
