@@ -51,7 +51,9 @@ public class SecurityConfig {
                 .addFilterBefore(userSynchronizationFilter, AnonymousAuthenticationFilter.class)
                 .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**", "/logout", "/api/**"))
                 .authorizeHttpRequests(auth -> auth
+
                         .requestMatchers("/", "/error", "/h2-console/**", "/actuator/health").permitAll()
+
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(e -> e
