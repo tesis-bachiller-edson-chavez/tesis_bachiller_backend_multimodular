@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Servicio de la Base de Datos MySQL
+  db:
+    image: mysql:8.0
+    container_name: tesis-mysql-local
+    ports:
+      - "3306:3306" # Expone el puerto de MySQL a tu máquina
+    environment:
+      # La contraseña se toma del archivo .env
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: "tesisdb"       # El nombre de la base de datos que espera tu aplicación
+    volumes:
+      - mysql-data:/var/lib/mysql # Guarda los datos de la BD de forma persistente
+    # Verificación de salud para asegurar que la BD esté lista antes de que el backend inicie
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Servicio del Backend (tu aplicación)
+  backend:
+    build: . # Le dice a Compose que construya la imagen usando el Dockerfile de esta carpeta
+    container_name: tesis-backend-local
+    ports:
+      - "8080:8080" # Expone el puerto de tu aplicación a tu máquina
+    environment:
+      # Sobrescribimos la URL de la BD para que apunte al contenedor 'db'
+      JDBC_DATABASE_URL: jdbc:mysql://db:3306/tesisdb?createDatabaseIfNotExist=true
+      JDBC_DATABASE_USERNAME: root
+      # La contraseña también se toma del archivo .env
+      JDBC_DATABASE_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy # El backend esperará a que la BD esté saludable para iniciar
+
+volumes:
+  mysql-data: # Define el volumen para la persistencia de datos
