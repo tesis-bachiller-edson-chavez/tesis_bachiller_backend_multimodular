@@ -1,40 +1,38 @@
-version: '3.8'
-
 services:
-  # Servicio de la Base de Datos MySQL
-  db:
+  mysql-db:
+    # Usamos la imagen oficial de MySQL, versión 8.0
     image: mysql:8.0
-    container_name: tesis-mysql-local
-    ports:
-      - "3306:3306" # Expone el puerto de MySQL a tu máquina
+    # Nombre que le daremos al contenedor para identificarlo fácilmente
+    container_name: tesis-db
+    # Reinicia el contenedor automáticamente si se detiene por alguna razón
+    restart: always
+    # Variables de entorno para configurar la instancia de MySQL
+    # La imagen de MySQL las usará en el primer arranque para inicializar la BD
     environment:
-      # La contraseña se toma del archivo .env
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: "tesisdb"       # El nombre de la base de datos que espera tu aplicación
-    volumes:
-      - mysql-data:/var/lib/mysql # Guarda los datos de la BD de forma persistente
-    # Verificación de salud para asegurar que la BD esté lista antes de que el backend inicie
-    healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      MYSQL_DATABASE: tesisdb
 
-  # Servicio del Backend (tu aplicación)
-  backend:
-    build: . # Le dice a Compose que construya la imagen usando el Dockerfile de esta carpeta
-    container_name: tesis-backend-local
+    # Mapeo de puertos: expone el puerto 3306 del contenedor al puerto 3306 de tu máquina
     ports:
-      - "8080:8080" # Expone el puerto de tu aplicación a tu máquina
+      - "3306:3306"
+    # Volúmenes para persistir los datos de la base de datos
+    # Esto evita que pierdas tus datos si el contenedor se detiene o se elimina
+    volumes:
+      - tesis-mysql-data:/var/lib/mysql
+
+  backend:
+    build: .
+    container_name: tesis-backend-local
+    restart: always
+    ports:
+      - "8080:8080"
     environment:
-      # Sobrescribimos la URL de la BD para que apunte al contenedor 'db'
       JDBC_DATABASE_URL: jdbc:mysql://db:3306/tesisdb?createDatabaseIfNotExist=true
-      JDBC_DATABASE_USERNAME: root
-      # La contraseña también se toma del archivo .env
+      JDBC_DATABASE_USERNAME: "root"
       JDBC_DATABASE_PASSWORD: ${DB_PASSWORD}
     depends_on:
-      db:
-        condition: service_healthy # El backend esperará a que la BD esté saludable para iniciar
+      - mysql-db
 
 volumes:
-  mysql-data: # Define el volumen para la persistencia de datos
+  # --- CAMBIO: Definir el volumen con un nombre único ---
+  tesis-mysql-data:
