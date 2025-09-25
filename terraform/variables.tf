@@ -43,3 +43,14 @@ variable "ssl_certificate_arn" {
   description = "El ARN del certificado SSL de ACM para el dominio."
   type        = string
 }
+
+variable "dora_initial_admin_username" {
+  description = "The GitHub username of the user who will become the first administrator."
+  type        = string
+  sensitive   = true
+}
+
+variable "dora_github_organization_name" {
+  description = "The name of the GitHub organization whose members are allowed to use the application."
+  type        = string
+}

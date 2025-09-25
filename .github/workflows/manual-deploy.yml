@@ -32,6 +32,25 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+
+      - name: Terraform Taint DB
+        run: terraform taint aws_db_instance.tesis_db
+        working-directory: ./terraform
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        working-directory: ./terraform
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -42,18 +61,18 @@ jobs:
           ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG=${{ github.sha }}
           echo "Generating Dockerrun.aws.json for tag: $IMAGE_TAG"
-          echo '{' > Dockerrun.aws.json
-          echo '  "AWSEBDockerrunVersion": "1",' >> Dockerrun.aws.json
-          echo '  "Image": {' >> Dockerrun.aws.json
-          echo '    "Name": "'$ECR_REGISTRY'/'$ECR_REPOSITORY':'$IMAGE_TAG'",' >> Dockerrun.aws.json
-          echo '    "Update": "true"' >> Dockerrun.aws.json
-          echo '  },' >> Dockerrun.aws.json
-          echo '  "Ports": [' >> Dockerrun.aws.json
-          echo '    {' >> Dockerrun.aws.json
-          echo '      "ContainerPort": "8080"' >> Dockerrun.aws.json
-          echo '    }' >> Dockerrun.aws.json
-          echo '  ]' >> Dockerrun.aws.json
-          echo '}' >> Dockerrun.aws.json
+          echo \'{\' > Dockerrun.aws.json
+          echo \'  "AWSEBDockerrunVersion": "1",\' >> Dockerrun.aws.json
+          echo \'  "Image": {\' >> Dockerrun.aws.json
+          echo \'    "Name": "\'$ECR_REGISTRY\'/\'$ECR_REPOSITORY\':\'$IMAGE_TAG\'",\' >> Dockerrun.aws.json
+          echo \'    "Update": "true"\' >> Dockerrun.aws.json
+          echo \'  },\' >> Dockerrun.aws.json
+          echo \'  "Ports": [\' >> Dockerrun.aws.json
+          echo \'    {\' >> Dockerrun.aws.json
+          echo \'      "ContainerPort": "8080"\' >> Dockerrun.aws.json
+          echo \'    }\' >> Dockerrun.aws.json
+          echo \'  ]\' >> Dockerrun.aws.json
+          echo \'}\' >> Dockerrun.aws.json
 
       - name: Zip deployment package
         run: zip -r deploy.zip Dockerrun.aws.json

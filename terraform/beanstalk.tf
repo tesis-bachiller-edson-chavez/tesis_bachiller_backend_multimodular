@@ -127,4 +127,14 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     name      = "OAUTH2_GITHUB_REDIRECT_URI"
     value     = var.oauth2_github_redirect_uri
   }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "dora.initial-admin-username"
+    value     = var.dora_initial_admin_username
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "dora.github.organization-name"
+    value     = var.dora_github_organization_name
+  }
 }
