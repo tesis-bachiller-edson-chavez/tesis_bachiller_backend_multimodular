@@ -8,7 +8,7 @@ env:
   ECR_REPOSITORY: tesis-backend
   EB_APPLICATION_NAME: tesis-backend-app
   EB_ENVIRONMENT_NAME: tesis-backend-env
-  S3_BUCKET: tesis-backend-bucket-deployment
+  S3_BUCKET: elasticbeanstalk-us-east-2-467210048291
 
 jobs:
   deploy:
