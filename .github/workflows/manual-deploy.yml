@@ -100,3 +100,4 @@ jobs:
           aws elasticbeanstalk update-environment \
             --environment-name "$EB_ENVIRONMENT_NAME" \
             --version-label "$VERSION_LABEL"
+          
