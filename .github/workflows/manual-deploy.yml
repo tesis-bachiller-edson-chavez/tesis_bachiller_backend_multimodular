@@ -58,8 +58,11 @@ jobs:
           }
           EOF
 
-      - name: Zip deployment package
-        run: zip -r deploy.zip Dockerrun.aws.json
+      - name: Remove Dockerfile to prevent conflict
+        run: rm Dockerfile
+
+      - name: Create deployment package
+        run: zip deploy.zip Dockerrun.aws.json
 
       - name: Deploy to Elastic Beanstalk via AWS CLI
         run: |
