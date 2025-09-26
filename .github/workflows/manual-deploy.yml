@@ -1,5 +1,3 @@
-# .github/workflows/manual-deploy.yml
-
 name: Deploy - Manually Deploy to Elastic Beanstalk
 
 on:
@@ -11,75 +9,55 @@ permissions:
 
 env:
   AWS_REGION: us-east-2
-  EB_APPLICATION_NAME: "tesis-backend-app"
-  EB_ENVIRONMENT_NAME: "tesis-backend-env"
   ECR_REPOSITORY: "tesis-backend"
   AWS_ROLE_TO_ASSUME: arn:aws:iam::467210048291:role/GitHubActions-ECR-Role
-  S3_BUCKET: elasticbeanstalk-us-east-2-467210048291 # <-- TU BUCKET
+  EB_APPLICATION_NAME: "tesis-backend-app"
+  EB_ENVIRONMENT_NAME: "tesis-backend-env"
 
 jobs:
   deploy:
-    name: Deploy to AWS
+    name: Deploy to Elastic Beanstalk
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials via OIDC
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
-
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Generate Dockerrun.aws.json
-        id: generate-dockerrun
         run: |
-          ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG=${{ github.sha }}
-          echo "Generating Dockerrun.aws.json for tag: $IMAGE_TAG"
-          echo \'{\' > Dockerrun.aws.json
-          echo \'  "AWSEBDockerrunVersion": "1",\' >> Dockerrun.aws.json
-          echo \'  "Image": {\' >> Dockerrun.aws.json
-          echo \'    "Name": "\'$ECR_REGISTRY\'/\'$ECR_REPOSITORY\':\'$IMAGE_TAG\'",\' >> Dockerrun.aws.json
-          echo \'    "Update": "true"\' >> Dockerrun.aws.json
-          echo \'  },\' >> Dockerrun.aws.json
-          echo \'  "Ports": [\' >> Dockerrun.aws.json
-          echo \'    {\' >> Dockerrun.aws.json
-          echo \'      "ContainerPort": "8080"\' >> Dockerrun.aws.json
-          echo \'    }\' >> Dockerrun.aws.json
-          echo \'  ]\' >> Dockerrun.aws.json
-          echo \'}\' >> Dockerrun.aws.json
+          echo "{
+            \"AWSEBDockerrunVersion\": \"1\",
+            \"Image\": {
+              \"Name\": \"${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}\",
+              \"Update\": \"true\"
+            },
+            \"Ports\": [
+              {
+                \"ContainerPort\": \"8080\"
+              }
+            ]
+          }" > Dockerrun.aws.json
 
-      - name: Zip deployment package
+      - name: Generate deployment bundle
         run: zip -r deploy.zip Dockerrun.aws.json
 
-      - name: Deploy to Elastic Beanstalk via AWS CLI
-        run: |
-          # 1. Definir nombres de archivo y versión
-          VERSION_LABEL="v-${{ github.sha }}"
-          ZIP_FILE="deploy.zip"
-          S3_KEY="$EB_APPLICATION_NAME/$VERSION_LABEL.zip"
-
-          # 2. Subir el paquete a S3
-          echo "Subiendo $ZIP_FILE a s3://$S3_BUCKET/$S3_KEY..."
-          aws s3 cp $ZIP_FILE s3://$S3_BUCKET/$S3_KEY
-
-          # 3. Crear una nueva versión de la aplicación en Beanstalk (ignorando el error si ya existe)
-          echo "Creando nueva versión de la aplicación: $VERSION_LABEL..."
-          aws elasticbeanstalk create-application-version \
-            --application-name "$EB_APPLICATION_NAME" \
-            --version-label "$VERSION_LABEL" \
-            --source-bundle S3Bucket="$S3_BUCKET",S3Key="$S3_KEY" || true
-
-          # 4. Actualizar el entorno para que use la nueva versión
-          echo "Actualizando el entorno $EB_ENVIRONMENT_NAME..."
-          aws elasticbeanstalk update-environment \
-            --environment-name "$EB_ENVIRONMENT_NAME" \
-            --version-label "$VERSION_LABEL"
-          
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v21
+        with:
+          application_name: ${{ env.EB_APPLICATION_NAME }}
+          environment_name: ${{ env.EB_ENVIRONMENT_NAME }}
+          version_label: "v-${{ github.sha }}"
+          region: ${{ env.AWS_REGION }}
+          deployment_package: deploy.zip
+          wait_for_environment_recovery: 60
