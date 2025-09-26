@@ -3,9 +3,12 @@
 name: Docker - Build and Push to ECR
 
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
   pull_request:
     types: [closed]
-    branches: [ "main" ]
     
 permissions: # <-- AÑADIDO: Permisos necesarios para OIDC
   id-token: write
@@ -19,7 +22,7 @@ env:
 jobs:
   build-and-push:
     name: Build and Push
-    if: github.event.pull_request.merged == true
+    if: github.event_name != 'pull_request' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
 
     steps:
