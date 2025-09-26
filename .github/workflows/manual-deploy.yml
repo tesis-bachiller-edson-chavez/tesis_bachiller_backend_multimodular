@@ -32,6 +32,12 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Debug AWS Credentials
+        run: |
+          echo "aws-access-key-id exists: ${{ steps.aws-creds.outputs.aws-access-key-id != '' }}"
+          echo "aws-secret-access-key exists: ${{ steps.aws-creds.outputs.aws-secret-access-key != '' }}"
+          echo "aws-session-token exists: ${{ steps.aws-creds.outputs.aws-session-token != '' }}"
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -57,6 +63,9 @@ jobs:
       - name: Deploy to Elastic Beanstalk
         uses: einaregilsson/beanstalk-deploy@v21
         with:
+          aws_access_key: ${{ steps.aws-creds.outputs.aws-access-key-id }}
+          aws_secret_key: ${{ steps.aws-creds.outputs.aws-secret-access-key }}
+          aws_session_token: ${{ steps.aws-creds.outputs.aws-session-token }}
           application_name: ${{ env.EB_APPLICATION_NAME }}
           environment_name: ${{ env.EB_ENVIRONMENT_NAME }}
           version_label: "v-${{ github.sha }}"
