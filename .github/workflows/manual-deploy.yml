@@ -13,6 +13,8 @@ env:
   AWS_ROLE_TO_ASSUME: arn:aws:iam::467210048291:role/GitHubActions-ECR-Role
   EB_APPLICATION_NAME: "tesis-backend-app"
   EB_ENVIRONMENT_NAME: "tesis-backend-env"
+  # --- VOLVEMOS A AÑADIR TU BUCKET ---
+  S3_BUCKET: "tesis-backend-bucket-deployment"
 
 jobs:
   deploy:
@@ -35,6 +37,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # Corrección de la generación del JSON (esto está bien)
       - name: Generate Dockerrun.aws.json
         run: |
           echo "{
@@ -61,7 +64,10 @@ jobs:
           version_label: "v-${{ github.sha }}"
           region: ${{ env.AWS_REGION }}
           deployment_package: deploy.zip
+          # --- VOLVEMOS A USAR TU BUCKET ---
+          s3_bucket: ${{ env.S3_BUCKET }}
           wait_for_environment_recovery: 60
+          # Corrección del paso de credenciales (esto está bien)
           aws_access_key: ${{ steps.aws-creds.outputs.aws-access-key-id }}
           aws_secret_key: ${{ steps.aws-creds.outputs.aws-secret-access-key }}
           aws_session_token: ${{ steps.aws-creds.outputs.aws-session-token }}
