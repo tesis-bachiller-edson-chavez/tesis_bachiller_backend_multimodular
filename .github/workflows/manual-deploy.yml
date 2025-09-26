@@ -43,27 +43,21 @@ jobs:
           ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG=${{ github.sha }}
           echo "Generating Dockerrun.aws.json for tag: $IMAGE_TAG"
-          cat <<EOF > Dockerrun.aws.json
-          {
-            "AWSEBDockerrunVersion": "1",
-            "Image": {
-              "Name": "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG",
-              "Update": "true"
-            },
-            "Ports": [
-              {
-                "ContainerPort": "8080"
-              }
-            ]
-          }
-          EOF
+          echo \'{\' > Dockerrun.aws.json
+          echo \'  "AWSEBDockerrunVersion": "1",\' >> Dockerrun.aws.json
+          echo \'  "Image": {\' >> Dockerrun.aws.json
+          echo \'    "Name": "\'$ECR_REGISTRY\'/\'$ECR_REPOSITORY\':\'$IMAGE_TAG\'",\' >> Dockerrun.aws.json
+          echo \'    "Update": "true"\' >> Dockerrun.aws.json
+          echo \'  },\' >> Dockerrun.aws.json
+          echo \'  "Ports": [\' >> Dockerrun.aws.json
+          echo \'    {\' >> Dockerrun.aws.json
+          echo \'      "ContainerPort": "8080"\' >> Dockerrun.aws.json
+          echo \'    }\' >> Dockerrun.aws.json
+          echo \'  ]\' >> Dockerrun.aws.json
+          echo \'}\' >> Dockerrun.aws.json
 
-      - name: Create isolated deployment package
-        run: |
-          mkdir deployment_package
-          mv Dockerrun.aws.json deployment_package/
-          cd deployment_package
-          zip -r ../deploy.zip .
+      - name: Zip deployment package
+        run: zip -r deploy.zip Dockerrun.aws.json
 
       - name: Deploy to Elastic Beanstalk via AWS CLI
         run: |
@@ -88,3 +82,4 @@ jobs:
           aws elasticbeanstalk update-environment \
             --environment-name "$EB_ENVIRONMENT_NAME" \
             --version-label "$VERSION_LABEL"
+          
