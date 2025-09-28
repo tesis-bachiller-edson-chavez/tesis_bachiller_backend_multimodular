@@ -1,16 +1,22 @@
 package org.grubhart.pucp.tesis.module_collector.github;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import org.grubhart.pucp.tesis.module_domain.*;
+import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
+import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunsResponse;
+import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
+import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
+import org.grubhart.pucp.tesis.module_domain.GithubDeploymentCollector;
+import org.grubhart.pucp.tesis.module_domain.GithubPullRequestCollector;
+import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
+import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
@@ -37,6 +43,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         this.webClient = webClientBuilder
                 .baseUrl(githubApiUrl)
                 .defaultHeader("Authorization", "token " + githubApiToken)
+                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
                 .build();
     }
 
@@ -159,49 +166,46 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                 .buildAndExpand(owner, repo, workflowFileName)
                 .toString();
 
-        logger.info("Iniciando recolección paginada de Workflow Runs para {}/{} y workflow '{}'", owner, repo, workflowFileName);
+        if (since == null) {
+            logger.info("Iniciando recolección paginada de Workflow Runs para {}/{} y workflow '{}' (primera sincronización)", owner, repo, workflowFileName);
+        } else {
+            logger.info("Iniciando recolección paginada de Workflow Runs para {}/{} y workflow '{}' desde {}", owner, repo, workflowFileName, since);
+        }
 
         List<GitHubWorkflowRunDto> allWorkflowRuns = new ArrayList<>();
         String nextPageUrl = initialUrl;
+        boolean continuePaginating = true;
 
-        while (nextPageUrl != null) {
+        while (nextPageUrl != null && continuePaginating) {
             logger.debug("Obteniendo página de Workflow Runs: {}", nextPageUrl);
 
-            final String currentUrl = nextPageUrl;
-            final AtomicReference<String> nextUrlFromHeader = new AtomicReference<>();
-            final AtomicBoolean stopPaginatingForNextIteration = new AtomicBoolean(false);
-
-            List<GitHubWorkflowRunDto> processedPage = webClient.get()
-                    .uri(currentUrl)
-                    .exchangeToMono(response -> {
-                        nextUrlFromHeader.set(parseNextPageUrl(response.headers().header("Link")));
-                        if (response.statusCode().isError()) {
-                            logger.error("Error en la respuesta de la API: {} para la URL: {}", response.statusCode(), currentUrl);
-                            stopPaginatingForNextIteration.set(true);
-                            return Mono.just(Collections.emptyList());
-                        }
-                        return response.bodyToMono(GitHubWorkflowRunsResponse.class)
-                                .map(apiResponse -> apiResponse.getWorkflowRuns() != null ? apiResponse.getWorkflowRuns() : Collections.<GitHubWorkflowRunDto>emptyList())
-                                .flatMapMany(Flux::fromIterable)
-                                .filter(run -> {
-                                    boolean isNewEnough = run.getCreatedAt() == null || !run.getCreatedAt().isBefore(since);
-                                    if (!isNewEnough) {
-                                        stopPaginatingForNextIteration.set(true);
-                                    }
-                                    return isNewEnough;
-                                })
-                                .collectList();
-                    })
-                    .onErrorReturn(Collections.emptyList())
+            ResponseEntity<GitHubWorkflowRunsResponse> responseEntity = webClient.get()
+                    .uri(nextPageUrl)
+                    .retrieve()
+                    .toEntity(GitHubWorkflowRunsResponse.class)
                     .block();
 
-            allWorkflowRuns.addAll(processedPage);
+            if (responseEntity == null || !responseEntity.getStatusCode().is2xxSuccessful() || !responseEntity.hasBody()) {
+                logger.error("Error en la respuesta de la API o cuerpo vacío para la URL: {}", nextPageUrl);
+                break;
+            }
 
-            if (stopPaginatingForNextIteration.get()) {
-                logger.info("Se encontró un workflow run más antiguo que la fecha de sincronización. Deteniendo la paginación.");
-                nextPageUrl = null;
-            } else {
-                nextPageUrl = nextUrlFromHeader.get();
+            nextPageUrl = parseNextPageUrl(responseEntity.getHeaders().get("Link"));
+
+            GitHubWorkflowRunsResponse responseBody = responseEntity.getBody();
+            if (responseBody.getWorkflowRuns() == null) {
+                break;
+            }
+
+            for (GitHubWorkflowRunDto run : responseBody.getWorkflowRuns()) {
+                // Si 'since' es nulo, es la primera sincronización, así que procesamos todo.
+                // Si 'since' no es nulo, nos detenemos cuando encontramos un 'run' que ya no es más nuevo que nuestra última sincronización.
+                if (since != null && run.getCreatedAt() != null && !run.getCreatedAt().isAfter(since)) {
+                    logger.info("Se encontró un workflow run ({}) igual o más antiguo que la fecha de sincronización ({}). Deteniendo la paginación.", run.getId(), since);
+                    continuePaginating = false;
+                    break; // Detiene el bucle for
+                }
+                allWorkflowRuns.add(run);
             }
         }
 
@@ -214,43 +218,28 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
             return null;
         }
 
-        for (String linkHeader : linkHeaders) {
-            if (linkHeader == null) {
+        String linkHeader = linkHeaders.get(0);
+        if (linkHeader == null || linkHeader.isEmpty()) {
+            return null;
+        }
+
+        String[] links = linkHeader.split(", ");
+        for (String link : links) {
+            String[] segments = link.split(";");
+            if (segments.length < 2) {
                 continue;
             }
-            String[] links = linkHeader.split(",\\s*");
-            for (String link : links) {
-                String[] segments = link.split(";");
-                if (segments.length < 2) {
-                    continue;
-                }
 
-                String url = segments[0].trim();
-                if (!url.startsWith("<") || !url.endsWith(">")) {
-                    continue;
-                }
+            String urlPart = segments[0].trim();
+            String relPart = segments[1].trim();
 
-                for (int i = 1; i < segments.length; i++) {
-                    String segment = segments[i].trim();
-                    if ("rel=\"next\"".equals(segment)) {
-                        return url.substring(1, url.length() - 1);
-                    }
+            if (relPart.equals("rel=\"next\"")) {
+                if (urlPart.startsWith("<") && urlPart.endsWith(">")) {
+                    return urlPart.substring(1, urlPart.length() - 1);
                 }
             }
         }
+
         return null;
-    }
-
-    private static class GitHubWorkflowRunsResponse {
-        @JsonProperty("workflow_runs")
-        private List<GitHubWorkflowRunDto> workflowRuns;
-
-        public List<GitHubWorkflowRunDto> getWorkflowRuns() {
-            return workflowRuns;
-        }
-
-        public void setWorkflowRuns(List<GitHubWorkflowRunDto> workflowRuns) {
-            this.workflowRuns = workflowRuns;
-        }
     }
 }

@@ -1,84 +1,128 @@
 package org.grubhart.pucp.tesis.module_collector.service;
 
-import org.grubhart.pucp.tesis.module_domain.*;
+import org.grubhart.pucp.tesis.module_collector.github.GithubClientImpl;
+import org.grubhart.pucp.tesis.module_domain.Deployment;
+import org.grubhart.pucp.tesis.module_domain.DeploymentRepository;
+import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
+import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
+import org.grubhart.pucp.tesis.module_domain.RepositoryConfigRepository;
+import org.grubhart.pucp.tesis.module_domain.SyncStatus;
+import org.grubhart.pucp.tesis.module_domain.SyncStatusRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class DeploymentSyncService {
 
-    private static final Logger logger = LoggerFactory.getLogger(DeploymentSyncService.class);
-    public static final String PROCESS_NAME_DEPLOYMENT = "deployment-sync";
+    private static final Logger log = LoggerFactory.getLogger(DeploymentSyncService.class);
+    private static final String JOB_NAME = "DEPLOYMENT_SYNC";
 
-    private final GithubDeploymentCollector githubDeploymentCollector;
+    private final GithubClientImpl gitHubClient;
     private final DeploymentRepository deploymentRepository;
     private final SyncStatusRepository syncStatusRepository;
+    private final RepositoryConfigRepository repositoryConfigRepository; // <-- 1. Inyectar el repositorio de configuración
 
-    private final String owner;
-    private final String repoName;
     private final String workflowFileName;
 
-    public DeploymentSyncService(GithubDeploymentCollector githubDeploymentCollector,
+    // 2. Eliminar owner y repo del constructor
+    public DeploymentSyncService(GithubClientImpl gitHubClient,
                                  DeploymentRepository deploymentRepository,
                                  SyncStatusRepository syncStatusRepository,
-                                 @Value("${dora.github.owner}") String owner,
-                                 @Value("${dora.github.repo}") String repoName,
+                                 RepositoryConfigRepository repositoryConfigRepository, // <-- Añadir al constructor
                                  @Value("${dora.github.workflow-file-name}") String workflowFileName) {
-        this.githubDeploymentCollector = githubDeploymentCollector;
+        this.gitHubClient = gitHubClient;
         this.deploymentRepository = deploymentRepository;
         this.syncStatusRepository = syncStatusRepository;
-        this.owner = owner;
-        this.repoName = repoName;
+        this.repositoryConfigRepository = repositoryConfigRepository; // <-- Asignar
         this.workflowFileName = workflowFileName;
     }
 
+    /**
+     * Tarea programada para sincronizar deploys desde los repositorios configurados.
+     * Se ejecuta 30 segundos después de que la aplicación arranca y luego cada hora.
+     */
+    @Scheduled(initialDelay = 30000, fixedRate = 3600000)
+    public void syncDeployments() {
+        log.info("Iniciando la sincronización de deployments para todos los repositorios configurados.");
 
-    public void sync() {
-        logger.info("Iniciando la sincronización de Deployments para el repositorio {}/{}", owner, repoName);
-
-        LocalDateTime lastSyncTime = syncStatusRepository.findById(PROCESS_NAME_DEPLOYMENT)
-                .map(SyncStatus::getLastSuccessfulRun)
-                .orElse(LocalDateTime.now().minusYears(1)); // Valor por defecto para la primera ejecución
-
-        logger.info("Obteniendo ejecuciones de workflow desde: {}", lastSyncTime);
-
-        List<GitHubWorkflowRunDto> workflowRuns = githubDeploymentCollector.getWorkflowRuns(owner, repoName, workflowFileName, lastSyncTime);
-
-        logger.info("Se encontraron {} ejecuciones de workflow para procesar.", workflowRuns.size());
-
-        for (GitHubWorkflowRunDto runDto : workflowRuns) {
-            deploymentRepository.findByGithubId(runDto.getId()).ifPresentOrElse(
-                    existingDeployment -> {
-                        logger.debug("El deployment con GitHub ID {} ya existe. Omitiendo.", runDto.getId());
-                    },
-                    () -> {
-                        logger.info("Creando nuevo deployment para GitHub ID {}.", runDto.getId());
-                        Deployment newDeployment = mapDtoToEntity(runDto);
-                        deploymentRepository.save(newDeployment);
-                    }
-            );
+        // 3. Obtener todos los repositorios de la BD
+        List<RepositoryConfig> repositories = repositoryConfigRepository.findAll();
+        if (repositories.isEmpty()) {
+            log.warn("No hay repositorios configurados para sincronizar. Finalizando el job.");
+            return;
         }
 
-        SyncStatus newSyncStatus = new SyncStatus(PROCESS_NAME_DEPLOYMENT, LocalDateTime.now());
-        syncStatusRepository.save(newSyncStatus);
-
-        logger.info("Sincronización de Deployments finalizada.");
+        // 4. Iterar sobre cada repositorio
+        for (RepositoryConfig repoConfig : repositories) {
+            try {
+                String[] urlParts = parseRepoUrl(repoConfig.getRepositoryUrl());
+                String owner = urlParts[0];
+                String repoName = urlParts[1];
+                log.info("Sincronizando deployments para el repositorio: {}/{}", owner, repoName);
+                syncDeploymentsForRepository(owner, repoName);
+            } catch (IllegalArgumentException e) {
+                log.error("URL de repositorio no válida en la configuración: '{}'. Saltando este repositorio.", repoConfig.getRepositoryUrl(), e);
+            }
+        }
+        log.info("Sincronización de deployments completada para todos los repositorios.");
     }
 
-    private Deployment mapDtoToEntity(GitHubWorkflowRunDto dto) {
-        return new Deployment(
-                dto.getId(),
-                dto.getName(),
-                dto.getHeadBranch(),
-                dto.getStatus(),
-                dto.getConclusion(),
-                dto.getCreatedAt(),
-                dto.getUpdatedAt()
-        );
+    // 5. Crear un método que contenga la lógica para un solo repositorio
+    private void syncDeploymentsForRepository(String owner, String repoName) {
+        Optional<SyncStatus> syncStatus = syncStatusRepository.findById(JOB_NAME + "_" + repoName);
+        LocalDateTime lastRun = syncStatus.map(SyncStatus::getLastSuccessfulRun).orElse(null);
+
+        Flux<GitHubWorkflowRunDto> workflowRuns = Flux.fromIterable(gitHubClient.getWorkflowRuns(owner, repoName, workflowFileName, lastRun));
+
+        workflowRuns
+                .filter(run -> "success".equals(run.getConclusion()))
+                .map(this::convertToDeployment)
+                .doOnNext(deploymentRepository::save)
+                .doOnComplete(() -> {
+                    updateSyncStatus(repoName);
+                    log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
+                })
+                .doOnError(error -> log.error("Error durante la sincronización de deployments para {}/{}: {}", owner, repoName, error.getMessage()))
+                .subscribe();
+    }
+
+    private Deployment convertToDeployment(GitHubWorkflowRunDto dto) {
+        Deployment deployment = new Deployment();
+        deployment.setGithubId(dto.getId());
+        deployment.setName(dto.getName());
+        deployment.setHeadBranch(dto.getHeadBranch());
+        deployment.setStatus(dto.getStatus());
+        deployment.setConclusion(dto.getConclusion());
+        deployment.setCreatedAt(dto.getCreatedAt());
+        deployment.setUpdatedAt(dto.getUpdatedAt());
+        return deployment;
+    }
+
+    private void updateSyncStatus(String repoName) {
+        SyncStatus status = new SyncStatus(JOB_NAME + "_" + repoName, LocalDateTime.now());
+        syncStatusRepository.save(status);
+    }
+
+    // 6. Helper para parsear la URL del repositorio
+    private String[] parseRepoUrl(String url) {
+        if (url == null || url.isEmpty()) {
+            throw new IllegalArgumentException("La URL del repositorio no puede ser nula o vacía.");
+        }
+        // Assume una URL como "https://github.com/owner/repo"
+        String[] parts = url.split("/");
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Formato de URL no válido: " + url);
+        }
+        String repoName = parts[parts.length - 1];
+        String owner = parts[parts.length - 2];
+        return new String[]{owner, repoName};
     }
 }
