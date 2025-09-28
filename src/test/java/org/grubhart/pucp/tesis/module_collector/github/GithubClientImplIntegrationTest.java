@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.module_collector.github;
 
 import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
+import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
 import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,9 @@ class GithubClientImplIntegrationTest {
 
     @Autowired
     private GithubUserAuthenticator githubUserAuthenticator;
+
+    @Autowired
+    private GithubClientImpl githubClient; // Cambio realizado aquí
 
     @Autowired
     private GithubCommitCollector githubCommitCollector;
@@ -147,5 +151,110 @@ class GithubClientImplIntegrationTest {
         GithubCommitDto.Author topLevelAuthor = firstCommit.getAuthor();
         assertThat(topLevelAuthor).isNotNull();
         assertThat(topLevelAuthor.getLogin()).isEqualTo("Grubhart");
+    }
+
+    @Test
+    @DisplayName("Cuando la API de commits devuelve un error, debe devolver una lista vacía")
+    void getCommits_whenApiReturnsError_shouldReturnEmptyList() {
+        // GIVEN: Simulamos un error 500 del servidor para la API de commits.
+        stubFor(get(urlMatching("/repos/owner/repo/commits\\?since=.*"))
+                .willReturn(aResponse()
+                        .withStatus(500)));
+
+        // WHEN: Se intenta obtener los commits.
+        List<GithubCommitDto> commits = githubCommitCollector.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
+
+        // THEN: La lista de commits debe estar vacía.
+        assertThat(commits).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Cuando una llamada recursiva a la API de commits falla, debe devolver los commits de las páginas exitosas")
+    void getCommits_whenRecursiveCallFails_shouldReturnPartialList() {
+        // GIVEN:
+        // 1. La primera página de commits se devuelve correctamente, con un enlace a la siguiente.
+        String firstPageJsonResponse = """
+             [
+               {
+                 "sha": "c2a38519939553376756202026824180e8396469",
+                 "commit": {
+                   "author": { "name": "Grubhart", "email": "grubhart@example.com", "date": "2024-09-07T10:30:00Z" },
+                   "message": "feat: initial commit"
+                 },
+                 "author": { "login": "Grubhart" }
+               }
+             ]
+             """;
+        stubFor(get(urlPathEqualTo("/repos/owner/repo/commits"))
+                .withQueryParam("since", matching(".*"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withHeader("Link", "</repos/owner/repo/commits_page2>; rel=\"next\"")
+                        .withBody(firstPageJsonResponse)));
+
+        // 2. La segunda página de commits (la llamada recursiva) devuelve un error.
+        stubFor(get(urlEqualTo("/repos/owner/repo/commits_page2"))
+                .willReturn(aResponse()
+                        .withStatus(500)));
+
+        // WHEN: Se intenta obtener los commits.
+        List<GithubCommitDto> commits = githubCommitCollector.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
+
+        // THEN: La lista debe contener solo los commits de la primera página.
+        assertThat(commits).hasSize(1);
+        assertThat(commits.get(0).getSha()).isEqualTo("c2a38519939553376756202026824180e8396469");
+    }
+
+    @Test
+    @DisplayName("Cuando la API de pull requests devuelve un error, debe devolver una lista vacía")
+    void getPullRequests_whenApiReturnsError_shouldReturnEmptyList() {
+        // GIVEN: Simulamos un error 500 del servidor para la API de pull requests.
+        stubFor(get(urlEqualTo("/repos/owner/repo/pulls"))
+                .willReturn(aResponse()
+                        .withStatus(500)));
+
+        // WHEN: Se intenta obtener los pull requests.
+        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", LocalDateTime.now());
+        // THEN: La lista de pull requests debe estar vacía.
+        assertThat(pullRequests).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Debe filtrar los pull requests que son más antiguos que la fecha 'since'")
+    void getPullRequests_shouldFilterOutOldPullRequests() {
+        // GIVEN: Una fecha 'since' de hace 5 días.
+        LocalDateTime since = LocalDateTime.now().minusDays(5);
+        // Simulamos una respuesta con dos PRs: uno reciente y uno antiguo.
+        String jsonResponse = String.format("""
+             [
+               {
+                 "id": 1,
+                 "state": "closed",
+                 "updated_at": "%s",
+                 "user": { "login": "user1" }
+               },
+               {
+                 "id": 2,
+                 "state": "open",
+                 "updated_at": "%s",
+                 "user": { "login": "user2" }
+               }
+             ]
+             """,
+                LocalDateTime.now().minusDays(3).toString(), // Reciente (hace 3 días)
+                LocalDateTime.now().minusDays(10).toString() // Antiguo (hace 10 días)
+        );
+        stubFor(get(urlPathEqualTo("/repos/owner/repo/pulls"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(jsonResponse)));
+        // WHEN: Se obtienen los pull requests.
+        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", since);
+        // THEN: La lista debe contener solo el PR reciente.
+        assertThat(pullRequests).hasSize(1);
+        assertThat(pullRequests.get(0).getId()).isEqualTo(1);
+        assertThat(pullRequests.get(0).getState()).isEqualTo("closed");
     }
 }

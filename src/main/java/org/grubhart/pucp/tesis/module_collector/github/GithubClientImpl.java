@@ -1,5 +1,6 @@
 package org.grubhart.pucp.tesis.module_collector.github;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.grubhart.pucp.tesis.module_domain.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
@@ -18,21 +20,16 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Implementación concreta que utiliza WebClient para interactuar
  * con la API de GitHub, implementando los contratos definidos en el dominio.
  */
 @Component
-public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCollector, GithubPullRequestCollector {
+public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCollector, GithubPullRequestCollector, GithubDeploymentCollector {
 
     private static final Logger logger = LoggerFactory.getLogger(GithubClientImpl.class);
     private final WebClient webClient;
-
-    // Expresión regular para encontrar la URL 'next' en la cabecera 'Link'
-    private static final Pattern NEXT_LINK_PATTERN = Pattern.compile("<([^>]+)>;\\s*rel=\"next\"");
 
     public GithubClientImpl(WebClient.Builder webClientBuilder,
                             @Value("${dora.github.api-url:https://api.github.com}") String githubApiUrl,
@@ -155,11 +152,105 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         return allPullRequests;
     }
 
-    String parseNextPageUrl(List<String> linkHeader) {
-        if (linkHeader == null || linkHeader.isEmpty()) {
+    @Override
+    public List<GitHubWorkflowRunDto> getWorkflowRuns(String owner, String repo, String workflowFileName, LocalDateTime since) {
+        String initialUrl = UriComponentsBuilder.fromPath("/repos/{owner}/{repo}/actions/workflows/{workflowFileName}/runs")
+                .queryParam("per_page", 100)
+                .buildAndExpand(owner, repo, workflowFileName)
+                .toString();
+
+        logger.info("Iniciando recolección paginada de Workflow Runs para {}/{} y workflow '{}'", owner, repo, workflowFileName);
+
+        List<GitHubWorkflowRunDto> allWorkflowRuns = new ArrayList<>();
+        String nextPageUrl = initialUrl;
+
+        while (nextPageUrl != null) {
+            logger.debug("Obteniendo página de Workflow Runs: {}", nextPageUrl);
+
+            final String currentUrl = nextPageUrl;
+            final AtomicReference<String> nextUrlFromHeader = new AtomicReference<>();
+            final AtomicBoolean stopPaginatingForNextIteration = new AtomicBoolean(false);
+
+            List<GitHubWorkflowRunDto> processedPage = webClient.get()
+                    .uri(currentUrl)
+                    .exchangeToMono(response -> {
+                        nextUrlFromHeader.set(parseNextPageUrl(response.headers().header("Link")));
+                        if (response.statusCode().isError()) {
+                            logger.error("Error en la respuesta de la API: {} para la URL: {}", response.statusCode(), currentUrl);
+                            stopPaginatingForNextIteration.set(true);
+                            return Mono.just(Collections.emptyList());
+                        }
+                        return response.bodyToMono(GitHubWorkflowRunsResponse.class)
+                                .map(apiResponse -> apiResponse.getWorkflowRuns() != null ? apiResponse.getWorkflowRuns() : Collections.<GitHubWorkflowRunDto>emptyList())
+                                .flatMapMany(Flux::fromIterable)
+                                .filter(run -> {
+                                    boolean isNewEnough = run.getCreatedAt() == null || !run.getCreatedAt().isBefore(since);
+                                    if (!isNewEnough) {
+                                        stopPaginatingForNextIteration.set(true);
+                                    }
+                                    return isNewEnough;
+                                })
+                                .collectList();
+                    })
+                    .onErrorReturn(Collections.emptyList())
+                    .block();
+
+            allWorkflowRuns.addAll(processedPage);
+
+            if (stopPaginatingForNextIteration.get()) {
+                logger.info("Se encontró un workflow run más antiguo que la fecha de sincronización. Deteniendo la paginación.");
+                nextPageUrl = null;
+            } else {
+                nextPageUrl = nextUrlFromHeader.get();
+            }
+        }
+
+        logger.info("Recolección paginada finalizada. Total de Workflow Runs obtenidos: {}", allWorkflowRuns.size());
+        return allWorkflowRuns;
+    }
+
+    String parseNextPageUrl(List<String> linkHeaders) {
+        if (linkHeaders == null || linkHeaders.isEmpty()) {
             return null;
         }
-        Matcher matcher = NEXT_LINK_PATTERN.matcher(linkHeader.get(0));
-        return matcher.find() ? matcher.group(1) : null;
+
+        for (String linkHeader : linkHeaders) {
+            if (linkHeader == null) {
+                continue;
+            }
+            String[] links = linkHeader.split(",\\s*");
+            for (String link : links) {
+                String[] segments = link.split(";");
+                if (segments.length < 2) {
+                    continue;
+                }
+
+                String url = segments[0].trim();
+                if (!url.startsWith("<") || !url.endsWith(">")) {
+                    continue;
+                }
+
+                for (int i = 1; i < segments.length; i++) {
+                    String segment = segments[i].trim();
+                    if ("rel=\"next\"".equals(segment)) {
+                        return url.substring(1, url.length() - 1);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static class GitHubWorkflowRunsResponse {
+        @JsonProperty("workflow_runs")
+        private List<GitHubWorkflowRunDto> workflowRuns;
+
+        public List<GitHubWorkflowRunDto> getWorkflowRuns() {
+            return workflowRuns;
+        }
+
+        public void setWorkflowRuns(List<GitHubWorkflowRunDto> workflowRuns) {
+            this.workflowRuns = workflowRuns;
+        }
     }
 }
