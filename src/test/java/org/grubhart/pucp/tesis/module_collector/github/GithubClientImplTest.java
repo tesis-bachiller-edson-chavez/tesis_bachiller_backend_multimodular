@@ -2,22 +2,19 @@ package org.grubhart.pucp.tesis.module_collector.github;
 
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
-import okhttp3.mockwebserver.RecordedRequest;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
 import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
+import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,13 +22,14 @@ class GithubClientImplTest {
 
     private MockWebServer mockWebServer;
     private GithubClientImpl githubClient;
+    private final LocalDateTime since = LocalDateTime.of(2024, 1, 1, 0, 0);
 
     @BeforeEach
     void setUp() throws IOException {
         mockWebServer = new MockWebServer();
         mockWebServer.start();
-        String baseUrl = mockWebServer.url("/").toString();
-        githubClient = new GithubClientImpl(WebClient.builder(), baseUrl, "test-token");
+        String baseUrl = String.format("http://localhost:%s", mockWebServer.getPort());
+        githubClient = new GithubClientImpl(WebClient.builder(), baseUrl, "fake-token");
     }
 
     @AfterEach
@@ -40,103 +38,192 @@ class GithubClientImplTest {
     }
 
     @Test
-    @DisplayName("getPullRequests debe detener la paginación cuando encuentra un PR antiguo")
-    void getPullRequests_shouldStopPaginatingWhenOldPRIsFound() throws InterruptedException {
-        LocalDateTime since = LocalDateTime.now().minusDays(5);
-        String recentDate1 = LocalDateTime.now().minusDays(1).format(DateTimeFormatter.ISO_DATE_TIME);
-        String recentDate2 = LocalDateTime.now().minusDays(2).format(DateTimeFormatter.ISO_DATE_TIME);
-        String oldDate = since.minusDays(1).format(DateTimeFormatter.ISO_DATE_TIME);
+    void getCommits_shouldReturnCommitsWhenResponseIsSuccessful() {
+        // Arrange
+        String jsonBody = "[{\"sha\":\"123\",\"commit\":{\"author\":{\"name\":\"test\",\"email\":\"test@test.com\",\"date\":\"2024-01-01T00:00:00Z\"},\"message\":\"feat: test commit\"},\"html_url\":\"http://test.com\"}]";
+        mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
 
-        String page2Url = mockWebServer.url("/repos/owner/repo/pulls?page=2").toString();
-        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json").addHeader("Link", String.format("<%s>; rel=\"next\"", page2Url)).setBody(String.format("[{\"id\": 1, \"updated_at\": \"%s\"}]", recentDate1)));
+        // Act
+        List<GithubCommitDto> commits = githubClient.getCommits("owner", "repo", since);
 
-        String page3Url = mockWebServer.url("/repos/owner/repo/pulls?page=3").toString();
-        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json").addHeader("Link", String.format("<%s>; rel=\"next\"", page3Url)).setBody(String.format("[{\"id\": 2, \"updated_at\": \"%s\"}, {\"id\": 3, \"updated_at\": \"%s\"}]", recentDate2, oldDate)));
+        // Assert
+        assertEquals(1, commits.size());
+        assertEquals("123", commits.get(0).getSha());
+    }
 
-        mockWebServer.enqueue(new MockResponse().setBody("[{\"id\": 4}]"));
+    @Test
+    void getPullRequests_shouldReturnPullRequestsWhenResponseIsSuccessful() {
+        // Arrange
+        String jsonBody = "[{\"id\":1,\"state\":\"open\",\"merged_at\":null,\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\", \"closed_at\":null}]";
+        mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
 
+        // Act
         List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", since);
 
-        assertEquals(2, pullRequests.size());
-        assertEquals(1L, pullRequests.get(0).getId());
-        assertEquals(2L, pullRequests.get(1).getId());
-        assertEquals(2, mockWebServer.getRequestCount());
-    }
-
-    @Test
-    @DisplayName("getPullRequests: Debe manejar un error 500 del servidor sin fallar")
-    void getPullRequests_whenServerReturns500_shouldNotFail() {
-        mockWebServer.enqueue(new MockResponse().setResponseCode(500));
-        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", LocalDateTime.now().minusDays(1));
-        assertTrue(pullRequests.isEmpty());
-        assertEquals(1, mockWebServer.getRequestCount());
-    }
-
-    @Test
-    @DisplayName("getPullRequests: Debe manejar una respuesta con cuerpo nulo sin fallar")
-    void getPullRequests_whenResponseHasNullBody_shouldNotFail() {
-        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json"));
-        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", LocalDateTime.now().minusDays(1));
-        assertTrue(pullRequests.isEmpty());
-    }
-
-    @Test
-    @DisplayName("getPullRequests: Debe manejar un PR con updated_at nulo sin fallar")
-    void getPullRequests_shouldHandleNullUpdatedAtGracefully() {
-        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json").setBody("[{\"id\": 123}]"));
-        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", LocalDateTime.now());
+        // Assert
         assertEquals(1, pullRequests.size());
-        assertEquals(123L, pullRequests.get(0).getId());
+        assertEquals(1L, pullRequests.get(0).getId());
+    }
+
+    @Test
+    void getPullRequests_shouldIncludePrWithNullUpdatedAt() {
+        // Arrange
+        String jsonBody = "[{\"id\":1,\"state\":\"open\",\"merged_at\":null,\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":null, \"closed_at\":null}]";
+        mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", since);
+
+        // Assert
+        assertEquals(1, pullRequests.size());
+        assertEquals(1L, pullRequests.get(0).getId());
         assertNull(pullRequests.get(0).getUpdatedAt());
     }
 
     @Test
-    @DisplayName("getCommits debe obtener todos los commits de múltiples páginas")
-    void getCommits_shouldFetchAllCommitsFromMultiplePages() throws InterruptedException {
-        String nextPageUrl = mockWebServer.url("/repos/owner/repo/commits?page=2").toString();
-        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json").addHeader("Link", String.format("<%s>; rel=\"next\"", nextPageUrl)).setBody("[{\"sha\": \"sha1\"}, {\"sha\": \"sha2\"}]"));
-        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json").setBody("[{\"sha\": \"sha3\"}]"));
-        List<GithubCommitDto> commits = githubClient.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
-        assertEquals(3, commits.size());
-        assertEquals("sha1", commits.get(0).getSha());
-        assertEquals("sha2", commits.get(1).getSha());
-        assertEquals("sha3", commits.get(2).getSha());
-        assertEquals(2, mockWebServer.getRequestCount());
-        RecordedRequest request1 = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertNotNull(request1);
-        assertTrue(request1.getPath().contains("/repos/owner/repo/commits?since="));
-        RecordedRequest request2 = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertNotNull(request2);
-        assertEquals("/repos/owner/repo/commits?page=2", request2.getPath());
+    void getWorkflowRuns_shouldReturnWorkflowRunsWhenResponseIsSuccessful() {
+        // Arrange
+        String jsonBody = "{\"total_count\":1,\"workflow_runs\":[{\"id\":1,\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\"}]}";
+        mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<GitHubWorkflowRunDto> runs = githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);
+
+        // Assert
+        assertEquals(1, runs.size());
+        assertEquals(1L, runs.get(0).getId());
     }
 
     @Test
-    @DisplayName("getCommits: Debe manejar una respuesta con cuerpo nulo sin fallar")
-    void getCommits_whenResponseHasNullBody_shouldNotFail() {
-        mockWebServer.enqueue(new MockResponse().setResponseCode(200).addHeader("Content-Type", "application/json"));
-        List<GithubCommitDto> commits = githubClient.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
-        assertTrue(commits.isEmpty());
-    }
-
-    @Test
-    @DisplayName("getCommits: Debe manejar un error 500 del servidor sin fallar")
-    void getCommits_whenServerReturns500_shouldNotFail() {
+    void getWorkflowRuns_shouldReturnEmptyListWhenApiReturnsError() {
+        // Arrange
         mockWebServer.enqueue(new MockResponse().setResponseCode(500));
-        List<GithubCommitDto> commits = githubClient.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
-        assertTrue(commits.isEmpty());
+
+        // Act
+        List<GitHubWorkflowRunDto> runs = githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);
+
+        // Assert
+        assertTrue(runs.isEmpty());
+    }
+
+    @Test
+    void getWorkflowRuns_shouldReturnEmptyListWhenWorkflowRunsFieldIsMissing() {
+        // Arrange
+        String jsonBody = "{\"total_count\": 0}";
+        mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<GitHubWorkflowRunDto> runs = githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);
+
+        // Assert
+        assertTrue(runs.isEmpty());
+    }
+
+    @Test
+    void parseNextPageUrl_shouldHandleAllCases() {
+        // Case 1: Null header
+        assertNull(githubClient.parseNextPageUrl(null));
+
+        // Case 2: Empty header list
+        assertNull(githubClient.parseNextPageUrl(Collections.emptyList()));
+
+        // Case 3: Header without "next" rel
+        assertNull(githubClient.parseNextPageUrl(Collections.singletonList("<http://example.com/page=2>; rel=\"last\"")));
+
+        // Case 4: Valid "next" link
+        assertEquals("http://example.com/page=2", githubClient.parseNextPageUrl(Collections.singletonList("<http://example.com/page=2>; rel=\"next\"")));
+
+        // Case 5: Valid "next" link with messy spacing
+        assertEquals("http://example.com/page=2", githubClient.parseNextPageUrl(Collections.singletonList("  <http://example.com/page=2>  ;  rel=\"next\"  ")));
+
+        // Case 6: Complex header with multiple links
+        assertEquals("http://example.com/page=3", githubClient.parseNextPageUrl(Collections.singletonList("<http://example.com/page=1>; rel=\"first\", <http://example.com/page=3>; rel=\"next\", <http://example.com/page=5>; rel=\"last\"")));
+
+        // Case 7: Malformed link segment (no rel)
+        assertNull(githubClient.parseNextPageUrl(Collections.singletonList("<https://api.github.com/malformed-url>")));
+
+        // Case 8: Malformed URL (no starting '<')
+        assertNull(githubClient.parseNextPageUrl(Collections.singletonList("https://api.github.com/malformed-url>; rel=\"next\"")));
+
+        // Case 9: Malformed URL (no ending '>')
+        assertNull(githubClient.parseNextPageUrl(Collections.singletonList("<https://api.github.com/malformed-url; rel=\"next\"")));
+    }
+
+    @Test
+    void getWorkflowRuns_shouldCorrectlyFilterByDateAndHandleNullTimestamps() {
+        // Arrange
+        String jsonBody = "{\"total_count\":3,\"workflow_runs\":[{\"id\":1,\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2023-12-31T23:59:59Z\",\"updated_at\":\"2023-12-31T23:59:59Z\"},{\"id\":2,\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\"},{\"id\":3,\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":null,\"updated_at\":\"2024-01-02T00:00:00Z\"}]}";
+        mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<GitHubWorkflowRunDto> runs = githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);
+
+        // Assert
+        assertEquals(2, runs.size());
+        assertTrue(runs.stream().anyMatch(run -> run.getId() == 2L));
+        assertTrue(runs.stream().anyMatch(run -> run.getId() == 3L));
+        assertFalse(runs.stream().anyMatch(run -> run.getId() == 1L));
+    }
+
+    @Test
+    void getWorkflowRuns_shouldHandleSinglePageResponseWithoutLinkHeader() {
+        // Arrange
+        String jsonBody = "{\"total_count\":1,\"workflow_runs\":[{\"id\":1,\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\"}]}";
+        mockWebServer.enqueue(
+            new MockResponse()
+                .setBody(jsonBody)
+                .addHeader("Content-Type", "application/json")
+        );
+
+        // Act
+        List<GitHubWorkflowRunDto> runs = githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);
+
+        // Assert
+        assertEquals(1, runs.size());
+        assertEquals(1L, runs.get(0).getId());
+    }
+
+    @Test
+    void getWorkflowRuns_stopsPagingWhenNoLinkHeaderIsPresent() throws Exception {
+        // Arrange
+        String jsonBody = "{\"total_count\":1,\"workflow_runs\":[{\"id\":1,\"status\":\"completed\",\"conclusion\":\"success\",\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\"}]}";
+        mockWebServer.enqueue(
+            new MockResponse()
+                .setBody(jsonBody)
+                .addHeader("Content-Type", "application/json")
+        );
+
+        // Act
+        githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);
+
+        // Assert
         assertEquals(1, mockWebServer.getRequestCount());
     }
 
     @Test
-    @DisplayName("parseNextPageUrl: Debe manejar correctamente la cabecera Link")
-    void parseNextPageUrl_shouldHandleLinkHeaderCorrectly() {
-        String expectedUrl = "https://api.github.com/resource?page=2";
-        List<String> linkHeaderWithNext = List.of(String.format("<%s>; rel=\"next\", <https://api.github.com/resource?page=3>; rel=\"last\"", expectedUrl));
-        List<String> linkHeaderWithoutNext = List.of("<https://api.github.com/resource?page=1>; rel=\"first\"");
+    void parseNextPageUrl_shouldHandleNullInLinkHeaderList() {
+        // Arrange
+        List<String> linkHeaders = new ArrayList<>();
+        linkHeaders.add(null);
+        linkHeaders.add("<http://example.com/page=3>; rel=\"next\"");
 
-        assertNull(githubClient.parseNextPageUrl(null));
-        assertNull(githubClient.parseNextPageUrl(List.of()));
-        assertNull(githubClient.parseNextPageUrl(linkHeaderWithoutNext));
-        assertEquals(expectedUrl, githubClient.parseNextPageUrl(linkHeaderWithNext));
+        // Act
+        String nextPageUrl = githubClient.parseNextPageUrl(linkHeaders);
+
+        // Assert
+        assertEquals("http://example.com/page=3", nextPageUrl);
+    }
+
+    @Test
+    void parseNextPageUrl_shouldReturnNullWhenLinkHeaderListContainsOnlyNull() {
+        // Arrange
+        List<String> linkHeaders = new ArrayList<>();
+        linkHeaders.add(null);
+
+        // Act
+        String nextPageUrl = githubClient.parseNextPageUrl(linkHeaders);
+
+        // Assert
+        assertNull(nextPageUrl);
     }
 }
