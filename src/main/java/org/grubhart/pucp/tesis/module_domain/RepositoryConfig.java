@@ -52,7 +52,7 @@ public class RepositoryConfig {
             }
 
             String[] parts = trimmedPath.split("/");
-            if (parts.length >= 1 && !parts[0].isBlank()) {
+            if (!parts[0].isBlank()) {
                 return parts[0];
             }
         } catch (java.net.URISyntaxException e) {
