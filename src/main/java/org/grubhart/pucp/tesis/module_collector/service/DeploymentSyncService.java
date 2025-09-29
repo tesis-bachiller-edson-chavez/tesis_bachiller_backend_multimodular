@@ -71,11 +71,11 @@ public class DeploymentSyncService {
         log.info("Sincronización de deployments completada para todos los repositorios.");
     }
 
-    private void syncDeploymentsForRepository(String owner, String repoName) {
+    private void syncDeploymentsForRepository(String owner, String repoName) throws Exception {
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById(JOB_NAME + "_" + repoName);
         LocalDateTime lastRun = syncStatus.map(SyncStatus::getLastSuccessfulRun).orElse(null);
 
-        try {
+
             List<GitHubWorkflowRunDto> workflowRuns = gitHubClient.getWorkflowRuns(owner, repoName, workflowFileName, lastRun);
 
             List<Deployment> newDeployments = workflowRuns.stream()
@@ -94,10 +94,6 @@ public class DeploymentSyncService {
             updateSyncStatus(repoName);
             log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
 
-        } catch (Exception e) {
-            log.error("Error durante la sincronización de deployments para {}/{}: {}", owner, repoName, e.getMessage(), e);
-            // No se actualiza el SyncStatus para que el próximo intento sea desde la última ejecución exitosa.
-        }
     }
 
     private Deployment convertToDeployment(GitHubWorkflowRunDto dto) {
