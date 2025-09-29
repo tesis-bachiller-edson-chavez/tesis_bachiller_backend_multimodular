@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.module_collector.service;
 import org.grubhart.pucp.tesis.module_collector.github.GithubClientImpl;
 import org.grubhart.pucp.tesis.module_domain.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,6 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
 
 @ExtendWith(MockitoExtension.class)
 class DeploymentSyncServiceTest {
@@ -153,5 +158,78 @@ class DeploymentSyncServiceTest {
 
         // Assert
         verify(deploymentRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("syncDeployments debe manejar un error inesperado durante la recolección y continuar")
+    void syncDeployments_shouldHandleUnexpectedErrorAndContinue() {
+        // 1. Arrange
+        // Configuramos un repositorio válido.
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_REPO_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+
+        // La clave: Simulamos que el cliente de GitHub lanza una excepción inesperada.
+        when(githubClient.getWorkflowRuns(anyString(), anyString(), anyString(), any()))
+                .thenThrow(new RuntimeException("Error de red simulado"));
+
+        // 2. Act
+        // Ejecutamos el método principal. No debería lanzar una excepción hacia afuera,
+        // ya que el try-catch interno debe manejarla.
+        deploymentSyncService.syncDeployments();
+
+        // 3. Assert
+        // Verificamos que se intentó obtener los datos, lo que provocó el error.
+        verify(githubClient, times(1)).getWorkflowRuns(eq("owner"), eq("repo"), anyString(), any());
+
+        // Verificamos que, debido al error, NUNCA se intentó guardar deployments.
+        verify(deploymentRepository, never()).saveAll(any());
+
+        // Verificamos que NUNCA se actualizó el estado de la sincronización para este repo fallido.
+        verify(syncStatusRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("syncDeployments debe saltar el repositorio si la URL de configuración es nula")
+    void syncDeployments_shouldSkipRepository_whenUrlIsNull() {
+        // 1. Arrange
+        // Creamos una configuración de repositorio con una URL nula.
+        // Usamos un mock para forzar este estado, ya que la entidad real podría no permitirlo.
+        RepositoryConfig nullUrlConfig = mock(RepositoryConfig.class);
+        when(nullUrlConfig.getRepositoryUrl()).thenReturn(null);
+
+        // Configuramos el mock para que devuelva esta configuración inválida.
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(nullUrlConfig));
+
+        // 2. Act
+        // Ejecutamos el método principal.
+        deploymentSyncService.syncDeployments();
+
+        // 3. Assert
+        // Verificamos que, debido a la URL nula, nunca se intentó recolectar datos.
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
+        verify(deploymentRepository, never()).saveAll(any());
+        verify(syncStatusRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "}) // Provee una cadena vacía y una con espacios
+    @DisplayName("syncDeployments debe saltar el repositorio si la URL está vacía o en blanco")
+    void syncDeployments_shouldSkipRepository_whenUrlIsEmptyOrBlank(String invalidUrl) {
+        // 1. Arrange
+        // Creamos una configuración con la URL inválida proporcionada por el test.
+        RepositoryConfig emptyUrlConfig = new RepositoryConfig(invalidUrl);
+
+        // Configuramos el mock para que devuelva esta configuración.
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(emptyUrlConfig));
+
+        // 2. Act
+        // Ejecutamos el método principal.
+        deploymentSyncService.syncDeployments();
+
+        // 3. Assert
+        // Verificamos que, debido a la URL inválida, nunca se intentó recolectar datos.
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
+        verify(deploymentRepository, never()).saveAll(any());
+        verify(syncStatusRepository, never()).save(any());
     }
 }

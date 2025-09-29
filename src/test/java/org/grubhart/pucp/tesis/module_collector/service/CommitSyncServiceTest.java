@@ -197,4 +197,28 @@ class CommitSyncServiceTest {
         assertThat(savedCommits).hasSize(1);
         assertThat(savedCommits.get(0).getSha()).isEqualTo("sha-nuevo");
     }
+
+    @Test
+    @DisplayName("syncCommits debe saltar la sincronización si la configuración del repositorio no tiene 'owner'")
+    void syncCommits_shouldSkipSync_whenRepositoryConfigHasNoOwner() {
+        // 1. Arrange
+        // Creamos una configuración de repositorio donde 'owner' es nulo.
+        // Una URL sin una ruta clara resultará en un owner nulo.
+        RepositoryConfig malformedConfig = new RepositoryConfig("https://github.com");
+
+        // Configuramos el mock para que devuelva esta configuración inválida.
+        when(repositoryConfigRepository.findAll()).thenReturn(Collections.singletonList(malformedConfig));
+
+        // 2. Act
+        // Ejecutamos el método principal que queremos probar.
+        commitSyncService.syncCommits();
+
+        // 3. Assert
+        // Verificamos que NUNCA se intentó obtener commits, ya que la configuración era inválida.
+        verify(githubCommitCollector, never()).getCommits(any(), any(), any());
+
+        // Verificamos que NUNCA se intentó guardar nada en los repositorios.
+        verify(commitRepository, never()).saveAll(any());
+        verify(syncStatusRepository, never()).save(any());
+    }
 }
