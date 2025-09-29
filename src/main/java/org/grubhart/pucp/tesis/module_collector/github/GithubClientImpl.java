@@ -10,6 +10,7 @@ import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
 import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,10 +23,11 @@ import reactor.core.publisher.Mono;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Implementación concreta que utiliza WebClient para interactuar
@@ -37,6 +39,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
     private static final Logger logger = LoggerFactory.getLogger(GithubClientImpl.class);
     private final WebClient webClient;
 
+    @Autowired
     public GithubClientImpl(WebClient.Builder webClientBuilder,
                             @Value("${dora.github.api-url:https://api.github.com}") String githubApiUrl,
                             @Value("${dora.github.api-token}") String githubApiToken){
@@ -45,6 +48,10 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                 .defaultHeader("Authorization", "token " + githubApiToken)
                 .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
                 .build();
+    }
+
+    GithubClientImpl(WebClient webClient) {
+        this.webClient = webClient;
     }
 
     @Override
@@ -75,27 +82,37 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         List<GithubCommitDto> allCommits = new ArrayList<>();
         String nextPageUrl = initialUrl;
 
-        while (nextPageUrl != null) {
-            logger.debug("Obteniendo página de commits: {}", nextPageUrl);
+        try {
+            while (nextPageUrl != null) {
+                final String currentUrl = nextPageUrl;
+                try {
+                    ResponseEntity<List<GithubCommitDto>> responseEntity = webClient.get()
+                            .uri(currentUrl)
+                            .retrieve()
+                            .toEntityList(GithubCommitDto.class)
+                            .block();
 
-            final String currentUrl = nextPageUrl;
-            final AtomicReference<String> nextUrlFromHeader = new AtomicReference<>();
-
-            List<GithubCommitDto> pageCommits = webClient.get()
-                    .uri(currentUrl)
-                    .exchangeToMono(response -> {
-                        nextUrlFromHeader.set(parseNextPageUrl(response.headers().header("Link")));
-                        if (response.statusCode().isError()) {
-                            logger.error("Error en la respuesta de la API: {} para la URL: {}", response.statusCode(), currentUrl);
-                            return Mono.just(Collections.<GithubCommitDto>emptyList());
+                    if (responseEntity != null) {
+                        if (responseEntity.getBody() != null) {
+                            allCommits.addAll(responseEntity.getBody());
                         }
-                        return response.bodyToFlux(GithubCommitDto.class).collectList();
-                    })
-                    .onErrorReturn(Collections.emptyList())
-                    .block();
-
-            allCommits.addAll(pageCommits);
-            nextPageUrl = nextUrlFromHeader.get();
+                        nextPageUrl = parseNextPageUrl(responseEntity.getHeaders().get("Link"));
+                    } else {
+                        nextPageUrl = null;
+                    }
+                } catch (WebClientResponseException e) {
+                    logger.error("Error fetching commits from {}: {} - {}", currentUrl, e.getStatusCode(), e.getResponseBodyAsString(), e);
+                    if (e.getStatusCode().is5xxServerError()) {
+                        throw new RuntimeException("Failed to fetch commits from GitHub due to a server error: " + e.getMessage(), e);
+                    }
+                    break;
+                }
+            }
+        } catch (RuntimeException e) {
+            if (allCommits.isEmpty()) {
+                throw e; // Rethrow if error happened on the first page
+            }
+            logger.warn("Error during paginated commit collection. Returning partial results. Error: {}", e.getMessage());
         }
 
         logger.info("Recolección paginada finalizada. Total de commits obtenidos: {}", allCommits.size());
@@ -116,43 +133,46 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
 
         List<GithubPullRequestDto> allPullRequests = new ArrayList<>();
         String nextPageUrl = initialUrl;
+        boolean shouldStop = false;
 
-        while (nextPageUrl != null) {
-            logger.debug("Obteniendo página de Pull Requests: {}", nextPageUrl);
+        try {
+            while (nextPageUrl != null && !shouldStop) {
+                final String currentUrl = nextPageUrl;
+                try {
+                    ResponseEntity<List<GithubPullRequestDto>> responseEntity = webClient.get()
+                            .uri(currentUrl)
+                            .retrieve()
+                            .toEntityList(GithubPullRequestDto.class)
+                            .block();
 
-            final String currentUrl = nextPageUrl;
-            final AtomicReference<String> nextUrlFromHeader = new AtomicReference<>();
-            final AtomicBoolean stopPaginatingForNextIteration = new AtomicBoolean(false);
+                    if (responseEntity == null || responseEntity.getBody() == null) {
+                        break;
+                    }
 
-            List<GithubPullRequestDto> processedPage = webClient.get()
-                    .uri(currentUrl)
-                    .exchangeToMono(response -> {
-                        nextUrlFromHeader.set(parseNextPageUrl(response.headers().header("Link")));
-                        if (response.statusCode().isError()) {
-                            logger.error("Error en la respuesta de la API: {} para la URL: {}", response.statusCode(), currentUrl);
-                            stopPaginatingForNextIteration.set(true);
-                            return Mono.just(Collections.<GithubPullRequestDto>emptyList());
+                    List<GithubPullRequestDto> pagePRs = responseEntity.getBody();
+                    nextPageUrl = parseNextPageUrl(responseEntity.getHeaders().get("Link"));
+
+                    for (GithubPullRequestDto pr : pagePRs) {
+                        if (pr.getUpdatedAt() != null && pr.getUpdatedAt().isBefore(since)) {
+                            shouldStop = true;
+                            continue;
                         }
-                        return response.bodyToFlux(GithubPullRequestDto.class)
-                                .takeWhile(pr -> {
-                                    boolean isNewEnough = pr.getUpdatedAt() == null || !pr.getUpdatedAt().isBefore(since);
-                                    if (!isNewEnough) {
-                                        stopPaginatingForNextIteration.set(true);
-                                    }
-                                    return isNewEnough;
-                                })
-                                .collectList();
-                    })
-                    .onErrorReturn(Collections.emptyList())
-                    .block();
+                        allPullRequests.add(pr);
+                    }
 
-            allPullRequests.addAll(processedPage);
-
-            if (stopPaginatingForNextIteration.get()) {
-                nextPageUrl = null;
-            } else {
-                nextPageUrl = nextUrlFromHeader.get();
+                } catch (WebClientResponseException e) {
+                    logger.error("Error fetching pull requests from {}: {} - {}", currentUrl, e.getStatusCode(), e.getResponseBodyAsString(), e);
+                    if (e.getStatusCode().is5xxServerError()) {
+                        throw new RuntimeException("Failed to fetch pull requests from GitHub due to a server error: " + e.getMessage(), e);
+                    }
+                    break;
+                }
             }
+        } catch (RuntimeException e) {
+            if (allPullRequests.isEmpty()) {
+                throw e;
+            }
+            logger.warn("Error during paginated pull request collection. Returning partial results. Error: {}", e.getMessage());
         }
 
         logger.info("Recolección paginada finalizada. Total de Pull Requests obtenidos: {}", allPullRequests.size());
@@ -174,39 +194,44 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
 
         List<GitHubWorkflowRunDto> allWorkflowRuns = new ArrayList<>();
         String nextPageUrl = initialUrl;
-        boolean continuePaginating = true;
+        boolean shouldStop = false;
 
-        while (nextPageUrl != null && continuePaginating) {
-            logger.debug("Obteniendo página de Workflow Runs: {}", nextPageUrl);
+        try {
+            while (nextPageUrl != null && !shouldStop) {
+                final String currentUrl = nextPageUrl;
+                try {
+                    ResponseEntity<GitHubWorkflowRunsResponse> responseEntity = webClient.get()
+                            .uri(currentUrl)
+                            .retrieve()
+                            .toEntity(GitHubWorkflowRunsResponse.class)
+                            .block();
 
-            ResponseEntity<GitHubWorkflowRunsResponse> responseEntity = webClient.get()
-                    .uri(nextPageUrl)
-                    .retrieve()
-                    .toEntity(GitHubWorkflowRunsResponse.class)
-                    .block();
+                    if (responseEntity == null || !responseEntity.hasBody() || responseEntity.getBody().getWorkflowRuns() == null) {
+                        break;
+                    }
 
-            if (responseEntity == null || !responseEntity.getStatusCode().is2xxSuccessful() || !responseEntity.hasBody()) {
-                logger.error("Error en la respuesta de la API o cuerpo vacío para la URL: {}", nextPageUrl);
-                break;
-            }
+                    nextPageUrl = parseNextPageUrl(responseEntity.getHeaders().get("Link"));
 
-            nextPageUrl = parseNextPageUrl(responseEntity.getHeaders().get("Link"));
-
-            GitHubWorkflowRunsResponse responseBody = responseEntity.getBody();
-            if (responseBody.getWorkflowRuns() == null) {
-                break;
-            }
-
-            for (GitHubWorkflowRunDto run : responseBody.getWorkflowRuns()) {
-                // Si 'since' es nulo, es la primera sincronización, así que procesamos todo.
-                // Si 'since' no es nulo, nos detenemos cuando encontramos un 'run' que ya no es más nuevo que nuestra última sincronización.
-                if (since != null && run.getCreatedAt() != null && !run.getCreatedAt().isAfter(since)) {
-                    logger.info("Se encontró un workflow run ({}) igual o más antiguo que la fecha de sincronización ({}). Deteniendo la paginación.", run.getId(), since);
-                    continuePaginating = false;
-                    break; // Detiene el bucle for
+                    for (GitHubWorkflowRunDto run : responseEntity.getBody().getWorkflowRuns()) {
+                        if (since != null && run.getCreatedAt() != null && run.getCreatedAt().isBefore(since)) {
+                            shouldStop = true;
+                            continue;
+                        }
+                        allWorkflowRuns.add(run);
+                    }
+                } catch (WebClientResponseException e) {
+                    logger.error("Error fetching workflow runs from {}: {} - {}", currentUrl, e.getStatusCode(), e.getResponseBodyAsString(), e);
+                    if (e.getStatusCode().is5xxServerError()) {
+                        throw new RuntimeException("Failed to fetch workflow runs from GitHub due to a server error: " + e.getMessage(), e);
+                    }
+                    break;
                 }
-                allWorkflowRuns.add(run);
             }
+        } catch (RuntimeException e) {
+            if (allWorkflowRuns.isEmpty()) {
+                throw e;
+            }
+            logger.warn("Error during paginated workflow run collection. Returning partial results. Error: {}", e.getMessage());
         }
 
         logger.info("Recolección paginada finalizada. Total de Workflow Runs obtenidos: {}", allWorkflowRuns.size());
@@ -214,32 +239,19 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
     }
 
     String parseNextPageUrl(List<String> linkHeaders) {
-        if (linkHeaders == null || linkHeaders.isEmpty()) {
+        if (linkHeaders == null) {
             return null;
         }
 
-        String linkHeader = linkHeaders.get(0);
-        if (linkHeader == null || linkHeader.isEmpty()) {
-            return null;
-        }
+        Pattern nextLinkPattern = Pattern.compile("<([^>]+)>\s*;\s*rel=\"next\"");
 
-        String[] links = linkHeader.split(", ");
-        for (String link : links) {
-            String[] segments = link.split(";");
-            if (segments.length < 2) {
-                continue;
-            }
-
-            String urlPart = segments[0].trim();
-            String relPart = segments[1].trim();
-
-            if (relPart.equals("rel=\"next\"")) {
-                if (urlPart.startsWith("<") && urlPart.endsWith(">")) {
-                    return urlPart.substring(1, urlPart.length() - 1);
-                }
-            }
-        }
-
-        return null;
+        return linkHeaders.stream()
+                .filter(Objects::nonNull)
+                .flatMap(header -> Stream.of(header.split(",")))
+                .map(part -> nextLinkPattern.matcher(part.trim()))
+                .filter(Matcher::find)
+                .map(matcher -> matcher.group(1))
+                .findFirst()
+                .orElse(null);
     }
 }

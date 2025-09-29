@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 public class CommitSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(CommitSyncService.class);
+    public static final String SYNC_ID_PREFIX = "COMMIT_SYNC_";
 
     private final CommitRepository commitRepository;
     private final SyncStatusRepository syncStatusRepository;
@@ -66,7 +67,8 @@ public class CommitSyncService {
             return;
         }
 
-        Optional<SyncStatus> syncStatus = syncStatusRepository.findById("COMMIT_SYNC");
+        String syncId = SYNC_ID_PREFIX + owner + "/" + repo;
+        Optional<SyncStatus> syncStatus = syncStatusRepository.findById(syncId);
         LocalDateTime lastSync = syncStatus.map(SyncStatus::getLastSuccessfulRun)
                 // Si nunca se ha sincronizado, trae los commits de hace un año.
                 .orElse(LocalDateTime.now().minusYears(1));
@@ -87,7 +89,7 @@ public class CommitSyncService {
                 log.info("No se encontraron nuevos commits.");
             }
 
-            SyncStatus newSyncStatus = new SyncStatus("COMMIT_SYNC", LocalDateTime.now());
+            SyncStatus newSyncStatus = new SyncStatus(syncId, LocalDateTime.now());
             syncStatusRepository.save(newSyncStatus);
             log.info("Sincronización de commits para {}/{} completada exitosamente.", owner, repo);
 

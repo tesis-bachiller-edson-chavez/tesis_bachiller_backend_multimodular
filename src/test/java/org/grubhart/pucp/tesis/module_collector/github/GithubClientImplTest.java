@@ -2,9 +2,9 @@ package org.grubhart.pucp.tesis.module_collector.github;
 
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
 import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
-import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -95,9 +95,20 @@ class GithubClientImplTest {
     }
 
     @Test
-    void getWorkflowRuns_shouldReturnEmptyListWhenApiReturnsError() {
+    void getWorkflowRuns_shouldThrowRuntimeExceptionWhenApiReturns5xxError() {
         // Arrange
         mockWebServer.enqueue(new MockResponse().setResponseCode(500));
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> {
+            githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);
+        });
+    }
+
+    @Test
+    void getWorkflowRuns_shouldReturnEmptyListWhenApiReturns4xxError() {
+        // Arrange
+        mockWebServer.enqueue(new MockResponse().setResponseCode(404));
 
         // Act
         List<GitHubWorkflowRunDto> runs = githubClient.getWorkflowRuns("owner", "repo", "main.yml", since);

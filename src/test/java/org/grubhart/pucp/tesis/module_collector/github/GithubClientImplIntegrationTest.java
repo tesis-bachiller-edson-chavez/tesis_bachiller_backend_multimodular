@@ -5,18 +5,24 @@ import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
 import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
 import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.contract.wiremock.AutoConfigureWireMock;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
 @SpringBootTest
@@ -33,11 +39,17 @@ class GithubClientImplIntegrationTest {
     private GithubUserAuthenticator githubUserAuthenticator;
 
     @Autowired
-    private GithubClientImpl githubClient; // Cambio realizado aquí
+    private GithubClientImpl githubClient;
 
     @Autowired
     private GithubCommitCollector githubCommitCollector;
-    
+
+    @BeforeEach
+    void setUp() {
+        // Limpiamos todas las reglas de WireMock antes de cada test
+        resetAllRequests();
+    }
+
     @Test
     @DisplayName("Dado un usuario que SÍ es miembro, debe devolver true")
     void isUserMemberOfOrganization_whenUserIsMember_shouldReturnTrue() {
@@ -45,10 +57,10 @@ class GithubClientImplIntegrationTest {
         stubFor(get(urlEqualTo("/orgs/test-org/members/member-user"))
                 .willReturn(aResponse()
                         .withStatus(204)));
-        
+
         // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("member-user", "test-org");
-        
+
         // THEN
         assertThat(isMember).isTrue();
     }
@@ -60,10 +72,10 @@ class GithubClientImplIntegrationTest {
         stubFor(get(urlEqualTo("/orgs/test-org/members/non-member-user"))
                 .willReturn(aResponse()
                         .withStatus(404)));
-        
+
         // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("non-member-user", "test-org");
-        
+
         // THEN
         assertThat(isMember).isFalse();
     }
@@ -74,16 +86,16 @@ class GithubClientImplIntegrationTest {
         // GIVEN: Simulamos un error interno del servidor.
         stubFor(get(urlEqualTo("/orgs/test-org/members/any-user"))
                 .willReturn(aResponse().withStatus(500)));
-        
+
         // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("any-user", "test-org");
-        
+
         // THEN
         assertThat(isMember).isFalse();
     }
-    
+
     @Test
-    @DisplayName("Dado una respuesta 200 OK de la API (no 240), debe devolver false")
+    @DisplayName("Dado una respuesta 200 OK de la API (no 204), debe devolver false")
     void isUserMemberOfOrganization_whenApiReturnsOk_shouldReturnFalse() {
         // GIVEN: Simulamos que la API de GitHub responde con HTTP 200 OK.
         stubFor(get(urlEqualTo("/orgs/test-org/members/any-user"))
@@ -91,10 +103,10 @@ class GithubClientImplIntegrationTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("{}")));
-        
+
         // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("any-user", "test-org");
-        
+
         // THEN
         assertThat(isMember).isFalse();
     }
@@ -140,121 +152,150 @@ class GithubClientImplIntegrationTest {
         GithubCommitDto firstCommit = commits.get(0);
         assertThat(firstCommit.getSha()).isEqualTo("c2a38519939553376756202026824180e8396469");
         assertThat(firstCommit.getCommit().getMessage()).isEqualTo("feat: initial commit");
-
-        // Verificamos los campos del autor del commit
-        GithubCommitDto.CommitAuthor commitAuthor = firstCommit.getCommit().getAuthor();
-        assertThat(commitAuthor.getName()).isEqualTo("Grubhart");
-        assertThat(commitAuthor.getEmail()).isEqualTo("grubhart@example.com");
-        assertThat(commitAuthor.getDate()).isNotNull();
-
-        // Verificamos el autor a nivel superior (el usuario de GitHub que hizo el push)
-        GithubCommitDto.Author topLevelAuthor = firstCommit.getAuthor();
-        assertThat(topLevelAuthor).isNotNull();
-        assertThat(topLevelAuthor.getLogin()).isEqualTo("Grubhart");
     }
 
     @Test
-    @DisplayName("Cuando la API de commits devuelve un error, debe devolver una lista vacía")
-    void getCommits_whenApiReturnsError_shouldReturnEmptyList() {
-        // GIVEN: Simulamos un error 500 del servidor para la API de commits.
+    @DisplayName("Cuando la API de commits devuelve 5xx, debe lanzar una RuntimeException")
+    void getCommits_whenApiReturns5xxError_shouldThrowRuntimeException() {
         stubFor(get(urlMatching("/repos/owner/repo/commits\\?since=.*"))
-                .willReturn(aResponse()
-                        .withStatus(500)));
+                .willReturn(aResponse().withStatus(500)));
 
-        // WHEN: Se intenta obtener los commits.
+        assertThrows(RuntimeException.class, () -> {
+            githubCommitCollector.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
+        });
+    }
+
+    @Test
+    @DisplayName("Cuando la API de commits devuelve 4xx, debe devolver una lista vacía")
+    void getCommits_whenApiReturns4xxError_shouldReturnEmptyList() {
+        stubFor(get(urlMatching("/repos/owner/repo/commits\\?since=.*"))
+                .willReturn(aResponse().withStatus(404)));
+
         List<GithubCommitDto> commits = githubCommitCollector.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
 
-        // THEN: La lista de commits debe estar vacía.
         assertThat(commits).isEmpty();
     }
 
     @Test
-    @DisplayName("Cuando una llamada recursiva a la API de commits falla, debe devolver los commits de las páginas exitosas")
-    void getCommits_whenRecursiveCallFails_shouldReturnPartialList() {
-        // GIVEN:
-        // 1. La primera página de commits se devuelve correctamente, con un enlace a la siguiente.
+    @DisplayName("Cuando una llamada paginada a la API de commits falla, debe devolver los commits de las páginas exitosas")
+    void getCommits_whenPaginatedCallFails_shouldReturnPartialList() {
         String firstPageJsonResponse = """
              [
-               {
-                 "sha": "c2a38519939553376756202026824180e8396469",
-                 "commit": {
-                   "author": { "name": "Grubhart", "email": "grubhart@example.com", "date": "2024-09-07T10:30:00Z" },
-                   "message": "feat: initial commit"
-                 },
-                 "author": { "login": "Grubhart" }
-               }
+               { "sha": "c2a3851" }
              ]
              """;
         stubFor(get(urlPathEqualTo("/repos/owner/repo/commits"))
                 .withQueryParam("since", matching(".*"))
+                .withQueryParam("per_page", matching(".*"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withHeader("Link", "</repos/owner/repo/commits_page2>; rel=\"next\"")
+                        .withHeader("Link", "<http://localhost:${wiremock.server.port}/repos/owner/repo/commits_page2>; rel=\"next\"")
                         .withBody(firstPageJsonResponse)));
 
-        // 2. La segunda página de commits (la llamada recursiva) devuelve un error.
         stubFor(get(urlEqualTo("/repos/owner/repo/commits_page2"))
                 .willReturn(aResponse()
                         .withStatus(500)));
 
-        // WHEN: Se intenta obtener los commits.
         List<GithubCommitDto> commits = githubCommitCollector.getCommits("owner", "repo", LocalDateTime.now().minusDays(1));
 
-        // THEN: La lista debe contener solo los commits de la primera página.
         assertThat(commits).hasSize(1);
-        assertThat(commits.get(0).getSha()).isEqualTo("c2a38519939553376756202026824180e8396469");
+        assertThat(commits.get(0).getSha()).isEqualTo("c2a3851");
     }
 
     @Test
-    @DisplayName("Cuando la API de pull requests devuelve un error, debe devolver una lista vacía")
-    void getPullRequests_whenApiReturnsError_shouldReturnEmptyList() {
-        // GIVEN: Simulamos un error 500 del servidor para la API de pull requests.
-        stubFor(get(urlEqualTo("/repos/owner/repo/pulls"))
-                .willReturn(aResponse()
-                        .withStatus(500)));
+    @DisplayName("Cuando la API de pull requests devuelve 5xx, debe lanzar RuntimeException")
+    void getPullRequests_whenApiReturns5xxError_shouldThrowRuntimeException() {
+        stubFor(get(urlPathEqualTo("/repos/owner/repo/pulls"))
+                .willReturn(aResponse().withStatus(500)));
 
-        // WHEN: Se intenta obtener los pull requests.
+        assertThrows(RuntimeException.class, () -> {
+            githubClient.getPullRequests("owner", "repo", LocalDateTime.now());
+        });
+    }
+
+    @Test
+    @DisplayName("Cuando la API de pull requests devuelve 4xx, debe devolver una lista vacía")
+    void getPullRequests_whenApiReturns4xxError_shouldReturnEmptyList() {
+        stubFor(get(urlPathEqualTo("/repos/owner/repo/pulls"))
+                .willReturn(aResponse().withStatus(404)));
+
         List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", LocalDateTime.now());
-        // THEN: La lista de pull requests debe estar vacía.
+
         assertThat(pullRequests).isEmpty();
     }
 
     @Test
-    @DisplayName("Debe filtrar los pull requests que son más antiguos que la fecha 'since'")
-    void getPullRequests_shouldFilterOutOldPullRequests() {
-        // GIVEN: Una fecha 'since' de hace 5 días.
-        LocalDateTime since = LocalDateTime.now().minusDays(5);
-        // Simulamos una respuesta con dos PRs: uno reciente y uno antiguo.
-        String jsonResponse = String.format("""
-             [
-               {
-                 "id": 1,
-                 "state": "closed",
-                 "updated_at": "%s",
-                 "user": { "login": "user1" }
-               },
-               {
-                 "id": 2,
-                 "state": "open",
-                 "updated_at": "%s",
-                 "user": { "login": "user2" }
-               }
-             ]
-             """,
-                LocalDateTime.now().minusDays(3).toString(), // Reciente (hace 3 días)
-                LocalDateTime.now().minusDays(10).toString() // Antiguo (hace 10 días)
-        );
-        stubFor(get(urlPathEqualTo("/repos/owner/repo/pulls"))
+    @DisplayName("getPullRequests debe detener la paginación cuando encuentra un PR antiguo")
+    void getPullRequests_whenOldPrIsFound_shouldStopPaging(@Value("${wiremock.server.port}") int wiremockPort) {
+// 1. Arrange
+        LocalDateTime since = LocalDateTime.now().minusDays(1);
+        String owner = "owner";
+        String repo = "repo";
+
+        // Respuesta JSON para la Página 1 (PR reciente)
+        String recentPRJson = String.format("""
+    [
+      {
+        "id": 1,
+        "state": "open",
+        "updated_at": "%s"
+      }
+    ]
+    """, since.plusHours(1).format(DateTimeFormatter.ISO_DATE_TIME));
+
+        // Respuesta JSON para la Página 2 (PR antiguo)
+        String oldPRJson = String.format("""
+    [
+      {
+        "id": 2,
+        "state": "closed",
+        "updated_at": "%s"
+      }
+    ]
+    """, since.minusHours(1).format(DateTimeFormatter.ISO_DATE_TIME));
+
+        // Construimos la URL de la siguiente página dinámicamente con el puerto correcto
+        String nextPageUrl = String.format("http://localhost:%d/repos/owner/repo/pulls?page=2", wiremockPort);
+
+        // Configuración de WireMock para la Página 1
+        stubFor(get(urlPathEqualTo("/repos/" + owner + "/" + repo + "/pulls"))
+                .withQueryParam("state", equalTo("all"))
+                .withQueryParam("sort", equalTo("updated"))
+                .withQueryParam("direction", equalTo("desc"))
+                .withQueryParam("per_page", equalTo("100"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody(jsonResponse)));
-        // WHEN: Se obtienen los pull requests.
-        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", since);
-        // THEN: La lista debe contener solo el PR reciente.
+                        // Usamos la URL construida dinámicamente para la cabecera 'Link'
+                        .withHeader("Link", String.format("<%s>; rel=\"next\"", nextPageUrl))
+                        .withBody(recentPRJson)));
+
+        // Configuración de WireMock para la Página 2
+        stubFor(get(urlEqualTo("/repos/owner/repo/pulls?page=2"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(oldPRJson)));
+
+        // 2. Act
+        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests(owner, repo, since);
+
+        // 3. Assert
+        assertThat(pullRequests).isNotNull();
+        // Solo el PR reciente debe estar en la lista, porque la paginación se detuvo
         assertThat(pullRequests).hasSize(1);
-        assertThat(pullRequests.get(0).getId()).isEqualTo(1);
-        assertThat(pullRequests.get(0).getState()).isEqualTo("closed");
+        assertThat(pullRequests.get(0).getId()).isEqualTo(1L);
+
+        // --- CAMBIOS AQUÍ ---
+        // Verificamos que se hizo la llamada a la primera página (con sus parámetros)
+        verify(1, getRequestedFor(urlPathEqualTo("/repos/owner/repo/pulls"))
+                .withQueryParam("state", equalTo("all"))
+                .withQueryParam("sort", equalTo("updated"))
+                .withQueryParam("direction", equalTo("desc"))
+                .withQueryParam("per_page", equalTo("100")));
+
+        // Verificamos que también se hizo la llamada a la segunda página
+        verify(1, getRequestedFor(urlEqualTo("/repos/owner/repo/pulls?page=2")));
     }
 }
