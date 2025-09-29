@@ -1,10 +1,7 @@
 package org.grubhart.pucp.tesis.module_collector.github;
 
 
-import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
-import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
-import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
-import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
+import org.grubhart.pucp.tesis.module_domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -297,5 +294,302 @@ class GithubClientImplIntegrationTest {
 
         // Verificamos que también se hizo la llamada a la segunda página
         verify(1, getRequestedFor(urlEqualTo("/repos/owner/repo/pulls?page=2")));
+    }
+
+    @Test
+    @DisplayName("getPullRequests debe detenerse y no llamar a la siguiente página si encuentra un PR antiguo en la primera")
+    void getPullRequests_shouldNotFetchNextPage_whenOldPrIsFoundOnFirstPage(@Value("${wiremock.server.port}") int wiremockPort) {
+        // 1. Arrange
+        LocalDateTime since = LocalDateTime.now().minusDays(1);
+        String owner = "owner";
+        String repo = "repo";
+
+        // Creamos un JSON para la primera página que contiene un PR reciente y uno antiguo.
+        // El cliente debe procesar el reciente, encontrar el antiguo, y detenerse.
+        String firstPageJson = String.format("""
+        [
+          {
+            "id": 1,
+            "state": "open",
+            "updated_at": "%s"
+          },
+          {
+            "id": 2,
+            "state": "closed",
+            "updated_at": "%s"
+          }
+        ]
+        """, since.plusHours(1).format(DateTimeFormatter.ISO_DATE_TIME), // PR Reciente
+                since.minusHours(1).format(DateTimeFormatter.ISO_DATE_TIME) // PR Antiguo
+        );
+
+        // Construimos la URL de la siguiente página, aunque esperamos que NUNCA se llame.
+        String nextPageUrl = String.format("http://localhost:%d/repos/owner/repo/pulls?page=2", wiremockPort);
+
+        // Configuración de WireMock para la Página 1
+        // Esta página contiene un PR antiguo y un link a la siguiente página.
+        stubFor(get(urlPathEqualTo("/repos/" + owner + "/" + repo + "/pulls"))
+                .withQueryParam("state", equalTo("all"))
+                .withQueryParam("sort", equalTo("updated"))
+                .withQueryParam("direction", equalTo("desc"))
+                .withQueryParam("per_page", equalTo("100"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withHeader("Link", String.format("<%s>; rel=\"next\"", nextPageUrl))
+                        .withBody(firstPageJson)));
+
+        // 2. Act
+        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests(owner, repo, since);
+
+        // 3. Assert
+        assertThat(pullRequests).isNotNull();
+        // Solo el PR reciente debe estar en la lista.
+        assertThat(pullRequests).hasSize(1);
+        assertThat(pullRequests.get(0).getId()).isEqualTo(1L);
+
+        // Verificamos que se hizo la llamada a la primera página.
+        verify(1, getRequestedFor(urlPathEqualTo("/repos/owner/repo/pulls")));
+
+        // La aserción CLAVE: Verificamos que NUNCA se hizo la llamada a la segunda página.
+        verify(0, getRequestedFor(urlEqualTo("/repos/owner/repo/pulls?page=2")));
+    }
+
+    @Test
+    @DisplayName("getPullRequests debe devolver resultados parciales si una llamada paginada falla")
+    void getPullRequests_shouldReturnPartialResults_whenPaginatedCallFails(@Value("${wiremock.server.port}") int wiremockPort) {
+        // 1. Arrange
+        LocalDateTime since = LocalDateTime.now().minusDays(1);
+        String owner = "owner";
+        String repo = "repo";
+
+        // Respuesta JSON para la Página 1 (exitosa)
+        String firstPageJson = String.format("""
+        [
+          {
+            "id": 1,
+            "state": "open",
+            "updated_at": "%s"
+          }
+        ]
+        """, since.plusHours(1).format(DateTimeFormatter.ISO_DATE_TIME));
+
+        // Construimos la URL de la siguiente página, que sabemos que va a fallar.
+        String nextPageUrl = String.format("http://localhost:%d/repos/owner/repo/pulls?page=2", wiremockPort);
+
+        // Configuración de WireMock para la Página 1 (éxito)
+        stubFor(get(urlPathEqualTo("/repos/" + owner + "/" + repo + "/pulls"))
+                .withQueryParam("state", equalTo("all"))
+                // Añadimos los otros query params para que el stub sea más específico
+                .withQueryParam("sort", equalTo("updated"))
+                .withQueryParam("direction", equalTo("desc"))
+                .withQueryParam("per_page", equalTo("100"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withHeader("Link", String.format("<%s>; rel=\"next\"", nextPageUrl))
+                        .withBody(firstPageJson)));
+
+        // Configuración de WireMock para la Página 2 (fallo)
+        stubFor(get(urlEqualTo("/repos/owner/repo/pulls?page=2"))
+                .willReturn(aResponse()
+                        .withStatus(500) // Error interno del servidor
+                        .withBody("{\"message\":\"Internal Server Error\"}")));
+
+        // 2. Act
+        List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests(owner, repo, since);
+
+        // 3. Assert
+        // Verificamos que no se lanzó una excepción y que recibimos los resultados de la primera página.
+        assertThat(pullRequests).isNotNull();
+        assertThat(pullRequests).hasSize(1);
+        assertThat(pullRequests.get(0).getId()).isEqualTo(1L);
+
+        // --- CAMBIO CLAVE AQUÍ ---
+        // Verificamos que se intentaron ambas llamadas, pero de forma específica.
+        // Verificación para la primera página, con todos sus parámetros.
+        verify(1, getRequestedFor(urlPathEqualTo("/repos/owner/repo/pulls"))
+                .withQueryParam("state", equalTo("all"))
+                .withQueryParam("sort", equalTo("updated"))
+                .withQueryParam("direction", equalTo("desc"))
+                .withQueryParam("per_page", equalTo("100")));
+
+        // Verificación para la segunda página.
+        verify(1, getRequestedFor(urlEqualTo("/repos/owner/repo/pulls?page=2")));
+    }
+
+    @Test
+    @DisplayName("getWorkflowRuns debe obtener todas las páginas cuando 'since' es nulo (primera sincronización)")
+    void getWorkflowRuns_whenSinceIsNull_shouldFetchAllPages(@Value("${wiremock.server.port}") int wiremockPort) {
+        // 1. Arrange
+        String owner = "owner";
+        String repo = "repo";
+        String workflowFile = "workflow.yml";
+
+        // Respuesta JSON para la Página 1
+        String firstPageJson = """
+        {
+          "total_count": 2,
+          "workflow_runs": [
+            { "id": 101, "status": "completed", "conclusion": "success", "created_at": "2025-09-28T10:00:00Z" }
+          ]
+        }
+        """;
+
+        // Respuesta JSON para la Página 2
+        String secondPageJson = """
+        {
+          "total_count": 2,
+          "workflow_runs": [
+            { "id": 100, "status": "completed", "conclusion": "success", "created_at": "2025-09-27T10:00:00Z" }
+          ]
+        }
+        """;
+
+        // Construimos la URL de la siguiente página
+        String nextPageUrl = String.format("http://localhost:%d/repos/%s/%s/actions/workflows/%s/runs?page=2",
+                wiremockPort, owner, repo, workflowFile);
+
+        // Configuración de WireMock para la Página 1
+        stubFor(get(urlPathEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs"))
+                .withQueryParam("per_page", equalTo("100"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withHeader("Link", String.format("<%s>; rel=\"next\"", nextPageUrl))
+                        .withBody(firstPageJson)));
+
+        // Configuración de WireMock para la Página 2
+        stubFor(get(urlEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs?page=2"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(secondPageJson)));
+
+        // 2. Act
+        // Llamamos al método con 'since' como null
+        List<GitHubWorkflowRunDto> workflowRuns = githubClient.getWorkflowRuns(owner, repo, workflowFile, null);
+
+        // 3. Assert
+        assertThat(workflowRuns).isNotNull();
+        // Verificamos que se recolectaron los runs de AMBAS páginas
+        assertThat(workflowRuns).hasSize(2);
+        assertThat(workflowRuns).extracting(GitHubWorkflowRunDto::getId).containsExactlyInAnyOrder(101L, 100L);
+
+        // Verificamos que se hicieron ambas llamadas a la API
+        verify(1, getRequestedFor(urlPathEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs"))
+                .withQueryParam("per_page", equalTo("100")));
+
+        verify(1, getRequestedFor(urlEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs?page=2")));
+    }
+
+    @Test
+    @DisplayName("getWorkflowRuns debe detener la paginación si encuentra un run antiguo")
+    void getWorkflowRuns_shouldStopPaging_whenOldRunIsFound(@Value("${wiremock.server.port}") int wiremockPort) {
+        // 1. Arrange
+        LocalDateTime since = LocalDateTime.now().minusDays(1);
+        String owner = "owner";
+        String repo = "repo";
+        String workflowFile = "workflow.yml";
+
+        // Respuesta JSON para la Página 1: contiene un run reciente y uno antiguo.
+        String firstPageJson = String.format("""
+        {
+          "total_count": 2,
+          "workflow_runs": [
+            { "id": 101, "status": "completed", "conclusion": "success", "created_at": "%s" },
+            { "id": 99, "status": "completed", "conclusion": "failure", "created_at": "%s" }
+          ]
+        }
+        """,
+                // --- CAMBIO AQUÍ ---
+                // Convertimos a ZonedDateTime en UTC y luego formateamos con ISO_INSTANT
+                since.plusHours(1).atZone(java.time.ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT), // Reciente
+                since.minusHours(1).atZone(java.time.ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT)  // Antiguo
+        );
+
+        // Construimos la URL de la siguiente página, que esperamos que NUNCA se llame.
+        String nextPageUrl = String.format("http://localhost:%d/repos/%s/%s/actions/workflows/%s/runs?page=2",
+                wiremockPort, owner, repo, workflowFile);
+
+        // Configuración de WireMock para la Página 1
+        stubFor(get(urlPathEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs"))
+                .withQueryParam("per_page", equalTo("100"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        // Incluimos el link a la siguiente página para probar que el cliente lo ignora.
+                        .withHeader("Link", String.format("<%s>; rel=\"next\"", nextPageUrl))
+                        .withBody(firstPageJson)));
+
+        // 2. Act
+        // Llamamos al método con un 'since' válido.
+        List<GitHubWorkflowRunDto> workflowRuns = githubClient.getWorkflowRuns(owner, repo, workflowFile, since);
+
+        // 3. Assert
+        assertThat(workflowRuns).isNotNull();
+        // Solo el run reciente debe estar en la lista, porque el antiguo detuvo la recolección.
+        assertThat(workflowRuns).hasSize(1);
+        assertThat(workflowRuns.get(0).getId()).isEqualTo(101L);
+
+        // Verificamos que se hizo la llamada a la primera página.
+        verify(1, getRequestedFor(urlPathEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs")));
+
+        // La aserción CLAVE: Verificamos que NUNCA se hizo la llamada a la segunda página.
+        verify(0, getRequestedFor(urlEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs?page=2")));
+    }
+
+    @Test
+    @DisplayName("getWorkflowRuns debe devolver resultados parciales si una llamada paginada falla")
+    void getWorkflowRuns_shouldReturnPartialResults_whenPaginatedCallFails(@Value("${wiremock.server.port}") int wiremockPort) {
+        // 1. Arrange
+        LocalDateTime since = LocalDateTime.now().minusDays(1);
+        String owner = "owner";
+        String repo = "repo";
+        String workflowFile = "workflow.yml";
+
+        // Respuesta JSON para la Página 1 (exitosa)
+        String firstPageJson = """
+        {
+          "total_count": 2,
+          "workflow_runs": [
+            { "id": 101, "status": "completed", "conclusion": "success", "created_at": "2025-09-28T10:00:00Z" }
+          ]
+        }
+        """;
+
+        // Construimos la URL de la siguiente página, que sabemos que va a fallar.
+        String nextPageUrl = String.format("http://localhost:%d/repos/%s/%s/actions/workflows/%s/runs?page=2",
+                wiremockPort, owner, repo, workflowFile);
+
+        // Configuración de WireMock para la Página 1 (éxito)
+        stubFor(get(urlPathEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs"))
+                .withQueryParam("per_page", equalTo("100"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withHeader("Link", String.format("<%s>; rel=\"next\"", nextPageUrl))
+                        .withBody(firstPageJson)));
+
+        // Configuración de WireMock para la Página 2 (fallo)
+        stubFor(get(urlEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs?page=2"))
+                .willReturn(aResponse()
+                        .withStatus(500) // Error interno del servidor
+                        .withBody("{\"message\":\"Internal Server Error\"}")));
+
+        // 2. Act
+        List<GitHubWorkflowRunDto> workflowRuns = githubClient.getWorkflowRuns(owner, repo, workflowFile, since);
+
+        // 3. Assert
+        // Verificamos que no se lanzó una excepción y que recibimos los resultados de la primera página.
+        assertThat(workflowRuns).isNotNull();
+        assertThat(workflowRuns).hasSize(1);
+        assertThat(workflowRuns.get(0).getId()).isEqualTo(101L);
+
+        // Verificamos que se intentaron ambas llamadas de forma específica.
+        verify(1, getRequestedFor(urlPathEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs"))
+                .withQueryParam("per_page", equalTo("100")));
+
+        verify(1, getRequestedFor(urlEqualTo("/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowFile + "/runs?page=2")));
     }
 }
