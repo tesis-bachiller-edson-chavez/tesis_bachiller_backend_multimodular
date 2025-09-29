@@ -94,6 +94,67 @@ class RepositoryConfigTest {
         assertNull(configWithBlankRepo.getRepoName(), "RepoName debe ser null si la parte de la URL es solo espacios.");
     }
 
+    @Test
+    @DisplayName("Debe almacenar y devolver correctamente la URL y el ID inicial")
+    void shouldHoldAndReturnRepositoryUrlAndInitialId() {
+        // 1. Arrange
+        String url = "https://github.com/test/repo";
+
+        // 2. Act
+        RepositoryConfig config = new RepositoryConfig(url);
+
+        // 3. Assert
+        // Verifica que la URL se puede recuperar correctamente.
+        assertEquals(url, config.getRepositoryUrl());
+
+        // Verifica que el ID es nulo antes de que la entidad sea persistida por JPA.
+        assertNull(config.getId());
+    }
+
+    @Test
+    @DisplayName("Debe devolver null si la URL no tiene un componente de ruta (path es nulo)")
+    void shouldReturnNullWhenUrlHasNoPath() {
+        // 1. Arrange
+        // Una URI como 'mailto' no tiene un componente de ruta, lo que hará que
+        // uri.getPath() devuelva null. Esto prueba la condición 'path == null'.
+        RepositoryConfig config = new RepositoryConfig("mailto:test@example.com");
+
+        // 2. Act & 3. Assert
+        assertNull(config.getOwner(), "Owner debe ser null cuando la URI no tiene ruta.");
+        assertNull(config.getRepoName(), "RepoName debe ser null cuando la URI no tiene ruta.");
+    }
+
+
+    @Test
+    @DisplayName("Debe devolver null si la ruta de la URL contiene solo barras, cubriendo 'trimmedPath.isEmpty()'")
+    void shouldReturnNullWhenPathContainsOnlySlashes() {
+        // 1. Arrange
+        // Esta URL tiene un path "//", que no es vacío ni "/", por lo que pasa el primer 'if'.
+        // Después del 'trimming', se convierte en una cadena vacía, cubriendo el segundo 'if'.
+        RepositoryConfig config = new RepositoryConfig("https://github.com//");
+
+        // 2. Act & 3. Assert
+        assertNull(config.getOwner(), "Owner debe ser null si la ruta solo contiene barras.");
+        assertNull(config.getRepoName(), "RepoName debe ser null si la ruta solo contiene barras.");
+    }
+
+    @Test
+    @DisplayName("Debe devolver null si la parte del repo es una barra doble, cubriendo '!parts[1].isBlank()' como falso")
+    void shouldReturnNullWhenRepoPartIsEffectivelyBlank() {
+        // Arrange
+        // Esta URL, al hacer split, genera un elemento vacío entre "owner" y "final"
+        // La lógica actual de getRepoName tomará ese elemento vacío como `parts[1]`.
+        RepositoryConfig config = new RepositoryConfig("https://github.com/owner//final");
+
+        // Act
+        String repoName = config.getRepoName();
+
+        // Assert
+        // La lógica actual es `parts[1]`, que es "". isBlank() es true, !isBlank() es false.
+        // El if no se cumple y devuelve null.
+        assertNull(repoName);
+    }
+
     // Nota de Cobertura: El caso `length < 1` en getOwner() y getRepoName() es ahora cubierto
     // por la prueba `shouldReturnNullForDelimiterOnlyUrls`, que produce un array de longitud 0.
 }
