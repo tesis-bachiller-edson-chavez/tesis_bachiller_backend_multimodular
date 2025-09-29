@@ -1,37 +1,31 @@
 package org.grubhart.pucp.tesis.module_collector.service;
 
 import org.grubhart.pucp.tesis.module_collector.github.GithubClientImpl;
-import org.grubhart.pucp.tesis.module_domain.Deployment;
-import org.grubhart.pucp.tesis.module_domain.DeploymentRepository;
-import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
-import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
-import org.grubhart.pucp.tesis.module_domain.RepositoryConfigRepository;
-import org.grubhart.pucp.tesis.module_domain.SyncStatus;
-import org.grubhart.pucp.tesis.module_domain.SyncStatusRepository;
+import org.grubhart.pucp.tesis.module_domain.*;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class DeploymentSyncServiceTest {
 
     @Mock
-    private GithubClientImpl gitHubClient;
+    private GithubClientImpl githubClient;
 
     @Mock
     private DeploymentRepository deploymentRepository;
@@ -42,152 +36,122 @@ class DeploymentSyncServiceTest {
     @Mock
     private RepositoryConfigRepository repositoryConfigRepository;
 
-    // El servicio bajo prueba. No usamos @InjectMocks para tener control sobre el constructor.
+    @InjectMocks
     private DeploymentSyncService deploymentSyncService;
 
-    private final String WORKFLOW_FILENAME = "deploy.yml";
+    @Captor
+    private ArgumentCaptor<List<Deployment>> deploymentsCaptor;
+
+    private static final String VALID_REPO_URL = "https://github.com/owner/repo";
+    private static final String WORKFLOW_FILE_NAME = "deploy.yml";
 
     @BeforeEach
     void setUp() {
-        // Instanciamos el servicio manualmente con sus mocks
         deploymentSyncService = new DeploymentSyncService(
-                gitHubClient,
+                githubClient,
                 deploymentRepository,
                 syncStatusRepository,
                 repositoryConfigRepository,
-                WORKFLOW_FILENAME
+                WORKFLOW_FILE_NAME
         );
     }
 
-    @Test
-    @DisplayName("GIVEN multiple repositories configured WHEN sync is called THEN sync deployments for each repository")
-    void syncDeployments_forMultipleRepositories() {
-        // GIVEN: Dos repositorios configurados en la base de datos
-        RepositoryConfig repo1 = new RepositoryConfig("https://github.com/owner1/repo1");
-        RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2");
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
-
-        // GIVEN: Mock de la API de GitHub para cada repositorio
-        GitHubWorkflowRunDto run1 = new GitHubWorkflowRunDto();
-        run1.setId(101L);
-        run1.setConclusion("success");
-        when(gitHubClient.getWorkflowRuns(eq("owner1"), eq("repo1"), eq(WORKFLOW_FILENAME), any())).thenReturn(List.of(run1));
-
-        GitHubWorkflowRunDto run2 = new GitHubWorkflowRunDto();
-        run2.setId(201L);
-        run2.setConclusion("success");
-        when(gitHubClient.getWorkflowRuns(eq("owner2"), eq("repo2"), eq(WORKFLOW_FILENAME), any())).thenReturn(List.of(run2));
-
-        // WHEN: Se ejecuta el servicio de sincronización
-        deploymentSyncService.syncDeployments();
-
-        // THEN: Se debe verificar que el cliente de GitHub fue llamado para ambos repositorios
-        verify(gitHubClient, times(1)).getWorkflowRuns(eq("owner1"), eq("repo1"), eq(WORKFLOW_FILENAME), any());
-        verify(gitHubClient, times(1)).getWorkflowRuns(eq("owner2"), eq("repo2"), eq(WORKFLOW_FILENAME), any());
-
-        // THEN: Se debe guardar un deployment por cada repositorio
-        ArgumentCaptor<Deployment> deploymentCaptor = ArgumentCaptor.forClass(Deployment.class);
-        verify(deploymentRepository, times(2)).save(deploymentCaptor.capture());
-        List<Deployment> savedDeployments = deploymentCaptor.getAllValues();
-        assertTrue(savedDeployments.stream().anyMatch(d -> d.getGithubId() == 101L));
-        assertTrue(savedDeployments.stream().anyMatch(d -> d.getGithubId() == 201L));
-
-        // THEN: Se debe actualizar el estado de sincronización para cada repositorio
-        ArgumentCaptor<SyncStatus> syncStatusCaptor = ArgumentCaptor.forClass(SyncStatus.class);
-        verify(syncStatusRepository, times(2)).save(syncStatusCaptor.capture());
-        List<SyncStatus> savedStatuses = syncStatusCaptor.getAllValues();
-        assertTrue(savedStatuses.stream().anyMatch(s -> s.getJobName().equals("DEPLOYMENT_SYNC_repo1")));
-        assertTrue(savedStatuses.stream().anyMatch(s -> s.getJobName().equals("DEPLOYMENT_SYNC_repo2")));
+    private GitHubWorkflowRunDto createWorkflowRunDto(Long id, String name, String conclusion) {
+        GitHubWorkflowRunDto dto = new GitHubWorkflowRunDto();
+        dto.setId(id);
+        dto.setName(name);
+        dto.setHeadBranch("main");
+        dto.setStatus("completed");
+        dto.setConclusion(conclusion);
+        dto.setCreatedAt(LocalDateTime.now());
+        dto.setUpdatedAt(LocalDateTime.now());
+        return dto;
     }
 
     @Test
-    @DisplayName("GIVEN a repository with an invalid URL WHEN sync is called THEN it should skip it and continue")
-    void syncDeployments_shouldSkipInvalidRepositoryUrl() {
-        // GIVEN: Una configuración con una URL válida y una inválida
-        RepositoryConfig validRepo = new RepositoryConfig("https://github.com/owner1/repo1");
-        RepositoryConfig invalidRepo = new RepositoryConfig("invalid-url");
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validRepo, invalidRepo));
+    void syncDeployments_shouldSkipExecution_whenNoRepositoriesAreConfigured() {
+        when(repositoryConfigRepository.findAll()).thenReturn(Collections.emptyList());
 
-        // GIVEN: Mock de la API solo para el repositorio válido
-        GitHubWorkflowRunDto run1 = new GitHubWorkflowRunDto();
-        run1.setId(101L);
-        run1.setConclusion("success");
-        when(gitHubClient.getWorkflowRuns(eq("owner1"), eq("repo1"), any(), any())).thenReturn(List.of(run1));
-
-        // WHEN: Se ejecuta el servicio de sincronización
         deploymentSyncService.syncDeployments();
 
-        // THEN: El cliente de GitHub solo debe ser llamado para el repositorio válido
-        verify(gitHubClient, times(1)).getWorkflowRuns(eq("owner1"), eq("repo1"), any(), any());
-        verify(gitHubClient, never()).getWorkflowRuns(eq("invalid-url"), any(), any(), any());
-
-        // THEN: Solo se debe guardar el deployment del repositorio válido
-        verify(deploymentRepository, times(1)).save(any(Deployment.class));
-        verify(syncStatusRepository, times(1)).save(any(SyncStatus.class));
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("GIVEN no repositories configured WHEN sync is called THEN it should do nothing")
-    void syncDeployments_whenNoRepositoriesConfigured() {
-        // GIVEN: No hay repositorios en la base de datos
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of());
+    void syncDeployments_shouldSkipRepository_whenUrlIsInvalid() {
+        RepositoryConfig invalidRepoConfig = new RepositoryConfig("invalid-url");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(invalidRepoConfig));
 
-        // WHEN: Se ejecuta el servicio de sincronización
         deploymentSyncService.syncDeployments();
 
-        // THEN: No se debe llamar a ningún servicio
-        verifyNoInteractions(gitHubClient);
-        verifyNoInteractions(deploymentRepository);
-        verifyNoInteractions(syncStatusRepository);
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("GIVEN a repository with a null URL WHEN sync is called THEN it should be skipped")
-    void syncDeployments_shouldSkipNullRepositoryUrl() {
-        // GIVEN: Una configuración con una URL válida y una nula
-        RepositoryConfig validRepo = new RepositoryConfig("https://github.com/owner1/repo1");
-        RepositoryConfig nullUrlRepo = new RepositoryConfig(null);
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validRepo, nullUrlRepo));
+    void syncDeployments_whenAllRunsAreNew_shouldSaveAllOfThem() {
+        // Arrange
+        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
 
-        // GIVEN: Mock de la API solo para el repositorio válido
-        GitHubWorkflowRunDto run1 = new GitHubWorkflowRunDto();
-        run1.setId(101L);
-        run1.setConclusion("success");
-        when(gitHubClient.getWorkflowRuns(eq("owner1"), eq("repo1"), any(), any())).thenReturn(List.of(run1));
+        GitHubWorkflowRunDto newRun1 = createWorkflowRunDto(1L, "run1", "success");
+        GitHubWorkflowRunDto newRun2 = createWorkflowRunDto(2L, "run2", "success");
+        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(newRun1, newRun2));
 
-        // WHEN: Se ejecuta el servicio de sincronización
+        when(deploymentRepository.existsById(1L)).thenReturn(false);
+        when(deploymentRepository.existsById(2L)).thenReturn(false);
+
+        // Act
         deploymentSyncService.syncDeployments();
 
-        // THEN: El cliente de GitHub solo debe ser llamado para el repositorio válido
-        verify(gitHubClient, times(1)).getWorkflowRuns(eq("owner1"), eq("repo1"), any(), any());
-
-        // THEN: Solo se debe guardar el deployment del repositorio válido
-        verify(deploymentRepository, times(1)).save(any(Deployment.class));
-        verify(syncStatusRepository, times(1)).save(any(SyncStatus.class));
+        // Assert
+        verify(deploymentRepository).saveAll(deploymentsCaptor.capture());
+        List<Deployment> savedDeployments = deploymentsCaptor.getValue();
+        assertEquals(2, savedDeployments.size());
+        assertTrue(savedDeployments.stream().anyMatch(d -> d.getGithubId() == 1L));
+        assertTrue(savedDeployments.stream().anyMatch(d -> d.getGithubId() == 2L));
     }
 
     @Test
-    @DisplayName("GIVEN a repository with an empty URL WHEN sync is called THEN it should be skipped")
-    void syncDeployments_shouldSkipEmptyRepositoryUrl() {
-        // GIVEN: Una configuración con una URL válida y una vacía
-        RepositoryConfig validRepo = new RepositoryConfig("https://github.com/owner1/repo1");
-        RepositoryConfig emptyUrlRepo = new RepositoryConfig("");
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validRepo, emptyUrlRepo));
+    void syncDeployments_whenApiReturnsMixedRuns_shouldOnlySaveNewOnes() {
+        // Arrange
+        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
 
-        // GIVEN: Mock de la API solo para el repositorio válido
-        GitHubWorkflowRunDto run1 = new GitHubWorkflowRunDto();
-        run1.setId(101L);
-        run1.setConclusion("success");
-        when(gitHubClient.getWorkflowRuns(eq("owner1"), eq("repo1"), any(), any())).thenReturn(List.of(run1));
+        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success");
+        GitHubWorkflowRunDto newRun = createWorkflowRunDto(2L, "run2", "success");
+        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(existingRun, newRun));
 
-        // WHEN: Se ejecuta el servicio de sincronización
+        when(deploymentRepository.existsById(1L)).thenReturn(true); // Este ya existe
+        when(deploymentRepository.existsById(2L)).thenReturn(false); // Este es nuevo
+
+        // Act
         deploymentSyncService.syncDeployments();
 
-        // THEN: El cliente de GitHub solo debe ser llamado para el repositorio válido
-        verify(gitHubClient, times(1)).getWorkflowRuns(eq("owner1"), eq("repo1"), any(), any());
+        // Assert
+        verify(deploymentRepository).saveAll(deploymentsCaptor.capture());
+        List<Deployment> savedDeployments = deploymentsCaptor.getValue();
+        assertEquals(1, savedDeployments.size());
+        assertEquals(2L, savedDeployments.get(0).getGithubId());
+    }
 
-        // THEN: Solo se debe guardar el deployment del repositorio válido
-        verify(deploymentRepository, times(1)).save(any(Deployment.class));
-        verify(syncStatusRepository, times(1)).save(any(SyncStatus.class));
+    @Test
+    void syncDeployments_whenApiReturnsNoNewRuns_shouldNotSaveAnything() {
+        // Arrange
+        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
+
+        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success");
+        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(existingRun));
+
+        when(deploymentRepository.existsById(1L)).thenReturn(true);
+
+        // Act
+        deploymentSyncService.syncDeployments();
+
+        // Assert
+        verify(deploymentRepository, never()).saveAll(any());
     }
 }

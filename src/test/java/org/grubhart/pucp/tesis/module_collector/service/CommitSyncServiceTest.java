@@ -15,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -39,6 +40,11 @@ class CommitSyncServiceTest {
     @InjectMocks
     private CommitSyncService commitSyncService;
 
+    private static final String VALID_URL = "https://github.com/owner/repo";
+    private static final String OWNER = "owner";
+    private static final String REPO = "repo";
+
+
     @Test
     @DisplayName("Dado que no hay repositorios configurados, el servicio no debe hacer nada")
     void syncCommits_whenNoRepositoriesConfigured_shouldDoNothing() {
@@ -49,17 +55,16 @@ class CommitSyncServiceTest {
         commitSyncService.syncCommits();
 
         // THEN: No se debe intentar obtener commits ni guardar ningún estado.
-        // Verificamos que no hubo interacciones con los otros componentes.
         verify(githubCommitCollector, never()).getCommits(anyString(), anyString(), any());
         verify(syncStatusRepository, never()).save(any());
         verify(commitRepository, never()).saveAll(any());
     }
 
     @Test
-    @DisplayName("Dado un repositorio con URL mal formada, el servicio debe registrar un error y no continuar")
-    void syncCommits_whenRepositoryUrlIsMalformed_shouldLogErrorAndStop() {
+    @DisplayName("Dado un repositorio con URL mal formada, el servicio debe saltarlo")
+    void syncCommits_whenRepositoryUrlIsMalformed_shouldSkipIt() {
         // GIVEN: El repositorio de configuración devuelve una URL inválida.
-        RepositoryConfig malformedConfig = new RepositoryConfig("url-invalida"); // URL sin '/'
+        RepositoryConfig malformedConfig = new RepositoryConfig("url-invalida-sin-separadores");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(malformedConfig));
 
         // WHEN: Se ejecuta el servicio de sincronización.
@@ -72,10 +77,10 @@ class CommitSyncServiceTest {
     }
 
     @Test
-    @DisplayName("Dado un repositorio con nombre de repo nulo, el servicio debe saltar la sincronización")
-    void syncCommits_whenRepoNameIsNull_shouldSkipSync() {
+    @DisplayName("Dado un repositorio con nombre de repo nulo o en blanco, el servicio debe saltarlo")
+    void syncCommits_whenRepoNameIsBlank_shouldSkipSync() {
         // GIVEN: Una configuración con una URL que resultará en un repoName nulo.
-        RepositoryConfig invalidConfig = new RepositoryConfig("https://github.com/owner/ "); // URL con repo en blanco
+        RepositoryConfig invalidConfig = new RepositoryConfig("https://github.com/owner/"); // URL con repo en blanco
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(invalidConfig));
 
         // WHEN: Se ejecuta el servicio de sincronización.
@@ -91,20 +96,20 @@ class CommitSyncServiceTest {
     @DisplayName("Dado un repositorio configurado, debe sincronizar los commits correctamente")
     void syncCommits_whenRepositoryIsConfigured_shouldSyncCommits() {
         // GIVEN: Una configuración de repositorio válida.
-        RepositoryConfig validConfig = new RepositoryConfig("https://github.com/owner/repo");
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
 
         // Simulamos que no hay un estado de sincronización previo.
-        when(syncStatusRepository.findById("COMMIT_SYNC")).thenReturn(java.util.Optional.empty());
+        when(syncStatusRepository.findById("COMMIT_SYNC_owner/repo")).thenReturn(java.util.Optional.empty());
 
         // Simulamos que la API de GitHub no devuelve nuevos commits.
-        when(githubCommitCollector.getCommits(eq("owner"), eq("repo"), any())).thenReturn(Collections.emptyList());
+        when(githubCommitCollector.getCommits(eq(OWNER), eq(REPO), any())).thenReturn(Collections.emptyList());
 
         // WHEN: Se ejecuta el servicio de sincronización.
         commitSyncService.syncCommits();
 
         // THEN: Se debe verificar que se intentó obtener los commits y que se guardó el nuevo estado de sincronización.
-        verify(githubCommitCollector, times(1)).getCommits(eq("owner"), eq("repo"), any());
+        verify(githubCommitCollector, times(1)).getCommits(eq(OWNER), eq(REPO), any());
         verify(syncStatusRepository, times(1)).save(any());
         // Verificamos que no se intentó guardar commits, ya que la lista estaba vacía.
         verify(commitRepository, never()).saveAll(any());
@@ -114,14 +119,13 @@ class CommitSyncServiceTest {
     @DisplayName("Dado un repositorio con nuevos commits, debe guardarlos en la BD")
     void syncCommits_whenNewCommitsAreFound_shouldSaveThem() {
         // GIVEN: Una configuración válida y la API de GitHub devuelve un nuevo commit.
-        RepositoryConfig validConfig = new RepositoryConfig("https://github.com/owner/repo");
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
 
         GithubCommitDto newCommitDto = new GithubCommitDto();
         newCommitDto.setSha("new-commit-sha");
-        // (Podríamos poblar más campos si el mapper fuera más complejo)
 
-        when(githubCommitCollector.getCommits(eq("owner"), eq("repo"), any())).thenReturn(List.of(newCommitDto));
+        when(githubCommitCollector.getCommits(eq(OWNER), eq(REPO), any())).thenReturn(List.of(newCommitDto));
 
         // Simulamos que este commit NO existe en la BD.
         when(commitRepository.existsById("new-commit-sha")).thenReturn(false);
@@ -130,7 +134,6 @@ class CommitSyncServiceTest {
         commitSyncService.syncCommits();
 
         // THEN: Verificamos que se intentó guardar el nuevo commit.
-        // Usamos un ArgumentCaptor para inspeccionar lo que se pasó a saveAll.
         ArgumentCaptor<List<Commit>> captor = ArgumentCaptor.forClass(List.class);
         verify(commitRepository, times(1)).saveAll(captor.capture());
 
@@ -146,7 +149,7 @@ class CommitSyncServiceTest {
     @DisplayName("Dado un error al obtener commits, el servicio debe registrarlo y no fallar")
     void syncCommits_whenCollectorThrowsException_shouldHandleErrorGracefully() {
         // GIVEN: Una configuración válida, pero el colector de commits lanza una excepción.
-        RepositoryConfig validConfig = new RepositoryConfig("https://github.com/owner/repo");
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
 
         when(githubCommitCollector.getCommits(anyString(), anyString(), any()))
@@ -158,5 +161,40 @@ class CommitSyncServiceTest {
         // THEN: Verificamos que no se intentó guardar nada y que la sincronización no se actualizó.
         verify(commitRepository, never()).saveAll(any());
         verify(syncStatusRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Dado que la API devuelve una mezcla de commits nuevos y existentes, solo debe guardar los nuevos")
+    void syncCommits_whenApiReturnsMixedCommits_shouldOnlySaveNewOnes() {
+        // GIVEN
+        // Una configuración de repositorio válida.
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+
+        // La API devuelve dos commits: uno que ya existe y uno nuevo.
+        GithubCommitDto existingCommitDto = new GithubCommitDto();
+        existingCommitDto.setSha("sha-existente");
+
+        GithubCommitDto newCommitDto = new GithubCommitDto();
+        newCommitDto.setSha("sha-nuevo");
+
+        when(githubCommitCollector.getCommits(anyString(), anyString(), any()))
+                .thenReturn(Arrays.asList(existingCommitDto, newCommitDto));
+
+        // Simulamos la lógica de la base de datos.
+        when(commitRepository.existsById("sha-existente")).thenReturn(true);
+        when(commitRepository.existsById("sha-nuevo")).thenReturn(false);
+
+        // WHEN
+        commitSyncService.syncCommits();
+
+        // THEN
+        // Verificamos que se intentó guardar una lista que contiene SOLO el commit nuevo.
+        ArgumentCaptor<List<Commit>> captor = ArgumentCaptor.forClass(List.class);
+        verify(commitRepository, times(1)).saveAll(captor.capture());
+
+        List<Commit> savedCommits = captor.getValue();
+        assertThat(savedCommits).hasSize(1);
+        assertThat(savedCommits.get(0).getSha()).isEqualTo("sha-nuevo");
     }
 }

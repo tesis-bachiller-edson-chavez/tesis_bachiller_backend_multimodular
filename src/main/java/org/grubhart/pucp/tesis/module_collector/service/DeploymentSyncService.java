@@ -18,6 +18,7 @@ import reactor.core.publisher.Flux;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class DeploymentSyncService {
@@ -28,39 +29,32 @@ public class DeploymentSyncService {
     private final GithubClientImpl gitHubClient;
     private final DeploymentRepository deploymentRepository;
     private final SyncStatusRepository syncStatusRepository;
-    private final RepositoryConfigRepository repositoryConfigRepository; // <-- 1. Inyectar el repositorio de configuración
+    private final RepositoryConfigRepository repositoryConfigRepository;
 
     private final String workflowFileName;
 
-    // 2. Eliminar owner y repo del constructor
     public DeploymentSyncService(GithubClientImpl gitHubClient,
                                  DeploymentRepository deploymentRepository,
                                  SyncStatusRepository syncStatusRepository,
-                                 RepositoryConfigRepository repositoryConfigRepository, // <-- Añadir al constructor
+                                 RepositoryConfigRepository repositoryConfigRepository,
                                  @Value("${dora.github.workflow-file-name}") String workflowFileName) {
         this.gitHubClient = gitHubClient;
         this.deploymentRepository = deploymentRepository;
         this.syncStatusRepository = syncStatusRepository;
-        this.repositoryConfigRepository = repositoryConfigRepository; // <-- Asignar
+        this.repositoryConfigRepository = repositoryConfigRepository;
         this.workflowFileName = workflowFileName;
     }
 
-    /**
-     * Tarea programada para sincronizar deploys desde los repositorios configurados.
-     * Se ejecuta 30 segundos después de que la aplicación arranca y luego cada hora.
-     */
     @Scheduled(initialDelay = 30000, fixedRate = 3600000)
     public void syncDeployments() {
         log.info("Iniciando la sincronización de deployments para todos los repositorios configurados.");
 
-        // 3. Obtener todos los repositorios de la BD
         List<RepositoryConfig> repositories = repositoryConfigRepository.findAll();
         if (repositories.isEmpty()) {
             log.warn("No hay repositorios configurados para sincronizar. Finalizando el job.");
             return;
         }
 
-        // 4. Iterar sobre cada repositorio
         for (RepositoryConfig repoConfig : repositories) {
             try {
                 String[] urlParts = parseRepoUrl(repoConfig.getRepositoryUrl());
@@ -70,28 +64,40 @@ public class DeploymentSyncService {
                 syncDeploymentsForRepository(owner, repoName);
             } catch (IllegalArgumentException e) {
                 log.error("URL de repositorio no válida en la configuración: '{}'. Saltando este repositorio.", repoConfig.getRepositoryUrl(), e);
+            } catch (Exception e) {
+                log.error("Error inesperado durante la sincronización del repositorio {}: {}", repoConfig.getRepositoryUrl(), e.getMessage(), e);
             }
         }
         log.info("Sincronización de deployments completada para todos los repositorios.");
     }
 
-    // 5. Crear un método que contenga la lógica para un solo repositorio
     private void syncDeploymentsForRepository(String owner, String repoName) {
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById(JOB_NAME + "_" + repoName);
         LocalDateTime lastRun = syncStatus.map(SyncStatus::getLastSuccessfulRun).orElse(null);
 
-        Flux<GitHubWorkflowRunDto> workflowRuns = Flux.fromIterable(gitHubClient.getWorkflowRuns(owner, repoName, workflowFileName, lastRun));
+        try {
+            List<GitHubWorkflowRunDto> workflowRuns = gitHubClient.getWorkflowRuns(owner, repoName, workflowFileName, lastRun);
 
-        workflowRuns
-                .filter(run -> "success".equals(run.getConclusion()))
-                .map(this::convertToDeployment)
-                .doOnNext(deploymentRepository::save)
-                .doOnComplete(() -> {
-                    updateSyncStatus(repoName);
-                    log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
-                })
-                .doOnError(error -> log.error("Error durante la sincronización de deployments para {}/{}: {}", owner, repoName, error.getMessage()))
-                .subscribe();
+            List<Deployment> newDeployments = workflowRuns.stream()
+                    .filter(run -> "success".equals(run.getConclusion()))
+                    .map(this::convertToDeployment)
+                    .filter(deployment -> !deploymentRepository.existsById(deployment.getGithubId()))
+                    .collect(Collectors.toList());
+
+            if (!newDeployments.isEmpty()) {
+                deploymentRepository.saveAll(newDeployments);
+                log.info("Se guardaron {} nuevos deployments para {}/{}.", newDeployments.size(), owner, repoName);
+            } else {
+                log.info("No se encontraron nuevos deployments para {}/{}.", owner, repoName);
+            }
+
+            updateSyncStatus(repoName);
+            log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
+
+        } catch (Exception e) {
+            log.error("Error durante la sincronización de deployments para {}/{}: {}", owner, repoName, e.getMessage(), e);
+            // No se actualiza el SyncStatus para que el próximo intento sea desde la última ejecución exitosa.
+        }
     }
 
     private Deployment convertToDeployment(GitHubWorkflowRunDto dto) {
@@ -111,12 +117,10 @@ public class DeploymentSyncService {
         syncStatusRepository.save(status);
     }
 
-    // 6. Helper para parsear la URL del repositorio
     private String[] parseRepoUrl(String url) {
-        if (url == null || url.isEmpty()) {
+        if (url == null || url.trim().isEmpty()) {
             throw new IllegalArgumentException("La URL del repositorio no puede ser nula o vacía.");
         }
-        // Assume una URL como "https://github.com/owner/repo"
         String[] parts = url.split("/");
         if (parts.length < 2) {
             throw new IllegalArgumentException("Formato de URL no válido: " + url);
