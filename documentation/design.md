@@ -180,23 +180,30 @@ graph TD;
                 - ***Nota de Diseño (Fuente de Verdad del Despliegue):*** *Un despliegue se define como un evento explícito proveniente del sistema de CI/CD (ej. un workflow de GitHub Actions que termina de forma exitosa). **No se debe inferir un despliegue a partir de un merge commit a la rama principal.** El `module-collector` debe buscar eventos específicos como los generados por la API de Deployments de GitHub, que indican un despliegue real a un entorno específico.*
 
             - **B. Tiempo de Espera para Cambios (Lead Time for Changes)**
-                - **Definición (Por Commit):** Mide el tiempo que transcurre desde que se hace un commit hasta que ese mismo commit se despliega exitosamente en producción. Mide la eficiencia del proceso de desarrollo y entrega.
-                - **Eventos a Extraer:**
-                    1.  **Timestamp del Commit:** La fecha y hora en que se crea cada commit.
-                    2.  **Timestamp del Despliegue Exitoso:** La fecha y hora en que un despliegue que *incluye* ese commit llega a producción.
-                - **Fórmula:** `Lead Time (commit) = TIMESTAMP_DESPLIEGUE - TIMESTAMP_COMMIT`
-                - **Agregación:** Se calcula como el **promedio** o la **mediana** del `Lead Time` de todos los commits desplegados en un período.
-                - **Datos Necesarios:** `commit_sha`, `commit_timestamp`, `deployment_id`, `deployment_timestamp`, y la relación entre commits y despliegues.
-                - ***Nota de Diseño (Fuente de Verdad del Despliegue):*** *El `TIMESTAMP_DESPLIEGUE` debe provenir de un evento de despliegue real del pipeline de CI/CD, no del timestamp de un merge commit.*
+              - **Definición:** Mide el tiempo que transcurre desde que se inicia el trabajo en un cambio (commit) o en una feature (Pull Request) hasta que ese cambio o feature es desplegado exitosamente en producción. Es una medida clave de la eficiencia del proceso de entrega. La métrica final se agrega preferiblemente usando la **mediana** para reducir el impacto de valores atípicos.
 
-                - **Definición (Por Pull Request - Métrica Complementaria):** Mide el tiempo que transcurre desde la creación de un Pull Request hasta que todos los cambios de ese PR son desplegados exitosamente en producción. Esta métrica es útil para entender el ciclo de vida completo de una funcionalidad, incluyendo el tiempo de revisión.
-                - **Eventos a Extraer:**
-                    1. **Timestamp de Creación del PR:** La fecha y hora en que se abre el Pull Request.
-                    2. **Timestamp del Despliegue Exitoso:** La fecha y hora del primer despliegue que contiene el *merge commit* de ese PR.
-                - **Fórmula:** `Lead Time (PR) = TIMESTAMP_DESPLIEGUE_FINAL - TIMESTAMP_PR_CREACIÓN`
-                - **Agregación:** Se calcula como el **promedio** o la **mediana** del `Lead Time` de todos los PRs desplegados en un período.
-                - **Datos Necesarios:** `pr_id`, `pr_creation_timestamp`, `pr_merge_commit_sha`, `deployment_id`, `deployment_timestamp`, y la relación entre los commits de un despliegue y el `pr_merge_commit_sha`.
+              - **Eventos a Extraer:**
+                1.  **De los Despliegues:** `deployment_id`, `deployment_time` (timestamp del despliegue), `head_sha` (el SHA del commit desplegado).
+                2.  **De los Commits:** `sha`, `timestamp` (timestamp del commit), `parent_shas` (lista de SHAs de los commits padres, crucial para reconstruir el historial).
+                3.  **De los Pull Requests:** `id`, `merge_commit_sha` (el SHA del commit de fusión), `first_commit_sha` (el SHA del primer commit del PR, que debe ser recolectado durante la sincronización).
 
+              - **Fórmulas:**
+                - **Por commit individual:** `Lead Time (commit) = TIMESTAMP_DESPLIEGUE - TIMESTAMP_COMMIT`
+                - **Por Pull Request:** `Lead Time (PR) = TIMESTAMP_DESPLIEGUE - TIMESTAMP_PRIMER_COMMIT_DEL_PR`
+
+              - **Implementación Detallada del Cálculo (Proceso por Lotes):**
+              El cálculo no se dispara con cada despliegue, sino que se ejecuta como un proceso por lotes (`batch job`) que opera exclusivamente sobre los datos ya sincronizados en la base de datos local, sin llamadas a APIs externas.
+                1.  **Paso 1: Obtener Despliegues Ordenados.** El job consulta todos los `Deployment` de la base de datos, ordenados cronológicamente por `deployment_time`.
+                2.  **Paso 2: Procesar Despliegues por Pares.** Se itera sobre los despliegues. Para cada despliegue `D_n`, se identifica su despliegue exitoso anterior, `D_n-1`. El rango de análisis queda definido por el `previous_head_sha` (de `D_n-1`) y el `current_head_sha` (de `D_n`).
+                3.  **Paso 3: Reconstruir el "Lote" de Commits.** Se realiza una "caminata" hacia atrás en la tabla `Commit` local, comenzando desde `current_head_sha` y siguiendo los `parent_shas` de cada commit. Se recolectan todos los commits visitados hasta encontrar el `previous_head_sha`. La lista de commits recolectados constituye el "lote" de cambios que se introdujeron en el despliegue `D_n`.
+                4.  **Paso 4: Calcular y Almacenar Lead Time por Commit.** Para cada `commit` en el "lote", se calcula su `Lead Time` y se almacena en una tabla (ej. `ChangeLeadTime`) junto con el `commit_sha` y el `deployment_id`.
+                5.  **Paso 5: Identificar Pull Requests en el Lote.** Se toma la lista de SHAs del "lote" de commits. Se consulta la tabla `PullRequest` para encontrar todos los PRs cuyo `merge_commit_sha` esté en esa lista.
+                6.  **Paso 6: Calcular y Almacenar Lead Time por Pull Request.** Para cada `PullRequest` identificado:
+                    - Se obtiene su `first_commit_sha`.
+                    - Se busca el `timestamp` de ese commit en la tabla `Commit`.
+                    - Se calcula el `Lead Time` usando la fórmula para PR.
+                    - El resultado se almacena en una tabla (ej. `PullRequestLeadTime`) junto con el `pull_request_id` y el `deployment_id`.
+                7.  **Paso 7: Agregación para la Métrica Final.** Cuando un usuario consulta el dashboard, el sistema lee las tablas `ChangeLeadTime` y/o `PullRequestLeadTime`, filtra por el período solicitado y calcula la **mediana** de los `lead_time` para presentar la métrica DORA final.
         - **Métricas de Estabilidad (Stability)**
             - **C. Tasa de Fallo de Cambio (Change Fail Rate)**
                 - **Definición:** Mide el porcentaje de despliegues a producción que resultan en una degradación del servicio y requieren una acción para ser remediados (ej. un hotfix, un rollback, un parche).
