@@ -105,7 +105,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                     if (e.getStatusCode().is5xxServerError()) {
                         throw new RuntimeException("Failed to fetch commits from GitHub due to a server error: " + e.getMessage(), e);
                     }
-                    break;
+                    nextPageUrl = null; // Stop pagination on client or non-5xx server errors
                 }
             }
         } catch (RuntimeException e) {
@@ -165,7 +165,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                     if (e.getStatusCode().is5xxServerError()) {
                         throw new RuntimeException("Failed to fetch pull requests from GitHub due to a server error: " + e.getMessage(), e);
                     }
-                    break;
+                    nextPageUrl = null; // Stop pagination on client or non-5xx server errors
                 }
             }
         } catch (RuntimeException e) {
@@ -224,7 +224,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                     if (e.getStatusCode().is5xxServerError()) {
                         throw new RuntimeException("Failed to fetch workflow runs from GitHub due to a server error: " + e.getMessage(), e);
                     }
-                    break;
+                    nextPageUrl = null; // Stop pagination on client or non-5xx server errors
                 }
             }
         } catch (RuntimeException e) {

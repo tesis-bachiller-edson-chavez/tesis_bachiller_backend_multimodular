@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.module_domain;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.Date;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class GithubCommitDto {
@@ -10,6 +11,20 @@ public class GithubCommitDto {
     private String sha;
     private Commit commit;
     private Author author;
+    private List<ParentDto> parents;
+
+    public static class ParentDto {
+        private String sha;
+
+        public String getSha() {
+            return sha;
+        }
+
+        public void setSha(String sha) {
+            this.sha = sha;
+        }
+    }
+
 
     public static class Commit {
         private CommitAuthor author;
@@ -96,5 +111,13 @@ public class GithubCommitDto {
 
     public void setAuthor(Author author) {
         this.author = author;
+    }
+
+    public List<ParentDto> getParents() {
+        return parents;
+    }
+
+    public void setParents(List<ParentDto> parents) {
+        this.parents = parents;
     }
 }

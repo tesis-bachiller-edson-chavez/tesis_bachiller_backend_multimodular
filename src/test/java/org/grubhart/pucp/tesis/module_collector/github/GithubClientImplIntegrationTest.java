@@ -1,17 +1,14 @@
 package org.grubhart.pucp.tesis.module_collector.github;
 
-
 import org.grubhart.pucp.tesis.module_domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.contract.wiremock.AutoConfigureWireMock;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -21,13 +18,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-
 @SpringBootTest
-@AutoConfigureWireMock(port = 0) // Inicia WireMock en un puerto aleatorio
+@AutoConfigureWireMock(port = 0)
 @TestPropertySource(properties = {
-        // Apuntamos la URL de la API a nuestro servidor de mocks (WireMock)
         "dora.github.api-url=http://localhost:${wiremock.server.port}",
-        // Usamos un token dummy, ya que WireMock no lo validará
         "dora.github.api-token=dummy-test-token"
 })
 class GithubClientImplIntegrationTest {
@@ -43,68 +37,55 @@ class GithubClientImplIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // Limpiamos todas las reglas de WireMock antes de cada test
         resetAllRequests();
     }
 
     @Test
     @DisplayName("Dado un usuario que SÍ es miembro, debe devolver true")
     void isUserMemberOfOrganization_whenUserIsMember_shouldReturnTrue() {
-        // GIVEN: Simulamos que la API de GitHub responde con HTTP 204 No Content.
         stubFor(get(urlEqualTo("/orgs/test-org/members/member-user"))
                 .willReturn(aResponse()
                         .withStatus(204)));
 
-        // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("member-user", "test-org");
 
-        // THEN
         assertThat(isMember).isTrue();
     }
 
     @Test
     @DisplayName("Dado un usuario que NO es miembro, debe devolver false")
     void isUserMemberOfOrganization_whenUserIsNotMember_shouldReturnFalse() {
-        // GIVEN: Simulamos que la API de GitHub responde con HTTP 404 Not Found.
         stubFor(get(urlEqualTo("/orgs/test-org/members/non-member-user"))
                 .willReturn(aResponse()
                         .withStatus(404)));
 
-        // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("non-member-user", "test-org");
 
-        // THEN
         assertThat(isMember).isFalse();
     }
 
     @Test
     @DisplayName("Dado un error 500 de la API, debe devolver false y no lanzar excepción")
     void isUserMemberOfOrganization_whenApiReturnsServerError_shouldReturnFalse() {
-        // GIVEN: Simulamos un error interno del servidor.
         stubFor(get(urlEqualTo("/orgs/test-org/members/any-user"))
                 .willReturn(aResponse().withStatus(500)));
 
-        // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("any-user", "test-org");
 
-        // THEN
         assertThat(isMember).isFalse();
     }
 
     @Test
     @DisplayName("Dado una respuesta 200 OK de la API (no 204), debe devolver false")
     void isUserMemberOfOrganization_whenApiReturnsOk_shouldReturnFalse() {
-        // GIVEN: Simulamos que la API de GitHub responde con HTTP 200 OK.
         stubFor(get(urlEqualTo("/orgs/test-org/members/any-user"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("{}")));
 
-        // WHEN
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization("any-user", "test-org");
 
-        // THEN
         assertThat(isMember).isFalse();
     }
 
@@ -548,15 +529,19 @@ class GithubClientImplIntegrationTest {
         String repo = "repo";
         String workflowFile = "workflow.yml";
 
+        // --- CAMBIO AQUÍ ---
+        // Se formatea la fecha dinámicamente para asegurar que sea más reciente que 'since'.
+        String recentDate = since.plusHours(1).atZone(java.time.ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT);
+
         // Respuesta JSON para la Página 1 (exitosa)
-        String firstPageJson = """
+        String firstPageJson = String.format("""
         {
           "total_count": 2,
           "workflow_runs": [
-            { "id": 101, "status": "completed", "conclusion": "success", "created_at": "2025-09-28T10:00:00Z" }
+            { "id": 101, "status": "completed", "conclusion": "success", "created_at": "%s" }
           ]
         }
-        """;
+        """, recentDate);
 
         // Construimos la URL de la siguiente página, que sabemos que va a fallar.
         String nextPageUrl = String.format("http://localhost:%d/repos/%s/%s/actions/workflows/%s/runs?page=2",
