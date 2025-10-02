@@ -11,6 +11,8 @@ public class GitHubWorkflowRunDto {
     private String name;
     @JsonProperty("head_branch")
     private String headBranch;
+    @JsonProperty("head_sha")
+    private String headSha;
     private String status;
     private String conclusion;
     @JsonProperty("created_at")
@@ -45,6 +47,14 @@ public class GitHubWorkflowRunDto {
 
     public void setHeadBranch(String headBranch) {
         this.headBranch = headBranch;
+    }
+
+    public String getHeadSha() {
+        return headSha;
+    }
+
+    public void setHeadSha(String headSha) {
+        this.headSha = headSha;
     }
 
     public String getStatus() {

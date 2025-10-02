@@ -1,13 +1,11 @@
 package org.grubhart.pucp.tesis.module_domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
+import jakarta.persistence.*;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 
 @Entity
@@ -19,6 +17,14 @@ public class Commit {
     @Lob // Usamos @Lob para textos largos, que se mapea a TEXT o CLOB
     private String message;
     private LocalDateTime date;
+
+    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "commit_parent",
+            joinColumns = @JoinColumn(name = "commit_sha"),
+            inverseJoinColumns = @JoinColumn(name = "parent_sha")
+    )
+    private List<Commit> parents;
 
 
 
@@ -90,5 +96,13 @@ public class Commit {
 
     public void setDate(LocalDateTime date) {
         this.date = date;
+    }
+
+    public List<Commit> getParents() {
+        return parents;
+    }
+
+    public void setParents(List<Commit> parents) {
+        this.parents = parents;
     }
 }

@@ -8,6 +8,7 @@ import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfigRepository;
 import org.grubhart.pucp.tesis.module_domain.SyncStatus;
 import org.grubhart.pucp.tesis.module_domain.SyncStatusRepository;
+import org.grubhart.pucp.tesis.module_processor.LeadTimeCalculationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -30,6 +32,7 @@ public class DeploymentSyncService {
     private final DeploymentRepository deploymentRepository;
     private final SyncStatusRepository syncStatusRepository;
     private final RepositoryConfigRepository repositoryConfigRepository;
+    private final LeadTimeCalculationService leadTimeCalculationService;
 
     private final String workflowFileName;
 
@@ -37,11 +40,12 @@ public class DeploymentSyncService {
                                  DeploymentRepository deploymentRepository,
                                  SyncStatusRepository syncStatusRepository,
                                  RepositoryConfigRepository repositoryConfigRepository,
-                                 @Value("${dora.github.workflow-file-name}") String workflowFileName) {
+                                 LeadTimeCalculationService leadTimeCalculationService, @Value("${dora.github.workflow-file-name}") String workflowFileName) {
         this.gitHubClient = gitHubClient;
         this.deploymentRepository = deploymentRepository;
         this.syncStatusRepository = syncStatusRepository;
         this.repositoryConfigRepository = repositoryConfigRepository;
+        this.leadTimeCalculationService = leadTimeCalculationService;
         this.workflowFileName = workflowFileName;
     }
 
@@ -75,36 +79,51 @@ public class DeploymentSyncService {
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById(JOB_NAME + "_" + repoName);
         LocalDateTime lastRun = syncStatus.map(SyncStatus::getLastSuccessfulRun).orElse(null);
 
+        List<GitHubWorkflowRunDto> workflowRuns = gitHubClient.getWorkflowRuns(owner, repoName, workflowFileName, lastRun);
 
-            List<GitHubWorkflowRunDto> workflowRuns = gitHubClient.getWorkflowRuns(owner, repoName, workflowFileName, lastRun);
-
-            List<Deployment> newDeployments = workflowRuns.stream()
-                    .filter(run -> "success".equals(run.getConclusion()))
-                    .map(this::convertToDeployment)
-                    .filter(deployment -> !deploymentRepository.existsById(deployment.getGithubId()))
-                    .collect(Collectors.toList());
-
-            if (!newDeployments.isEmpty()) {
-                deploymentRepository.saveAll(newDeployments);
-                log.info("Se guardaron {} nuevos deployments para {}/{}.", newDeployments.size(), owner, repoName);
-            } else {
-                log.info("No se encontraron nuevos deployments para {}/{}.", owner, repoName);
+        List<Deployment> newDeployments = new ArrayList<>();
+        for (GitHubWorkflowRunDto run : workflowRuns) {
+            if (!"success".equals(run.getConclusion())) {
+                continue;
             }
+            try {
+                Deployment deployment = convertToDeployment(run);
+                if (!deploymentRepository.existsById(deployment.getGithubId())) {
+                    newDeployments.add(deployment);
+                }
+            } catch (IllegalArgumentException e) {
+                log.warn("Omitiendo despliegue con ID de workflow {} por no tener un SHA de commit válido.", run.getId());
+            }
+        }
 
-            updateSyncStatus(repoName);
-            log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
+        if (!newDeployments.isEmpty()) {
+            deploymentRepository.saveAll(newDeployments);
+            log.info("Se guardaron {} nuevos deployments para {}/{}.", newDeployments.size(), owner, repoName);
+            leadTimeCalculationService.calculate();
+        } else {
+            log.info("No se encontraron nuevos deployments para {}/{}.", owner, repoName);
+        }
 
+        updateSyncStatus(repoName);
+        log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
     }
 
     private Deployment convertToDeployment(GitHubWorkflowRunDto dto) {
+        if (dto.getHeadSha() == null || dto.getHeadSha().isBlank()) {
+            throw new IllegalArgumentException("El SHA del commit es nulo o está vacío.");
+        }
         Deployment deployment = new Deployment();
         deployment.setGithubId(dto.getId());
         deployment.setName(dto.getName());
         deployment.setHeadBranch(dto.getHeadBranch());
+        deployment.setSha(dto.getHeadSha());
         deployment.setStatus(dto.getStatus());
         deployment.setConclusion(dto.getConclusion());
         deployment.setCreatedAt(dto.getCreatedAt());
         deployment.setUpdatedAt(dto.getUpdatedAt());
+        if ("main".equals(dto.getHeadBranch())) {
+            deployment.setEnvironment("production");
+        }
         return deployment;
     }
 

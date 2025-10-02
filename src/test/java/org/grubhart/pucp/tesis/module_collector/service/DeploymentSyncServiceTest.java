@@ -2,6 +2,7 @@ package org.grubhart.pucp.tesis.module_collector.service;
 
 import org.grubhart.pucp.tesis.module_collector.github.GithubClientImpl;
 import org.grubhart.pucp.tesis.module_domain.*;
+import org.grubhart.pucp.tesis.module_processor.LeadTimeCalculationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,9 @@ class DeploymentSyncServiceTest {
     @Mock
     private RepositoryConfigRepository repositoryConfigRepository;
 
+    @Mock
+    private LeadTimeCalculationService leadTimeCalculationService;
+
     @InjectMocks
     private DeploymentSyncService deploymentSyncService;
 
@@ -57,15 +61,17 @@ class DeploymentSyncServiceTest {
                 deploymentRepository,
                 syncStatusRepository,
                 repositoryConfigRepository,
+                leadTimeCalculationService,
                 WORKFLOW_FILE_NAME
         );
     }
 
-    private GitHubWorkflowRunDto createWorkflowRunDto(Long id, String name, String conclusion) {
+    private GitHubWorkflowRunDto createWorkflowRunDto(Long id, String name, String conclusion, String branch, String sha) {
         GitHubWorkflowRunDto dto = new GitHubWorkflowRunDto();
         dto.setId(id);
         dto.setName(name);
-        dto.setHeadBranch("main");
+        dto.setHeadBranch(branch);
+        dto.setHeadSha(sha);
         dto.setStatus("completed");
         dto.setConclusion(conclusion);
         dto.setCreatedAt(LocalDateTime.now());
@@ -99,8 +105,8 @@ class DeploymentSyncServiceTest {
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
         when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
 
-        GitHubWorkflowRunDto newRun1 = createWorkflowRunDto(1L, "run1", "success");
-        GitHubWorkflowRunDto newRun2 = createWorkflowRunDto(2L, "run2", "success");
+        GitHubWorkflowRunDto newRun1 = createWorkflowRunDto(1L, "run1", "success", "main", "sha1");
+        GitHubWorkflowRunDto newRun2 = createWorkflowRunDto(2L, "run2", "success", "develop", "sha2");
         when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(newRun1, newRun2));
 
         when(deploymentRepository.existsById(1L)).thenReturn(false);
@@ -113,9 +119,43 @@ class DeploymentSyncServiceTest {
         verify(deploymentRepository).saveAll(deploymentsCaptor.capture());
         List<Deployment> savedDeployments = deploymentsCaptor.getValue();
         assertEquals(2, savedDeployments.size());
-        assertTrue(savedDeployments.stream().anyMatch(d -> d.getGithubId() == 1L));
-        assertTrue(savedDeployments.stream().anyMatch(d -> d.getGithubId() == 2L));
+
+        Deployment productionDeployment = savedDeployments.stream().filter(d -> d.getGithubId() == 1L).findFirst().orElseThrow();
+        assertEquals("production", productionDeployment.getEnvironment());
+        assertEquals("sha1", productionDeployment.getSha());
+
+        Deployment otherDeployment = savedDeployments.stream().filter(d -> d.getGithubId() == 2L).findFirst().orElseThrow();
+        assertEquals(null, otherDeployment.getEnvironment());
+        assertEquals("sha2", otherDeployment.getSha());
+
+        verify(leadTimeCalculationService, times(1)).calculate();
     }
+
+    @Test
+    void syncDeployments_shouldSkipRun_whenShaIsMissing() {
+        // Arrange
+        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        GitHubWorkflowRunDto invalidRun = createWorkflowRunDto(1L, "invalid_run", "success", "main", null); // SHA nulo
+        GitHubWorkflowRunDto validRun = createWorkflowRunDto(2L, "valid_run", "success", "main", "sha2");
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(List.of(invalidRun, validRun));
+
+        when(deploymentRepository.existsById(2L)).thenReturn(false);
+
+        // Act
+        deploymentSyncService.syncDeployments();
+
+        // Assert
+        verify(deploymentRepository).saveAll(deploymentsCaptor.capture());
+        List<Deployment> savedDeployments = deploymentsCaptor.getValue();
+        assertEquals(1, savedDeployments.size());
+        assertEquals(2L, savedDeployments.get(0).getGithubId());
+        assertEquals("sha2", savedDeployments.get(0).getSha());
+
+        verify(leadTimeCalculationService, times(1)).calculate();
+    }
+
 
     @Test
     void syncDeployments_whenApiReturnsMixedRuns_shouldOnlySaveNewOnes() {
@@ -124,8 +164,8 @@ class DeploymentSyncServiceTest {
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
         when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
 
-        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success");
-        GitHubWorkflowRunDto newRun = createWorkflowRunDto(2L, "run2", "success");
+        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success", "main", "sha1");
+        GitHubWorkflowRunDto newRun = createWorkflowRunDto(2L, "run2", "success", "main", "sha2");
         when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(existingRun, newRun));
 
         when(deploymentRepository.existsById(1L)).thenReturn(true); // Este ya existe
@@ -139,6 +179,8 @@ class DeploymentSyncServiceTest {
         List<Deployment> savedDeployments = deploymentsCaptor.getValue();
         assertEquals(1, savedDeployments.size());
         assertEquals(2L, savedDeployments.get(0).getGithubId());
+
+        verify(leadTimeCalculationService, times(1)).calculate();
     }
 
     @Test
@@ -148,7 +190,7 @@ class DeploymentSyncServiceTest {
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
         when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
 
-        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success");
+        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success", "main", "sha1");
         when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(existingRun));
 
         when(deploymentRepository.existsById(1L)).thenReturn(true);
@@ -158,6 +200,7 @@ class DeploymentSyncServiceTest {
 
         // Assert
         verify(deploymentRepository, never()).saveAll(any());
+        verify(leadTimeCalculationService, never()).calculate();
     }
 
     @Test

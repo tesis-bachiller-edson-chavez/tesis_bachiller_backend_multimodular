@@ -16,21 +16,26 @@ public class Deployment {
     private Long githubId;
 
     private String name;
+    private String sha;
     private String headBranch;
+    private String environment; // <-- CAMPO AÑADIDO
     private String status;
     private String conclusion;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // Constructor sin argumentos (requerido por JPA)
+    private boolean leadTimeProcessed = false;
+
     public Deployment() {
+        // JPA constructor
     }
 
-    // Constructor con todos los argumentos (para reemplazar al Builder)
-    public Deployment(Long githubId, String name, String headBranch, String status, String conclusion, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public Deployment(Long githubId, String name, String sha, String headBranch, String environment, String status, String conclusion, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.githubId = githubId;
         this.name = name;
+        this.sha = sha;
         this.headBranch = headBranch;
+        this.environment = environment; // <-- CAMPO AÑADIDO
         this.status = status;
         this.conclusion = conclusion;
         this.createdAt = createdAt;
@@ -63,12 +68,28 @@ public class Deployment {
         this.name = name;
     }
 
+    public String getSha() {
+        return sha;
+    }
+
+    public void setSha(String sha) {
+        this.sha = sha;
+    }
+
     public String getHeadBranch() {
         return headBranch;
     }
 
     public void setHeadBranch(String headBranch) {
         this.headBranch = headBranch;
+    }
+
+    public String getEnvironment() { // <-- GETTER AÑADIDO
+        return environment;
+    }
+
+    public void setEnvironment(String environment) { // <-- SETTER AÑADIDO
+        this.environment = environment;
     }
 
     public String getStatus() {
@@ -101,6 +122,14 @@ public class Deployment {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public boolean isLeadTimeProcessed() {
+        return leadTimeProcessed;
+    }
+
+    public void setLeadTimeProcessed(boolean leadTimeProcessed) {
+        this.leadTimeProcessed = leadTimeProcessed;
     }
 
     @Override
