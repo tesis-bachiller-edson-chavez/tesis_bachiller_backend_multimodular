@@ -88,7 +88,11 @@ public class PullRequestSyncService {
 
             List<PullRequest> newPullRequestsToSave = pullRequestDtos.stream()
                     .filter(dto -> !existingIds.contains(dto.getId()))
-                    .map(dto -> new PullRequest(dto, config))
+                    .map(dto -> {
+                        PullRequest pr = new PullRequest(dto, config);
+                        pr.setFirstCommitSha(dto.getFirstCommitSha());
+                        return pr;
+                    })
                     .collect(Collectors.toList());
 
             if (!newPullRequestsToSave.isEmpty()) {

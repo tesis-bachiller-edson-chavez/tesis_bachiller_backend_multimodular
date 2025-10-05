@@ -157,6 +157,13 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                             shouldStop = true;
                             continue;
                         }
+                        // Enrich DTO with the first commit SHA
+                        try {
+                            String firstCommitSha = getFirstCommitShaForPr(owner, repo, pr.getNumber());
+                            pr.setFirstCommitSha(firstCommitSha);
+                        } catch (Exception e) {
+                            logger.error("Failed to fetch first commit for PR #{} in {}/{}. Error: {}", pr.getNumber(), owner, repo, e.getMessage());
+                        }
                         allPullRequests.add(pr);
                     }
 
@@ -177,6 +184,46 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
 
         logger.info("Recolección paginada finalizada. Total de Pull Requests obtenidos: {}", allPullRequests.size());
         return allPullRequests;
+    }
+
+    protected Mono<ResponseEntity<List<GithubCommitDto>>> createCommitsRequestMono(String owner, String repo, int prNumber) {
+        String url = UriComponentsBuilder.fromPath("/repos/{owner}/{repo}/pulls/{prNumber}/commits")
+                .queryParam("per_page", 1)
+                .buildAndExpand(owner, repo, prNumber)
+                .toString();
+        return webClient.get()
+                .uri(url)
+                .retrieve()
+                .toEntityList(GithubCommitDto.class);
+    }
+
+    protected List<GithubCommitDto> fetchCommitsForPr(String owner, String repo, int prNumber) {
+        try {
+            ResponseEntity<List<GithubCommitDto>> responseEntity = createCommitsRequestMono(owner, repo, prNumber).block();
+
+            if (responseEntity != null) {
+                return responseEntity.getBody();
+            }
+            return null;
+        } catch (WebClientResponseException e) {
+            logger.error("Failed to fetch commits for PR #{} in {}/{}: {} - {}", prNumber, owner, repo, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            return null;
+        }
+    }
+
+    public String getFirstCommitShaForPr(String owner, String repo, int prNumber) {
+        logger.debug("Fetching first commit for PR #{} in {}/{}", prNumber, owner, repo);
+
+        List<GithubCommitDto> commits = fetchCommitsForPr(owner, repo, prNumber);
+
+        if (commits != null && !commits.isEmpty()) {
+            String sha = commits.get(0).getSha();
+            logger.info("First commit for PR #{} is {}", prNumber, sha);
+            return sha;
+        } else {
+            logger.warn("No commits found for PR #{}", prNumber);
+            throw new RuntimeException("No commits found for PR #" + prNumber);
+        }
     }
 
     @Override

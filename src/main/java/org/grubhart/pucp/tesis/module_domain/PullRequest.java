@@ -24,6 +24,9 @@ public class PullRequest {
 
     private LocalDateTime mergedAt;
 
+    @Column(name = "first_commit_sha")
+    private String firstCommitSha;
+
     public PullRequest() {
     }
 
@@ -78,6 +81,14 @@ public class PullRequest {
 
     public void setMergedAt(LocalDateTime mergedAt) {
         this.mergedAt = mergedAt;
+    }
+
+    public String getFirstCommitSha() {
+        return firstCommitSha;
+    }
+
+    public void setFirstCommitSha(String firstCommitSha) {
+        this.firstCommitSha = firstCommitSha;
     }
 
     @Override

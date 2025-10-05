@@ -11,7 +11,7 @@ import java.util.Objects;
 public class GithubPullRequestDto {
 
     private Long id;
-
+    private int number;
     private String state;
 
     @JsonProperty("created_at")
@@ -23,12 +23,22 @@ public class GithubPullRequestDto {
     @JsonProperty("merged_at")
     private LocalDateTime mergedAt;
 
+    private String firstCommitSha;
+
     public Long getId() {
         return id;
     }
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public int getNumber() {
+        return number;
+    }
+
+    public void setNumber(int number) {
+        this.number = number;
     }
 
     public String getState() {
@@ -63,6 +73,14 @@ public class GithubPullRequestDto {
         this.mergedAt = mergedAt;
     }
 
+    public String getFirstCommitSha() {
+        return firstCommitSha;
+    }
+
+    public void setFirstCommitSha(String firstCommitSha) {
+        this.firstCommitSha = firstCommitSha;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -80,10 +98,12 @@ public class GithubPullRequestDto {
     public String toString() {
         return "GithubPullRequestDto{" +
                 "id=" + id +
+                ", number=" + number +
                 ", state='" + state + '\'' +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
                 ", mergedAt=" + mergedAt +
+                ", firstCommitSha='" + firstCommitSha + '\'' +
                 '}';
     }
 }
