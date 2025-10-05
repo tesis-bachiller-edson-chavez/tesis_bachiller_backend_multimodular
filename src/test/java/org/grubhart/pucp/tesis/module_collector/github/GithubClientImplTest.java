@@ -1,5 +1,8 @@
 package org.grubhart.pucp.tesis.module_collector.github;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
@@ -10,19 +13,24 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-import reactor.core.publisher.Mono;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 import org.springframework.http.ResponseEntity;
+
 
 class GithubClientImplTest {
 
@@ -60,8 +68,11 @@ class GithubClientImplTest {
     @Test
     void getPullRequests_shouldReturnPullRequestsWhenResponseIsSuccessful() {
         // Arrange
-        String jsonBody = "[{\"id\":1,\"state\":\"open\",\"merged_at\":null,\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\", \"closed_at\":null}]";
+        String jsonBody = "[{\"id\":1, \"number\":101, \"state\":\"open\",\"merged_at\":null,\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":\"2024-01-01T00:00:00Z\", \"closed_at\":null}]";
         mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
+
+        String firstCommitJsonBody = "[{\"sha\":\"abcdef123456\"}]";
+        mockWebServer.enqueue(new MockResponse().setBody(firstCommitJsonBody).addHeader("Content-Type", "application/json"));
 
         // Act
         List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", since);
@@ -69,13 +80,17 @@ class GithubClientImplTest {
         // Assert
         assertEquals(1, pullRequests.size());
         assertEquals(1L, pullRequests.get(0).getId());
+        assertEquals("abcdef123456", pullRequests.get(0).getFirstCommitSha());
     }
 
     @Test
     void getPullRequests_shouldIncludePrWithNullUpdatedAt() {
         // Arrange
-        String jsonBody = "[{\"id\":1,\"state\":\"open\",\"merged_at\":null,\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":null, \"closed_at\":null}]";
+        String jsonBody = "[{\"id\":1, \"number\":101, \"state\":\"open\",\"merged_at\":null,\"created_at\":\"2024-01-01T00:00:00Z\",\"updated_at\":null, \"closed_at\":null}]";
         mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
+
+        String firstCommitJsonBody = "[{\"sha\":\"abcdef123456\"}]";
+        mockWebServer.enqueue(new MockResponse().setBody(firstCommitJsonBody).addHeader("Content-Type", "application/json"));
 
         // Act
         List<GithubPullRequestDto> pullRequests = githubClient.getPullRequests("owner", "repo", since);
@@ -84,6 +99,7 @@ class GithubClientImplTest {
         assertEquals(1, pullRequests.size());
         assertEquals(1L, pullRequests.get(0).getId());
         assertNull(pullRequests.get(0).getUpdatedAt());
+        assertEquals("abcdef123456", pullRequests.get(0).getFirstCommitSha());
     }
 
     @Test
@@ -454,5 +470,86 @@ class GithubClientImplTest {
 
         // Verificamos que el método get() del webclient fue llamado una vez, y no más.
         verify(mockWebClient, times(1)).get();
+    }
+    
+    @Test
+    @DisplayName("getPullRequest debe registrar un error si falla la obtención del primer commit")
+    void getPullRequest_whenFirstCommitFails_shouldLogError() {
+        // 1. Arrange
+        // Capturador de logs
+        Logger logger = (Logger) LoggerFactory.getLogger(GithubClientImpl.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        // Espía del cliente
+        String baseUrl = String.format("http://localhost:%s", mockWebServer.getPort());
+        GithubClientImpl clientSpy = spy(new GithubClientImpl(WebClient.builder(), baseUrl, "fake-token"));
+
+        // Simular la respuesta de la API para la lista de PRs
+        String prJsonBody = "[{\"id\":1, \"number\":123, \"state\":\"open\", \"updated_at\":\"2024-05-20T10:00:00Z\"}]";
+        mockWebServer.enqueue(new MockResponse().setBody(prJsonBody).addHeader("Content-Type", "application/json"));
+
+        // Forzar la excepción en el método interno
+        String errorMessage = "Error simulado en la obtención del commit";
+        doThrow(new RuntimeException(errorMessage)).when(clientSpy).getFirstCommitShaForPr("owner", "repo", 123);
+
+        // 2. Act
+        clientSpy.getPullRequests("owner", "repo", since);
+
+        // 3. Assert
+        // Filtrar los eventos de log para obtener solo los de nivel ERROR
+        List<ILoggingEvent> errorLogs = listAppender.list.stream()
+                .filter(event -> "ERROR".equals(event.getLevel().toString()))
+                .collect(Collectors.toList());
+
+        // Verificar que se registró exactamente un error
+        assertEquals(1, errorLogs.size(), "Se esperaba exactamente un mensaje de error.");
+
+        // Verificar el contenido del mensaje de error
+        ILoggingEvent errorEvent = errorLogs.get(0);
+        String expectedMessage = "Failed to fetch first commit for PR #123 in owner/repo. Error: " + errorMessage;
+        assertTrue(errorEvent.getFormattedMessage().contains(expectedMessage),
+                "El mensaje de error no contiene el texto esperado. Mensaje real: " + errorEvent.getFormattedMessage());
+
+        // Limpieza
+        logger.detachAppender(listAppender);
+    }
+
+    @Test
+    @DisplayName("fetchCommitsForPr debe devolver nulo si el Mono de la petición está vacío")
+    void fetchCommitsForPr_whenRequestMonoIsEmpty_shouldReturnNull() {
+        // Arrange
+        GithubClientImpl clientSpy = spy(githubClient);
+        // Forzamos al método interno a devolver un Mono vacío
+        doReturn(Mono.empty()).when(clientSpy).createCommitsRequestMono(anyString(), anyString(), anyInt());
+
+        // Act
+        // Llamamos directamente al método que queremos probar
+        List<GithubCommitDto> result = clientSpy.fetchCommitsForPr("owner", "repo", 123);
+
+        // Assert
+        // Verificamos que el resultado es nulo, porque .block() en un Mono vacío devuelve null
+        assertNull(result);
+    }
+
+    @Test
+    @DisplayName("getFirstCommitShaForPr debe lanzar una excepción si fetchCommitsForPr devuelve una lista vacía")
+    void getFirstCommitShaForPr_whenFetchReturnsEmptyList_shouldThrowException() {
+        // Arrange
+        GithubClientImpl clientSpy = spy(githubClient);
+        // Forzamos al método fetch a devolver una lista vacía
+        doReturn(Collections.emptyList()).when(clientSpy).fetchCommitsForPr(anyString(), anyString(), anyInt());
+
+        // Act & Assert
+        // Verificamos que se lanza la excepción esperada cuando se llama al método principal
+        Exception exception = assertThrows(RuntimeException.class, () -> {
+            clientSpy.getFirstCommitShaForPr("owner", "repo", 123);
+        });
+
+        String expectedMessage = "No commits found for PR";
+        String actualMessage = exception.getMessage();
+
+        assertTrue(actualMessage.contains(expectedMessage));
     }
 }

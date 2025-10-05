@@ -82,6 +82,40 @@ class PullRequestSyncServiceTest {
     }
 
     @Test
+    void shouldFetchAndSetFirstCommitShaForNewPullRequests() {
+        // 1. Setup: Configurar un repositorio y un DTO de PR enriquecido, como lo devolvería el colector.
+        RepositoryConfig config = new RepositoryConfig("https://github.com/test-owner/test-repo");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(config));
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
+
+        String expectedFirstCommitSha = "sha-of-first-commit";
+        GithubPullRequestDto newEnrichedDto = new GithubPullRequestDto();
+        newEnrichedDto.setId(456L);
+        newEnrichedDto.setNumber(101);
+        newEnrichedDto.setFirstCommitSha(expectedFirstCommitSha); // El DTO ya viene con el SHA
+
+        // Simular que el colector devuelve el DTO enriquecido
+        when(githubClient.getPullRequests(eq("test-owner"), eq("test-repo"), any())).thenReturn(List.of(newEnrichedDto));
+
+        // Simular que el PR no existe en la BD
+        when(pullRequestRepository.findAllById(Set.of(456L))).thenReturn(Collections.emptyList());
+
+        // 2. Ejecutar el servicio
+        pullRequestSyncService.syncPullRequests();
+
+        // 3. Verificar: Capturar lo que se guarda y comprobar que el SHA se mapeó a la entidad
+        ArgumentCaptor<List<PullRequest>> captor = ArgumentCaptor.forClass(List.class);
+        verify(pullRequestRepository).saveAll(captor.capture());
+
+        List<PullRequest> savedPullRequests = captor.getValue();
+        assertThat(savedPullRequests).hasSize(1);
+        PullRequest savedPr = savedPullRequests.get(0);
+
+        assertThat(savedPr.getId()).isEqualTo(456L);
+        assertThat(savedPr.getFirstCommitSha()).isEqualTo(expectedFirstCommitSha); // Esta es la aserción clave
+    }
+
+    @Test
     void shouldNotSaveWhenAllPullRequestsAlreadyExist() {
         RepositoryConfig config = new RepositoryConfig("https://github.com/test-owner/test-repo");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(config));

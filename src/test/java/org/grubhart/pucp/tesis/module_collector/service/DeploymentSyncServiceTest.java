@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
 
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.NullSource;
 
 
 @ExtendWith(MockitoExtension.class)
@@ -129,6 +130,26 @@ class DeploymentSyncServiceTest {
         assertEquals("sha2", otherDeployment.getSha());
 
         verify(leadTimeCalculationService, times(1)).calculate();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"failure", "cancelled", "skipped", "timed_out"})
+    @DisplayName("syncDeployments debe ignorar las ejecuciones de workflow que no fueron exitosas")
+    void syncDeployments_whenRunConclusionIsNotSuccess_shouldNotSaveDeployment(String nonSuccessConclusion) {
+        // Arrange
+        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
+
+        GitHubWorkflowRunDto failedRun = createWorkflowRunDto(1L, "run1", nonSuccessConclusion, "main", "sha1");
+        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(failedRun));
+
+        // Act
+        deploymentSyncService.syncDeployments();
+
+        // Assert
+        verify(deploymentRepository, never()).saveAll(any());
+        verify(leadTimeCalculationService, never()).calculate();
     }
 
     @Test
@@ -275,4 +296,26 @@ class DeploymentSyncServiceTest {
         verify(deploymentRepository, never()).saveAll(any());
         verify(syncStatusRepository, never()).save(any());
     }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("syncDeployments debe ignorar las ejecuciones con un headSha inválido (nulo, vacío o en blanco)")
+    void syncDeployments_whenRunHasInvalidHeadSha_shouldNotSaveDeployment(String invalidSha) {
+        // Arrange
+        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
+
+        GitHubWorkflowRunDto invalidRun = createWorkflowRunDto(1L, "run1", "success", "main", invalidSha);
+        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(invalidRun));
+
+        // Act
+        deploymentSyncService.syncDeployments();
+
+        // Assert
+        verify(deploymentRepository, never()).saveAll(any());
+        verify(leadTimeCalculationService, never()).calculate();
+    }
+
 }

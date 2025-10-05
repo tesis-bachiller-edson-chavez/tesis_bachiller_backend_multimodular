@@ -117,9 +117,14 @@ public class CommitSyncService {
                                         return null;
                                     }
                                     Commit parentCommit = parentCommitOpt.get();
-                                    return new CommitParent(childCommit, parentCommit);
+
+                                    if (!commitParentRepository.existsByCommitShaAndParentSha(childCommit.getSha(), parentCommit.getSha())) {
+                                        return new CommitParent(childCommit, parentCommit);
+                                    } else {
+                                        return null; // Relationship already exists
+                                    }
                                 })
-                                .filter(Objects::nonNull); // Filter out the nulls from parents not found
+                                .filter(Objects::nonNull); // Filter out the nulls from parents not found or already existing
                     })
                     .collect(Collectors.toList());
 

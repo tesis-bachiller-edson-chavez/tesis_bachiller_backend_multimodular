@@ -1,6 +1,8 @@
 package org.grubhart.pucp.tesis.module_collector.service;
 
 import org.grubhart.pucp.tesis.module_domain.Commit;
+import org.grubhart.pucp.tesis.module_domain.CommitParent;
+import org.grubhart.pucp.tesis.module_domain.CommitParentRepository;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
@@ -18,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -27,6 +30,9 @@ class CommitSyncServiceTest {
 
     @Mock
     private CommitRepository commitRepository;
+
+    @Mock
+    private CommitParentRepository commitParentRepository;
 
     @Mock
     private SyncStatusRepository syncStatusRepository;
@@ -220,5 +226,178 @@ class CommitSyncServiceTest {
         // Verificamos que NUNCA se intentó guardar nada en los repositorios.
         verify(commitRepository, never()).saveAll(any());
         verify(syncStatusRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Dado un nuevo commit cuyo padre ya existe, solo debe guardar el nuevo commit")
+    void syncCommits_whenParentCommitAlreadyExists_shouldOnlySaveNewCommit() {
+        // GIVEN
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+
+        String newCommitSha = "new-commit-sha";
+        String existingParentSha = "parent-commit-sha";
+
+        // Usar instancias reales de DTOs para consistencia y claridad.
+        GithubCommitDto.ParentDto parentDto = new GithubCommitDto.ParentDto();
+        parentDto.setSha(existingParentSha);
+
+        GithubCommitDto newCommitDto = new GithubCommitDto();
+        newCommitDto.setSha(newCommitSha);
+        newCommitDto.setParents(List.of(parentDto));
+
+        when(githubCommitCollector.getCommits(eq(OWNER), eq(REPO), any())).thenReturn(List.of(newCommitDto));
+
+        // Configuración completa del mock del repositorio para el flujo lógico.
+        when(commitRepository.existsById(newCommitSha)).thenReturn(false); // El commit es nuevo.
+        when(commitRepository.findById(existingParentSha)).thenReturn(Optional.of(new Commit())); // El padre ya existe.
+        when(commitRepository.findById(newCommitSha)).thenReturn(Optional.of(new Commit(newCommitDto))); // El commit hijo se encuentra después de ser guardado.
+
+        // WHEN
+        commitSyncService.syncCommits();
+
+        // THEN
+        // Se debe guardar una lista que contiene solo el nuevo commit.
+        ArgumentCaptor<List<Commit>> captor = ArgumentCaptor.forClass(List.class);
+        verify(commitRepository, times(1)).saveAll(captor.capture());
+        List<Commit> savedCommits = captor.getValue();
+        assertThat(savedCommits).hasSize(1);
+        assertThat(savedCommits.get(0).getSha()).isEqualTo(newCommitSha);
+
+        // Se debe buscar al padre para establecer la relación, lo que prueba que la lógica continuó.
+        verify(commitRepository, times(1)).findById(existingParentSha);
+    }
+
+    @Test
+    @DisplayName("Dado un commit cuyo padre no se encuentra en la BD, debe omitir la relación")
+    void syncCommits_whenParentCommitIsNotFound_shouldSkipRelationship() {
+        // GIVEN
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+
+        String childSha = "child-commit-sha";
+        String nonExistentParentSha = "non-existent-parent-sha";
+
+        GithubCommitDto.ParentDto parentDto = new GithubCommitDto.ParentDto();
+        parentDto.setSha(nonExistentParentSha);
+
+        GithubCommitDto childDto = new GithubCommitDto();
+        childDto.setSha(childSha);
+        childDto.setParents(List.of(parentDto));
+
+        when(githubCommitCollector.getCommits(eq(OWNER), eq(REPO), any())).thenReturn(List.of(childDto));
+
+        // El commit hijo es nuevo y se guarda.
+        when(commitRepository.existsById(childSha)).thenReturn(false);
+        // El commit hijo se encuentra después de ser guardado.
+        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto)));
+        // El commit padre NO se encuentra en la BD.
+        when(commitRepository.findById(nonExistentParentSha)).thenReturn(Optional.empty());
+
+        // WHEN
+        commitSyncService.syncCommits();
+
+        // THEN
+        // Verificamos que se buscó al padre.
+        verify(commitRepository).findById(nonExistentParentSha);
+
+        // Verificamos que se guardó el commit hijo.
+        ArgumentCaptor<List<Commit>> commitCaptor = ArgumentCaptor.forClass(List.class);
+        verify(commitRepository).saveAll(commitCaptor.capture());
+        assertThat(commitCaptor.getValue()).hasSize(1);
+        assertThat(commitCaptor.getValue().get(0).getSha()).isEqualTo(childSha);
+
+        // La aserción clave: verificamos que NUNCA se intentó guardar ninguna relación de parentesco.
+        verify(commitParentRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("Dado que solo se encuentra una nueva relación de parentesco, solo debe guardar la relación")
+    void syncCommits_whenOnlyNewParentRelationshipIsFound_shouldSaveOnlyRelationship() {
+        // GIVEN
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+
+        String childSha = "child-sha";
+        String parentSha = "parent-sha";
+
+        // DTOs para simular la respuesta de la API
+        GithubCommitDto.ParentDto parentDto = new GithubCommitDto.ParentDto();
+        parentDto.setSha(parentSha);
+        GithubCommitDto childDto = new GithubCommitDto();
+        childDto.setSha(childSha);
+        childDto.setParents(List.of(parentDto));
+
+        when(githubCommitCollector.getCommits(eq(OWNER), eq(REPO), any())).thenReturn(List.of(childDto));
+
+        // Simulamos que el commit hijo YA EXISTE y no necesita ser guardado.
+        when(commitRepository.existsById(childSha)).thenReturn(true);
+
+        // Simulamos que tanto el hijo como el padre existen en la BD y pueden ser recuperados.
+        Commit childCommit = new Commit(childDto);
+        Commit parentCommit = new Commit(parentSha, null, null, null);
+        when(commitRepository.findById(childSha)).thenReturn(Optional.of(childCommit));
+        when(commitRepository.findById(parentSha)).thenReturn(Optional.of(parentCommit));
+
+        // Punto Clave: La relación de parentesco NO EXISTE todavía.
+        when(commitParentRepository.existsByCommitShaAndParentSha(childSha, parentSha)).thenReturn(false);
+
+        // WHEN
+        commitSyncService.syncCommits();
+
+        // THEN
+        // Verificamos que NO se guardó ningún commit, ya que todos existían.
+        verify(commitRepository, never()).saveAll(any());
+
+        // Verificamos que SÍ se guardó la nueva relación de parentesco.
+        ArgumentCaptor<List<CommitParent>> parentCaptor = ArgumentCaptor.forClass(List.class);
+        verify(commitParentRepository, times(1)).saveAll(parentCaptor.capture());
+
+        List<CommitParent> savedParents = parentCaptor.getValue();
+        assertThat(savedParents).hasSize(1);
+        CommitParent savedParent = savedParents.get(0);
+        assertThat(savedParent.getCommit()).isNotNull();
+        assertThat(savedParent.getCommit().getSha()).isEqualTo(childSha);
+        assertThat(savedParent.getParent()).isNotNull();
+        assertThat(savedParent.getParent().getSha()).isEqualTo(parentSha);
+    }
+
+    @Test
+    @DisplayName("Dado que una relación de parentesco ya existe, no debe hacer nada")
+    void syncCommits_whenParentRelationshipAlreadyExists_shouldDoNothing() {
+        // GIVEN
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+
+        String childSha = "child-sha";
+        String parentSha = "parent-sha";
+
+        // DTOs para simular la respuesta de la API
+        GithubCommitDto.ParentDto parentDto = new GithubCommitDto.ParentDto();
+        parentDto.setSha(parentSha);
+        GithubCommitDto childDto = new GithubCommitDto();
+        childDto.setSha(childSha);
+        childDto.setParents(List.of(parentDto));
+
+        when(githubCommitCollector.getCommits(eq(OWNER), eq(REPO), any())).thenReturn(List.of(childDto));
+
+        // Simulamos que el commit hijo YA EXISTE.
+        when(commitRepository.existsById(childSha)).thenReturn(true);
+
+        // Simulamos que tanto el hijo como el padre existen en la BD.
+        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto)));
+        when(commitRepository.findById(parentSha)).thenReturn(Optional.of(new Commit(parentSha, null, null, null)));
+
+        // Punto Clave: La relación de parentesco YA EXISTE.
+        when(commitParentRepository.existsByCommitShaAndParentSha(childSha, parentSha)).thenReturn(true);
+
+        // WHEN
+        commitSyncService.syncCommits();
+
+        // THEN
+        // Verificamos que NO se guardó ningún commit.
+        verify(commitRepository, never()).saveAll(any());
+        // La aserción clave: verificamos que NUNCA se intentó guardar ninguna relación de parentesco.
+        verify(commitParentRepository, never()).saveAll(any());
     }
 }
