@@ -1262,10 +1262,100 @@ sequenceDiagram
 
 
 ### HU-11: Procesar Métricas de Velocidad
-#### HU-11.1: Lead Time de Pull Request (Funcionalidad Futura)
-     *   **Definición:** Mide el tiempo desde el primer commit de un Pull Request hasta que dicho PR es mezclado (`merged`). Esta métrica es útil para entender el ciclo de revisión de código.
-     *   **Estado:** Esta funcionalidad se documenta como trabajo futuro.
+### HU-11.1: Frecuencia de Despliegues
 
+*   **Definición:** Mide la frecuencia con la que el software se despliega exitosamente en un entorno específico. Esta es una de las cuatro métricas DORA clave y mide la cadencia de entrega del equipo. A diferencia de la HU-11.2, este cálculo se realiza bajo demanda a través de un servicio y no se persiste en una tabla propia.
+*   **AC 11.1.1:** Dado que existen despliegues en un entorno, cuando el servicio es invocado con un rango de fechas y un período, el sistema debe contar cuántos despliegues ocurrieron en cada sub-período (semanal, mensual, etc.).
+*   **AC 11.1.2:** El resultado del conteo para cada sub-período debe retornarse como una lista de objetos `DeploymentFrequency`.
+
+#### Diagrama de Clases
+
+El siguiente diagrama muestra las clases principales involucradas. `DeploymentFrequencyService` orquesta el cálculo, utilizando `DeploymentRepository` para obtener los datos crudos de los despliegues. `DeploymentFrequency` actúa como un objeto de transferencia de datos (DTO) para devolver los resultados calculados.
+
+```mermaid
+classDiagram
+    direction LR
+
+    class DeploymentFrequencyService {
+        <<Service>>
+        +DeploymentRepository deploymentRepository
+        +calculate(String, LocalDate, LocalDate, PeriodType): List<~DeploymentFrequency~>
+    }
+
+    class DeploymentRepository {
+        <<Repository>>
+        +findByEnvironmentAndCreatedAtBetween(...): List<~Deployment~>
+    }
+
+    class DeploymentFrequency {
+        <<DTO>>
+        -periodStart: LocalDate
+        -periodEnd: LocalDate
+        -count: int
+        +DeploymentFrequency(LocalDate, LocalDate, int)
+    }
+
+    class PeriodType {
+        <<enumeration>>
+        MONTHLY
+        WEEKLY
+        BIWEEKLY
+    }
+
+    class Deployment {
+        <<Entity>>
+        +createdAt: LocalDateTime
+        +environment: String
+    }
+
+    DeploymentFrequencyService --|> DeploymentRepository : uses
+    DeploymentFrequencyService ..> DeploymentFrequency : creates
+    DeploymentFrequencyService ..> PeriodType : uses
+    DeploymentRepository ..> Deployment : returns
+```
+
+#### Diagrama de Entidad-Relación
+
+El análisis del código revela que esta funcionalidad **no introduce una nueva tabla** en la base de datos. El cálculo se realiza en tiempo de ejecución consultando la tabla `DEPLOYMENT` existente. Por lo tanto, el único diagrama relevante es el de la tabla que sirve como fuente de datos.
+
+```mermaid
+erDiagram
+    DEPLOYMENT {
+        bigint id PK
+        varchar sha
+        varchar environment
+        timestamp created_at
+        boolean processed
+    }
+```
+*   **Nota:** El servicio utiliza los campos `environment` y `created_at` para filtrar y contar los despliegues.
+
+#### Diagrama de Secuencia
+
+El diagrama de secuencia ilustra cómo un cliente (por ejemplo, un `Controller` de la API) invoca el servicio para obtener la métrica. El servicio, a su vez, consulta el repositorio de despliegues y procesa los datos para construir la respuesta.
+
+```mermaid
+sequenceDiagram
+    participant Client as "API Client / Controller"
+    participant Service as "DeploymentFrequencyService"
+    participant DepRepo as "DeploymentRepository"
+    participant DB as "Database"
+
+    Client->>+Service: 1. calculate("prod", "2023-01-01", "2023-03-31", "MONTHLY")
+
+    loop para cada período (ej. mensual)
+        Service->>+DepRepo: 2. findByEnvironmentAndCreatedAtBetween("prod", periodStart, periodEnd)
+        DepRepo->>+DB: SELECT * FROM deployment WHERE...
+        DB-->>DepRepo: "Lista de Deployments"
+        DepRepo-->>Service: "List<Deployment>"
+
+        note over Service: Calcula el tamaño de la lista (count)
+
+        Service->>Service: 3. new DeploymentFrequency(periodStart, periodEnd, count)
+    end
+
+    Service-->>-Client: "4. List<DeploymentFrequency>"
+```
 
 #### HU-11.2: Lead Time for Changes (Métrica DORA)
 *   **Definición:** Mide el tiempo desde que se escribe un commit hasta que ese commit es desplegado en producción. Esta es una de las cuatro métricas DORA clave y mide la velocidad de entrega de valor.
