@@ -858,3 +858,64 @@ graph TD
     *   **`App SG`:** Actúa como el firewall para las instancias de Elastic Beanstalk. Permite el tráfico entrante en el puerto 80 (HTTP) desde cualquier lugar de internet, para que los usuarios puedan acceder a la aplicación a través del Load Balancer.
     *   **`DB SG`:** Es el firewall de la base de datos. Es altamente restrictivo y bloquea todo el tráfico entrante por defecto.
     *   **Regla de Conexión:** Se crea una regla de `ingress` (entrada) en el `DB SG` que permite el tráfico en el puerto 3306 (MySQL) **únicamente** si su origen es un recurso que pertenece al `App SG`. Este es el enlace de seguridad crucial que permite a la aplicación comunicarse con la base de datos, mientras se bloquea cualquier otro intento de conexión.
+
+---
+
+## 14. Infraestructura y Operaciones
+
+Esta sección documenta los principios y procedimientos para la gestión de la infraestructura del sistema, capitalizando las lecciones aprendidas durante la resolución de incidentes.
+
+### 14.1. Gestión de Infraestructura con Terraform
+
+*   **Principio Clave:** Toda la infraestructura de AWS (VPC, RDS, Elastic Beanstalk, etc.) es gestionada **exclusivamente** a través de Terraform. El código en el directorio `/terraform` es la única fuente de verdad del estado de la infraestructura.
+
+*   **Prohibición Explícita:** Se prohíbe realizar cambios destructivos o de configuración mayor (ej. terminar entornos, reconstruir, modificar Security Groups) directamente desde la consola de AWS. Estas acciones manuales introducen una "deriva" (`drift`) entre el estado real y el estado definido en el código, lo que conduce a errores de planificación y conflictos en futuros despliegues de Terraform.
+
+*   **Flujo de Trabajo Estándar:** Cualquier cambio en la infraestructura debe seguir el siguiente flujo de trabajo:
+    1.  Modificar el código `.tf` correspondiente.
+    2.  Ejecutar `terraform plan` para previsualizar los cambios.
+    3.  Ejecutar `terraform apply` para aplicar los cambios de forma controlada.
+
+### 14.2. Procedimiento de Recuperación de Entornos Elastic Beanstalk (Runbook)
+
+Este runbook detalla el procedimiento para recuperar un entorno de Elastic Beanstalk que ha quedado bloqueado.
+
+*   **Síntoma:** El entorno se muestra en la consola de AWS con un estado de `Updating` o `Severe` durante un tiempo prolongado. Las acciones de la consola como "Abort current operation" o "Rebuild environment" están deshabilitadas o no tienen efecto.
+
+*   **Diagnóstico:** La causa más probable es una o más instancias EC2 subyacentes que han entrado en un estado irrecuperable ("zombie"). No responden a los comandos del plano de control de Elastic Beanstalk, lo que provoca que el entorno se bloquee en espera de una respuesta que nunca llegará.
+
+*   **Solución (Método de Recreación Forzada con Terraform):** El único método aprobado para resolver este bloqueo es forzar la destrucción y recreación del recurso a través de Terraform.
+
+    1.  **Navegar al Directorio de Terraform:**
+        ```sh
+        cd /ruta/al/proyecto/terraform
+        ```
+
+    2.  **Inicializar Terraform:** Asegurarse de que los plugins de los proveedores están instalados.
+        ```sh
+        terraform init
+        ```
+
+    3.  **Marcar el Recurso como Corrupto (`taint`):** Este comando le dice a Terraform que ignore el estado actual del recurso y lo reemplace en el próximo `apply`. Reemplazar `tesis_env` si el nombre lógico del recurso es diferente.
+        ```sh
+        terraform taint aws_elastic_beanstalk_environment.tesis_env
+        ```
+
+    4.  **Verificar el Plan de Reemplazo:** Simular los cambios para confirmar que Terraform planea reemplazar el entorno.
+        ```sh
+        terraform plan
+        ```
+        *Se debe observar una línea similar a: `-/+ resource "aws_elastic_beanstalk_environment" "tesis_env" will be replaced`.*
+
+    5.  **Aplicar la Recreación:** Ejecutar el plan para destruir el entorno bloqueado y crear uno nuevo y saludable.
+        ```sh
+        terraform apply
+        ```
+
+### 14.3. Diseño del Pipeline de Despliegue Idempotente
+
+*   **Principio:** El pipeline de despliegue manual (`manual-deploy.yml`) está diseñado para ser **idempotente**, lo que significa que puede ser ejecutado múltiples veces con el mismo resultado sin causar efectos secundarios no deseados.
+
+*   **Implementación Clave:** La idempotencia se logra principalmente a través del parámetro `use_existing_version_if_available: true` en la acción `einaregilsson/beanstalk-deploy`.
+    *   **Problema Evitado:** Sin este parámetro, si un despliegue falla después de que la nueva versión de la aplicación ya ha sido creada en Elastic Beanstalk, un reintento del pipeline fallaría inmediatamente con un error de "Application Version already exists".
+    *   **Solución:** Al establecer este parámetro en `true`, si la acción de despliegue detecta que la `version_label` que intenta crear ya existe, en lugar de fallar, la reutiliza y procede directamente al paso de despliegue. Esto permite que los reintentos del pipeline sean seguros y efectivos.
