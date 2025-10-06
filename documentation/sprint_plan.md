@@ -135,7 +135,7 @@ Dado que la aplicación se inicia y el esquema de la base de datos es gestionado
 ### HU-11: Procesar Métricas de Velocidad
 *Como el sistema, quiero procesar los datos de GitHub, para calcular la Frecuencia de Despliegue y el Tiempo de Espera para Cambios.*
 
-- **AC 11.1: Cálculo y almacenamiento de la Frecuencia de Despliegue**
+- **AC 11.1: Cálculo y almacenamiento de la Frecuencia de Despliegue** Status: Completada
     - *Dado que hay eventos de despliegue y commits en la base de datos, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Frecuencia de Despliegue.*
 - **AC 11.2: Cálculo y almacenamiento del Tiempo de Espera para Cambios** Status: Completada
     - *Dado que hay eventos de commits y PRs, cuando el job de procesamiento se ejecuta, entonces se calcula y guarda correctamente la métrica de Tiempo de Espera para Cambios.*
