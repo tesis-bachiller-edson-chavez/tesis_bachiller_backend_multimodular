@@ -1,20 +1,22 @@
 package org.grubhart.pucp.tesis.module_collector.github;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
-import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
-import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunsResponse;
-import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
-import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
+import org.grubhart.pucp.tesis.module_collector.github.dto.GithubMemberDto;
+import org.grubhart.pucp.tesis.module_domain.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
@@ -29,7 +31,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
-import org.springframework.http.ResponseEntity;
 
 
 class GithubClientImplTest {
@@ -551,5 +552,299 @@ class GithubClientImplTest {
         String actualMessage = exception.getMessage();
 
         assertTrue(actualMessage.contains(expectedMessage));
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should handle pagination and return all members")
+    void getOrganizationMembers_shouldHandlePagination() throws InterruptedException {
+        // Arrange
+        String firstPageBody = "[{\"id\":1, \"login\":\"user1\", \"avatar_url\":\"url1\"}]";
+        String secondPageBody = "[{\"id\":2, \"login\":\"user2\", \"avatar_url\":\"url2\"}]";
+
+        String nextPageUrl = String.format("http://localhost:%d/orgs/owner/members?page=2&per_page=100", mockWebServer.getPort());
+
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(firstPageBody)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Link", "<" + nextPageUrl + ">; rel=\"next\""));
+
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(secondPageBody)
+                .addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<OrganizationMember> members = githubClient.getOrganizationMembers("owner");
+
+        // Assert
+        assertEquals(2, members.size());
+        assertTrue(members.stream().anyMatch(m -> m.id() == 1 && m.login().equals("user1")));
+        assertTrue(members.stream().anyMatch(m -> m.id() == 2 && m.login().equals("user2")));
+        assertEquals(2, mockWebServer.getRequestCount());
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should handle a single page response")
+    void getOrganizationMembers_shouldHandleSinglePage() {
+        // Arrange
+        String body = "[{\"id\":1, \"login\":\"user1\", \"avatar_url\":\"url1\"}]";
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(body)
+                .addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<OrganizationMember> members = githubClient.getOrganizationMembers("owner");
+
+        // Assert
+        assertEquals(1, members.size());
+        assertEquals(1, members.get(0).id());
+        assertEquals(1, mockWebServer.getRequestCount());
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should return an empty list for an empty API response")
+    void getOrganizationMembers_shouldReturnEmptyListForEmptyResponse() {
+        // Arrange
+        mockWebServer.enqueue(new MockResponse()
+                .setBody("[]")
+                .addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<OrganizationMember> members = githubClient.getOrganizationMembers("owner");
+
+        // Assert
+        assertTrue(members.isEmpty());
+        assertEquals(1, mockWebServer.getRequestCount());
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should handle null response body gracefully")
+    void getOrganizationMembers_shouldHandleNullResponseBody() {
+        // Arrange
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+        ResponseEntity<List<GithubMemberDto>> mockResponseEntity = mock(ResponseEntity.class);
+
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.header(anyString(), anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.toEntityList(GithubMemberDto.class)).thenReturn(Mono.just(mockResponseEntity));
+
+        // Key part: The body is null
+        when(mockResponseEntity.getBody()).thenReturn(null);
+        // Return empty headers to prevent NullPointerException in getNextPageUrl
+        when(mockResponseEntity.getHeaders()).thenReturn(new org.springframework.http.HttpHeaders());
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // Act
+        List<OrganizationMember> members = clientWithMock.getOrganizationMembers("owner");
+
+        // Assert
+        assertNotNull(members);
+        assertTrue(members.isEmpty());
+        verify(mockWebClient, times(1)).get();
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers debe detenerse si la respuesta de la API es nula")
+    void getOrganizationMembers_shouldHandleNullResponseEntity() {
+        // 1. Arrange
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+
+        // La clave: toEntityList(...).block() devolverá null porque el Mono está vacío
+        when(responseSpec.toEntityList(GithubMemberDto.class)).thenReturn(Mono.empty());
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // 2. Act
+        List<OrganizationMember> members = clientWithMock.getOrganizationMembers("owner");
+
+        // 3. Assert
+        assertThat(members).isNotNull().isEmpty();
+        verify(mockWebClient, times(1)).get();
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should throw RuntimeException on 5xx server error")
+    void getOrganizationMembers_shouldThrowRuntimeExceptionOn5xxError() {
+        // Arrange
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.header(anyString(), anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+
+        // Simulate a 5xx server error
+        WebClientResponseException serverError = new WebClientResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Internal Server Error",
+                null, null, null);
+        when(responseSpec.toEntityList(GithubMemberDto.class)).thenReturn(Mono.error(serverError));
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // Act & Assert
+        Exception exception = assertThrows(RuntimeException.class, () -> {
+            clientWithMock.getOrganizationMembers("owner");
+        });
+
+        assertTrue(exception.getMessage().contains("Failed to fetch members from GitHub due to a server error"));
+        verify(mockWebClient, times(1)).get();
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should log error and stop on 4xx client error")
+    void getOrganizationMembers_shouldStopPaginationOn4xxError() {
+        // Arrange
+        Logger logger = (Logger) LoggerFactory.getLogger(GithubClientImpl.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.header(anyString(), anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+
+        // Simulate a 4xx client error
+        WebClientResponseException clientError = new WebClientResponseException(
+                HttpStatus.NOT_FOUND.value(),
+                "Not Found",
+                null, null, null);
+        when(responseSpec.toEntityList(GithubMemberDto.class)).thenReturn(Mono.error(clientError));
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // Act
+        List<OrganizationMember> members = clientWithMock.getOrganizationMembers("owner");
+
+        // Assert
+        assertNotNull(members);
+        assertTrue(members.isEmpty()); // Should return empty list, not throw
+        verify(mockWebClient, times(1)).get(); // Should only be called once
+
+        // Verify logging
+        List<ILoggingEvent> errorLogs = listAppender.list.stream()
+                .filter(event -> event.getLevel() == Level.ERROR)
+                .collect(Collectors.toList());
+
+        assertEquals(1, errorLogs.size(), "Expected exactly one ERROR log message.");
+
+        ILoggingEvent errorEvent = errorLogs.get(0);
+        assertTrue(errorEvent.getFormattedMessage().contains("Error fetching members from"), "Error message should contain context.");
+        assertTrue(errorEvent.getFormattedMessage().contains("404 Not Found"), "Error message should contain status code.");
+
+        // Cleanup
+        logger.detachAppender(listAppender);
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should rethrow RuntimeException if it occurs on the first page")
+    void getOrganizationMembers_shouldRethrowRuntimeExceptionOnFirstPage() {
+        // Arrange
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.header(anyString(), anyString())).thenReturn(requestHeadersSpec);
+
+        // Simulate a generic RuntimeException during the retrieve/block phase
+        RuntimeException simulatedException = new RuntimeException("Simulated network failure");
+        when(requestHeadersSpec.retrieve()).thenThrow(simulatedException);
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // Act & Assert
+        Exception exception = assertThrows(RuntimeException.class, () -> {
+            clientWithMock.getOrganizationMembers("owner");
+        });
+
+        assertEquals("Simulated network failure", exception.getMessage());
+        verify(mockWebClient, times(1)).get();
+    }
+
+    @Test
+    @DisplayName("getOrganizationMembers should return partial results if RuntimeException occurs after the first page")
+    void getOrganizationMembers_shouldReturnPartialResultsOnRuntimeExceptionAfterFirstPage() {
+        // Arrange
+        Logger logger = (Logger) LoggerFactory.getLogger(GithubClientImpl.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+
+        // --- Mock setup for the first, successful call ---
+        List<GithubMemberDto> firstPageMembers = Collections.singletonList(new GithubMemberDto(1L, "user1", "avatar1"));
+        ResponseEntity<List<GithubMemberDto>> firstResponse = mock(ResponseEntity.class);
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.add("Link", "<http://next.page.com>; rel=\"next\"");
+
+        when(firstResponse.getBody()).thenReturn(firstPageMembers);
+        when(firstResponse.getHeaders()).thenReturn(headers);
+
+        // --- Mock setup for the second, failing call ---
+        RuntimeException simulatedException = new RuntimeException("Simulated failure on second page");
+
+        // --- Chaining the mock behavior ---
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.header(anyString(), anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+
+        // First call returns a valid response, second call's Mono throws an error
+        when(responseSpec.toEntityList(GithubMemberDto.class))
+                .thenReturn(Mono.just(firstResponse)) // Success on first call
+                .thenReturn(Mono.error(simulatedException)); // Failure on second call
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // Act
+        List<OrganizationMember> members = clientWithMock.getOrganizationMembers("owner");
+
+        // Assert
+        // 1. Check that we got the partial results from the first page
+        assertNotNull(members);
+        assertEquals(1, members.size());
+        assertEquals(1L, members.get(0).id());
+        assertEquals("user1", members.get(0).login());
+
+        // 2. Verify that the web client was called twice (first page, second failed page)
+        verify(mockWebClient, times(2)).get();
+
+        // 3. Verify that a warning was logged
+        List<ILoggingEvent> logs = listAppender.list;
+        assertTrue(logs.stream().anyMatch(event ->
+                event.getLevel().toString().equals("WARN") &&
+                event.getFormattedMessage().contains("Error during paginated member collection. Returning partial results.") &&
+                event.getFormattedMessage().contains("Simulated failure on second page")
+        ), "Expected WARN log for partial results was not found.");
+
+        // Cleanup
+        logger.detachAppender(listAppender);
     }
 }

@@ -1,5 +1,6 @@
 package org.grubhart.pucp.tesis.module_collector.github;
 
+import org.grubhart.pucp.tesis.module_collector.github.dto.GithubMemberDto;
 import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunDto;
 import org.grubhart.pucp.tesis.module_domain.GitHubWorkflowRunsResponse;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitCollector;
@@ -8,6 +9,8 @@ import org.grubhart.pucp.tesis.module_domain.GithubDeploymentCollector;
 import org.grubhart.pucp.tesis.module_domain.GithubPullRequestCollector;
 import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
 import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
+import org.grubhart.pucp.tesis.module_domain.GithubUserCollector;
+import org.grubhart.pucp.tesis.module_domain.OrganizationMember;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -34,7 +38,7 @@ import java.util.stream.Stream;
  * con la API de GitHub, implementando los contratos definidos en el dominio.
  */
 @Component
-public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCollector, GithubPullRequestCollector, GithubDeploymentCollector {
+public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCollector, GithubPullRequestCollector, GithubDeploymentCollector, GithubUserCollector {
 
     private static final Logger logger = LoggerFactory.getLogger(GithubClientImpl.class);
     private final WebClient webClient;
@@ -101,7 +105,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                         nextPageUrl = null;
                     }
                 } catch (WebClientResponseException e) {
-                    logger.error("Error fetching commits from {}: {} - {}", currentUrl, e.getStatusCode(), e.getResponseBodyAsString(), e);
+                    logger.error("Error fetching commits from {}: {} {}", currentUrl, e.getStatusCode().value(), e.getStatusText(), e);
                     if (e.getStatusCode().is5xxServerError()) {
                         throw new RuntimeException("Failed to fetch commits from GitHub due to a server error: " + e.getMessage(), e);
                     }
@@ -168,7 +172,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                     }
 
                 } catch (WebClientResponseException e) {
-                    logger.error("Error fetching pull requests from {}: {} - {}", currentUrl, e.getStatusCode(), e.getResponseBodyAsString(), e);
+                    logger.error("Error fetching pull requests from {}: {} {}", currentUrl, e.getStatusCode().value(), e.getStatusText(), e);
                     if (e.getStatusCode().is5xxServerError()) {
                         throw new RuntimeException("Failed to fetch pull requests from GitHub due to a server error: " + e.getMessage(), e);
                     }
@@ -206,7 +210,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
             }
             return null;
         } catch (WebClientResponseException e) {
-            logger.error("Failed to fetch commits for PR #{} in {}/{}: {} - {}", prNumber, owner, repo, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            logger.error("Failed to fetch commits for PR #{} in {}/{}: {} {}", prNumber, owner, repo, e.getStatusCode().value(), e.getStatusText(), e);
             return null;
         }
     }
@@ -267,7 +271,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                         allWorkflowRuns.add(run);
                     }
                 } catch (WebClientResponseException e) {
-                    logger.error("Error fetching workflow runs from {}: {} - {}", currentUrl, e.getStatusCode(), e.getResponseBodyAsString(), e);
+                    logger.error("Error fetching workflow runs from {}: {} {}", currentUrl, e.getStatusCode().value(), e.getStatusText(), e);
                     if (e.getStatusCode().is5xxServerError()) {
                         throw new RuntimeException("Failed to fetch workflow runs from GitHub due to a server error: " + e.getMessage(), e);
                     }
@@ -283,6 +287,57 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
 
         logger.info("Recolección paginada finalizada. Total de Workflow Runs obtenidos: {}", allWorkflowRuns.size());
         return allWorkflowRuns;
+    }
+
+    @Override
+    public List<OrganizationMember> getOrganizationMembers(String organizationName) {
+        String initialUrl = UriComponentsBuilder.fromPath("/orgs/{org}/members")
+                .queryParam("per_page", 100)
+                .buildAndExpand(organizationName)
+                .toString();
+
+        logger.info("Iniciando recolección paginada de miembros para la organización '{}'", organizationName);
+
+        List<GithubMemberDto> allMembers = new ArrayList<>();
+        String nextPageUrl = initialUrl;
+
+        try {
+            while (nextPageUrl != null) {
+                final String currentUrl = nextPageUrl;
+                try {
+                    ResponseEntity<List<GithubMemberDto>> responseEntity = webClient.get()
+                            .uri(currentUrl)
+                            .retrieve()
+                            .toEntityList(GithubMemberDto.class)
+                            .block();
+
+                    if (responseEntity != null) {
+                        if (responseEntity.getBody() != null) {
+                            allMembers.addAll(responseEntity.getBody());
+                        }
+                        nextPageUrl = parseNextPageUrl(responseEntity.getHeaders().get("Link"));
+                    } else {
+                        nextPageUrl = null;
+                    }
+                } catch (WebClientResponseException e) {
+                    logger.error("Error fetching members from {}: {} {}", currentUrl, e.getStatusCode().value(), e.getStatusText(), e);
+                    if (e.getStatusCode().is5xxServerError()) {
+                        throw new RuntimeException("Failed to fetch members from GitHub due to a server error: " + e.getMessage(), e);
+                    }
+                    nextPageUrl = null; // Stop pagination on client or non-5xx server errors
+                }
+            }
+        } catch (RuntimeException e) {
+            if (allMembers.isEmpty()) {
+                throw e; // Rethrow if error happened on the first page
+            }
+            logger.warn("Error during paginated member collection. Returning partial results. Error: {}", e.getMessage());
+        }
+
+        logger.info("Recolección paginada finalizada. Total de miembros obtenidos: {}", allMembers.size());
+        return allMembers.stream()
+                .map(dto -> new OrganizationMember(dto.id(), dto.login(), dto.avatarUrl()))
+                .collect(Collectors.toList());
     }
 
     String parseNextPageUrl(List<String> linkHeaders) {
