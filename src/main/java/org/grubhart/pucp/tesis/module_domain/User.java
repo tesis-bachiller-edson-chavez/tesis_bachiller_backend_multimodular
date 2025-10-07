@@ -19,8 +19,17 @@ public class User {
     @Column(unique = true, nullable = false)
     private String githubUsername;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String email;
+
+    @Column(nullable = true) // <-- NUEVO
+    private String name;
+
+    @Column(nullable = true) // <-- NUEVO
+    private String avatarUrl;
+
+    @Column(nullable = false)
+    private boolean active = true;
 
     @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.PERSIST)
     @JoinTable(name = "user_roles",
@@ -35,9 +44,40 @@ public class User {
         this.githubId = githubId;
         this.githubUsername = githubUsername;
         this.email = email;
+        this.name = null;
+        this.avatarUrl = null;
+        this.active = true;
     }
 
+    public User(Long githubId, String githubUsername, String email, String name, String avatarUrl) { // <-- ACTUALIZADO
+        this.githubId = githubId;
+        this.githubUsername = githubUsername;
+        this.email = email;
+        this.name = name;
+        this.avatarUrl = avatarUrl;
+        this.active = true;
+    }
 
+    // ... getters y setters para los campos existentes ...
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+    
+    // ... el resto de getters, setters, equals y hashCode sin cambios ...
+    
     public Long getId() {
         return id;
     }
@@ -58,6 +98,8 @@ public class User {
         return githubUsername;
     }
 
+
+
     public void setGithubUsername(String githubUsername) {
         this.githubUsername = githubUsername;
     }
@@ -68,6 +110,14 @@ public class User {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 
     public Set<Role> getRoles() {

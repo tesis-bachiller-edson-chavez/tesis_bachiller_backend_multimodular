@@ -1,10 +1,10 @@
 package org.grubhart.pucp.tesis.module_api;
 
+import org.grubhart.pucp.tesis.module_api.dto.UserSummaryDto;
 import org.grubhart.pucp.tesis.module_domain.Role;
 import org.grubhart.pucp.tesis.module_domain.RoleName;
 import org.grubhart.pucp.tesis.module_domain.User;
 import org.grubhart.pucp.tesis.module_domain.UserRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -37,19 +38,14 @@ class UserControllerTest {
     @Mock
     private OAuth2User oAuth2User;
 
-    @BeforeEach
-    void setUp() {
-        when(authentication.getPrincipal()).thenReturn(oAuth2User);
-    }
-
     @Test
     void getCurrentUser_whenUserExists_shouldReturnUserDto() {
         // Given
+        when(authentication.getPrincipal()).thenReturn(oAuth2User);
         String username = "testuser";
         String email = "test@example.com";
         when(oAuth2User.getAttribute("login")).thenReturn(username);
 
-        // Mock the User object to isolate the test from its implementation
         User userMock = mock(User.class);
         when(userMock.getId()).thenReturn(1L);
         when(userMock.getGithubUsername()).thenReturn(username);
@@ -77,6 +73,7 @@ class UserControllerTest {
     @Test
     void getCurrentUser_whenUserDoesNotExist_shouldReturnNotFound() {
         // Given
+        when(authentication.getPrincipal()).thenReturn(oAuth2User);
         String username = "nonexistent";
         when(oAuth2User.getAttribute("login")).thenReturn(username);
         when(userRepository.findByGithubUsernameIgnoreCase(username)).thenReturn(Optional.empty());
@@ -100,5 +97,29 @@ class UserControllerTest {
         // Then
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertNull(response.getBody());
+    }
+
+    @Test
+    void getActiveUsers_shouldReturnListOfActiveUserSummaries() {
+        // Given
+        User user1 = new User(1L, "activeuser", "active@test.com", "Active User", "url1");
+        User user2 = new User(2L, "anotheractive", "another@test.com", "Another User", "url2");
+        List<User> activeUsersFromRepo = List.of(user1, user2);
+
+        when(userRepository.findAllByActiveTrue()).thenReturn(activeUsersFromRepo);
+
+        // When
+        List<UserSummaryDto> response = userController.getActiveUsers();
+
+        // Then
+        assertEquals(2, response.size());
+
+        assertEquals("activeuser", response.get(0).githubUsername());
+        assertEquals("Active User", response.get(0).name());
+        assertEquals("url1", response.get(0).avatarUrl());
+
+        assertEquals("anotheractive", response.get(1).githubUsername());
+        assertEquals("Another User", response.get(1).name());
+        assertEquals("url2", response.get(1).avatarUrl());
     }
 }

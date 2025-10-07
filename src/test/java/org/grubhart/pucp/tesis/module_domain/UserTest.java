@@ -76,6 +76,8 @@ class UserTest {
         user.setGithubId(123L);
         user.setGithubUsername("test-user");
         user.setEmail("test@email.com");
+        user.setName("Test User");
+        user.setAvatarUrl("http://example.com/avatar.png");
         user.setRoles(roles);
 
         // THEN
@@ -83,6 +85,8 @@ class UserTest {
         assertThat(user.getGithubId()).isEqualTo(123L);
         assertThat(user.getGithubUsername()).isEqualTo("test-user");
         assertThat(user.getEmail()).isEqualTo("test@email.com");
+        assertThat(user.getName()).isEqualTo("Test User");
+        assertThat(user.getAvatarUrl()).isEqualTo("http://example.com/avatar.png");
         assertThat(user.getRoles()).isEqualTo(roles);
     }
 }

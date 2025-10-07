@@ -66,7 +66,7 @@ class UserSynchronizationFilterTest {
         // Usamos oauth2Login() para simular un usuario autenticado en la sesión.
         // Esperamos una respuesta 200 OK, lo que significa que el filtro no interrumpió el flujo
         // y el UserController pudo procesar la petición.
-        mockMvc.perform(get("/api/v1/user/me").with(oauth2Login().attributes(attrs -> {
+        mockMvc.perform(get("/api/v1/users/me").with(oauth2Login().attributes(attrs -> {
                     attrs.put("login", "testuser");
                     attrs.put("id", 123L);
                 })))
@@ -86,7 +86,7 @@ class UserSynchronizationFilterTest {
         // Act & Assert: Realizamos una petición con el atributo de sesión 'LOGIN_LOGGED' ya establecido.
         // Esperamos que la petición sea exitosa (200 OK), lo que prueba que el filtro
         // manejó correctamente el caso donde el flag ya está presente y no entró en el 'if'.
-        mockMvc.perform(get("/api/v1/user/me")
+        mockMvc.perform(get("/api/v1/users/me")
                         .with(oauth2Login().attributes(attrs -> {
                             attrs.put("login", "testuser");
                             attrs.put("id", 123L);
@@ -138,7 +138,7 @@ class UserSynchronizationFilterTest {
         // WHEN & THEN: La petición fallará en el controlador con una ClassCastException,
         // porque el filtro (correctamente) no hace nada y deja pasar la petición.
         // Esperamos un 500 Internal Server Error.
-        mockMvc.perform(get("/api/v1/user/me").with(user("standard-user")))
+        mockMvc.perform(get("/api/v1/users/me").with(user("standard-user")))
                 .andExpect(status().isInternalServerError());
 
         // Verificamos que nuestro filtro no interactuó con el repositorio.
@@ -155,7 +155,7 @@ class UserSynchronizationFilterTest {
 
         // Act & Assert: Realizamos la petición al endpoint protegido.
         // Esperamos un 404 Not Found, que es la respuesta del controlador cuando no encuentra al usuario.
-        mockMvc.perform(get("/api/v1/user/me")
+        mockMvc.perform(get("/api/v1/users/me")
                         .with(oauth2Login().attributes(attrs -> {
                             // No incluimos el atributo 'login'
                             attrs.put("id", 12345L);

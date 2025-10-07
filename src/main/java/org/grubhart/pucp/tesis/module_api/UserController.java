@@ -1,5 +1,6 @@
 package org.grubhart.pucp.tesis.module_api;
 
+import org.grubhart.pucp.tesis.module_api.dto.UserSummaryDto;
 import org.grubhart.pucp.tesis.module_domain.User;
 import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.slf4j.Logger;
@@ -12,11 +13,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/v1/user")
+@RequestMapping("/api/v1/users") // Corregido para que el endpoint sea /api/v1/users
 public class UserController {
 
     private static final Logger logger = LoggerFactory.getLogger(UserController.class);
@@ -28,11 +30,9 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<UserDto> getCurrentUser(Authentication authentication) {
-        // Añadimos una guarda para asegurar que el principal es del tipo esperado.
         if (!(authentication.getPrincipal() instanceof OAuth2User)) {
             logger.error("El principal de la autenticación no es de tipo OAuth2User. Tipo actual: {}",
                     authentication.getPrincipal().getClass().getName());
-            // Devolvemos un error 500, que es lo que la prueba espera.
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
         OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
@@ -40,7 +40,7 @@ public class UserController {
 
         logger.debug("Buscando datos para el usuario autenticado: {}", username);
         return userRepository.findByGithubUsernameIgnoreCase(username)
-                .map(this::mapToDto)
+                .map(this::mapToUserDto)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> {
                     logger.warn("Usuario autenticado '{}' no encontrado en la base de datos.", username);
@@ -48,10 +48,21 @@ public class UserController {
                 });
     }
 
-    private UserDto mapToDto(User user) {
+    @GetMapping
+    public List<UserSummaryDto> getActiveUsers() {
+        return userRepository.findAllByActiveTrue().stream()
+                .map(this::mapToUserSummaryDto)
+                .collect(Collectors.toList());
+    }
+
+    private UserDto mapToUserDto(User user) {
         Set<String> roleNames = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .collect(Collectors.toSet());
         return new UserDto(user.getId(), user.getGithubUsername(), user.getEmail(), roleNames);
+    }
+
+    private UserSummaryDto mapToUserSummaryDto(User user) {
+        return new UserSummaryDto(user.getGithubUsername(), user.getName(), user.getAvatarUrl());
     }
 }
