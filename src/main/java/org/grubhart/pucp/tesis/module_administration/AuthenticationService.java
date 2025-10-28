@@ -33,24 +33,41 @@ public class AuthenticationService {
 
     @Transactional
     public LoginProcessingResult processNewLogin(GithubUserDto githubUser) {
-        // Primero, verificar si el usuario ya existe. Si es así, no se necesita más lógica.
         Optional<User> userOptional = userRepository.findByGithubUsernameIgnoreCase(githubUser.username());
+
+        // Flow for a user that already exists in the DB (possibly created by UserSyncService)
         if (userOptional.isPresent()) {
-            logger.info("Usuario '{}' ya existe en la base de datos. Devolviendo usuario existente.", githubUser.username());
-            return new LoginProcessingResult(userOptional.get(), false); // Un usuario existente nunca es el "primer administrador".
+            User user = userOptional.get();
+            logger.info("User '{}' already exists in the database. Verifying roles.", githubUser.username());
+
+            // SPECIAL CASE: The system has no admin, and this user is the designated initial admin, but doesn't have the role.
+            // This happens if UserSyncService created the user before their first login.
+            boolean shouldBeAdmin = isInitialBootstrap() && user.getGithubUsername().equalsIgnoreCase(environment.getProperty("dora.initial-admin-username"));
+            boolean isAlreadyAdmin = user.getRoles().stream().anyMatch(role -> role.getName() == RoleName.ADMIN);
+
+            if (shouldBeAdmin && !isAlreadyAdmin) {
+                logger.info("User '{}' is the initial administrator but does not have the role. Assigning ADMIN role.", user.getGithubUsername());
+                Role adminRole = roleRepository.findByName(RoleName.ADMIN)
+                        .orElseThrow(() -> new IllegalStateException("The ADMIN role was not found in the database."));
+                user.getRoles().add(adminRole);
+                userRepository.save(user);
+                return new LoginProcessingResult(user, true); // This is the first administrator
+            }
+
+            return new LoginProcessingResult(user, false); // Existing user, not the first admin on this login.
         }
 
-        // Si el usuario no existe, decidimos qué flujo de creación seguir.
+        // If the user does not exist, we decide which creation flow to follow.
         if (isInitialBootstrap()) {
-            logger.debug("Sistema en modo de arranque inicial. Delegando a handleInitialBootstrap.");
+            logger.debug("System in initial bootstrap mode. Delegating to handleInitialBootstrap.");
             User bootstrappedUser = handleInitialBootstrap(githubUser);
             boolean isFirstAdmin = bootstrappedUser.getRoles().stream()
                     .anyMatch(role -> role.getName() == RoleName.ADMIN);
             return new LoginProcessingResult(bootstrappedUser, isFirstAdmin);
         } else {
-            logger.debug("Sistema ya inicializado. Delegando a handleRegularLogin.");
+            logger.debug("System already initialized. Delegating to handleRegularLogin.");
             User regularUser = handleRegularLogin(githubUser);
-            return new LoginProcessingResult(regularUser, false); // Un usuario nuevo en modo normal nunca es el "primer administrador".
+            return new LoginProcessingResult(regularUser, false); // A new user in normal mode is never the "first administrator".
         }
     }
 
@@ -59,56 +76,56 @@ public class AuthenticationService {
     }
 
     private User handleInitialBootstrap(GithubUserDto githubUser) {
-        logger.debug("Dentro de handleInitialBootstrap para el usuario '{}'", githubUser.username());
+        logger.debug("Inside handleInitialBootstrap for user '{}'", githubUser.username());
         String initialAdminUsername = environment.getProperty("dora.initial-admin-username");
-        logger.debug("Valor de 'dora.initial-admin-username': '{}'", initialAdminUsername);
+        logger.debug("Value of 'dora.initial-admin-username': '{}'", initialAdminUsername);
 
         if (initialAdminUsername == null || initialAdminUsername.trim().isEmpty()) {
-            logger.error("La variable de entorno 'dora.initial-admin-username' no está configurada o está vacía.");
-            throw new IllegalStateException("La configuración del administrador inicial (dora.initial-admin-username) no está definida. El sistema no puede arrancar de forma segura.");
+            logger.error("The environment variable 'dora.initial-admin-username' is not configured or is empty.");
+            throw new IllegalStateException("La configuración del administrador inicial (dora.initial-admin-username) no está definida");
         }
 
         String organizationName = environment.getProperty("dora.github.organization-name");
-        logger.debug("Valor de 'dora.github.organization-name': '{}'", organizationName);
+        logger.debug("Value of 'dora.github.organization-name': '{}'", organizationName);
         boolean isOrganizationDefined = organizationName != null && !organizationName.isBlank();
 
         boolean isInitialAdmin = githubUser.username().equalsIgnoreCase(initialAdminUsername);
 
-        // CONTROL DE ACCESO: La única condición para denegar el acceso es esta.
+        // ACCESS CONTROL: The only condition to deny access is this.
         if (!isOrganizationDefined && !isInitialAdmin) {
-            logger.warn("Acceso denegado para '{}'. El sistema no tiene organización configurada y el usuario no es el administrador inicial.", githubUser.username());
+            logger.warn("Access denied for '{}'. The system has no organization configured and the user is not the initial administrator.", githubUser.username());
             throw new AccessDeniedException("Access denied: The system is not configured with an organization and you are not the initial administrator.");
         }
 
-        // ASIGNACIÓN DE ROL: Si pasamos el control, asignamos el rol apropiado.
+        // ROLE ASSIGNMENT: If we pass the control, we assign the appropriate role.
         if (isInitialAdmin) {
-            logger.info("El usuario '{}' coincide con el administrador inicial. Asignando rol ADMIN.", githubUser.username());
+            logger.info("User '{}' matches the initial administrator. Assigning ADMIN role.", githubUser.username());
             return createUserWithRole(githubUser, RoleName.ADMIN);
         } else {
-            logger.info("El usuario '{}' NO coincide con el administrador inicial. Asignando rol por defecto DEVELOPER.", githubUser.username());
+            logger.info("User '{}' does NOT match the initial administrator. Assigning default role DEVELOPER.", githubUser.username());
             return createNewUserWithDefaultRole(githubUser);
         }
     }
 
     private User handleRegularLogin(GithubUserDto githubUser) {
-        logger.debug("Dentro de handleRegularLogin para el usuario '{}'", githubUser.username());
+        logger.debug("Inside handleRegularLogin for user '{}'", githubUser.username());
         String organizationName = environment.getProperty("dora.github.organization-name");
 
-        // CONTROL DE ACCESO: En modo normal, la organización DEBE estar definida.
+        // ACCESS CONTROL: In normal mode, the organization MUST be defined.
         if (organizationName == null || organizationName.trim().isEmpty()) {
-            logger.error("Acceso denegado. El sistema está en modo de operación normal pero no tiene una organización configurada.");
+            logger.error("Access denied. The system is in normal operation mode but does not have a configured organization.");
             throw new AccessDeniedException("Access Denied. New users cannot be created because the organization is not defined.");
         }
 
-        // CONTROL DE MEMBRESÍA: El usuario debe ser miembro de la organización.
+        // MEMBERSHIP CONTROL: The user must be a member of the organization.
         boolean isMember = githubUserAuthenticator.isUserMemberOfOrganization(githubUser.username(), organizationName);
         if (!isMember) {
-            logger.warn("Acceso denegado: El usuario '{}' no es miembro de la organización '{}'.", githubUser.username(), organizationName);
+            logger.warn("Access denied: User '{}' is not a member of the organization '{}'.", githubUser.username(), organizationName);
             throw new AccessDeniedException("Access Denied. User is not a member of the required organization.");
         }
 
-        // Si pasa las validaciones, se crea el usuario.
-        logger.info("Usuario '{}' es miembro de la organización. Creando nuevo usuario con rol por defecto.", githubUser.username());
+        // If it passes the validations, the user is created.
+        logger.info("User '{}' is a member of the organization. Creating new user with default role.", githubUser.username());
         return createNewUserWithDefaultRole(githubUser);
     }
 
@@ -117,14 +134,14 @@ public class AuthenticationService {
     }
 
     private User createUserWithRole(GithubUserDto githubUser, RoleName roleName) {
-        logger.debug("Creando nuevo usuario '{}' con rol {}.", githubUser.username(), roleName);
+        logger.debug("Creating new user '{}' with role {}.", githubUser.username(), roleName);
         Role role = roleRepository.findByName(roleName)
-                .orElseThrow(() -> new IllegalStateException("El rol " + roleName + " no se encontró en la base de datos. La inicialización falló."));
+                .orElseThrow(() -> new IllegalStateException("El rol " + roleName + " no se encontró en la base de datos"));
 
         User newUser = new User(githubUser.id(), githubUser.username(), githubUser.email());
         newUser.getRoles().add(role);
         User savedUser = userRepository.save(newUser);
-        logger.info("Nuevo usuario '{}' creado con ID {} y rol {}.", savedUser.getGithubUsername(), savedUser.getId(), roleName);
+        logger.info("New user '{}' created with ID {} and role {}.", savedUser.getGithubUsername(), savedUser.getId(), roleName);
         return savedUser;
     }
 }
