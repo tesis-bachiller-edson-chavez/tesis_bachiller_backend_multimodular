@@ -138,4 +138,16 @@ class UserSyncServiceTest {
         // THEN
         verify(userRepository, never()).saveAll(userListCaptor.capture());
     }
+
+    @Test
+    void scheduledSync_shouldTriggerSynchronizationWithConfiguredOrganization() {
+        // GIVEN
+        // No specific setup needed, the service is already configured in setUp()
+
+        // WHEN
+        userSyncService.scheduledSync();
+
+        // THEN
+        verify(githubUserCollector, times(1)).getOrganizationMembers("test-org");
+    }
 }
