@@ -57,7 +57,7 @@ public class Oauth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         //4. Redirigimos al usuario a la pagina principal de la aplicacion.
         if (result.isFirstAdmin()) {
             // AC 3.2: Redirigir al primer administrador a la página de configuración.
-            response.sendRedirect("/admin/setup");
+            response.sendRedirect(frontendUrl + "/admin/setup");
         } else {
             // AC 1.2: Redirigir a los usuarios normales a un dashboard principal.
             response.sendRedirect(frontendUrl + "/home");

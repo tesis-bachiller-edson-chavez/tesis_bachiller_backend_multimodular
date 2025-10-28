@@ -44,10 +44,11 @@ public class Oauth2LoginSuccessHandlerTest {
 
     private Oauth2LoginSuccessHandler successHandler;
 
+    private final String frontendUrlForTest = "http://localhost:5173";
+
     @BeforeEach
     public void setUp() {
         // Creamos manualmente la instancia del handler, proveyendo el mock y la URL de prueba.
-        String frontendUrlForTest = "http://localhost:5173";
         successHandler = new Oauth2LoginSuccessHandler(authenticationService, frontendUrlForTest);
     }
 
@@ -82,7 +83,7 @@ public class Oauth2LoginSuccessHandlerTest {
         assertThat(captureDto.email()).isEqualTo("user@github.com");
 
         // 3. Verificamos que se redirige al usuario a la home del frontend
-        verify(response).sendRedirect("http://localhost:5173/home");
+        verify(response).sendRedirect(frontendUrlForTest + "/home");
     }
 
 
@@ -203,7 +204,32 @@ public class Oauth2LoginSuccessHandlerTest {
         successHandler.onAuthenticationSuccess(request, response, authentication);
 
         // THEN
-        // 2. Verificamos que se redirige a la página de configuración.
-        verify(response).sendRedirect("/admin/setup");
+        // 2. Verificamos que se redirige a la página de configuración del frontend.
+        verify(response).sendRedirect(frontendUrlForTest + "/admin/setup");
+    }
+
+    @Test
+    @DisplayName("C (Corner Case): El primer admin (pre-existente) es redirigido a setup")
+    void onAuthenticationSuccess_whenFirstAdminExistsWithoutRole_shouldBeRedirectedToSetup() throws IOException, ServletException {
+        // GIVEN
+        Map<String, Object> userAttributes = Map.of(
+                "id", 1L,
+                "login", "first-admin",
+                "email", "admin@test.com"
+        );
+        OAuth2User oAuth2User = new DefaultOAuth2User(Collections.emptyList(), userAttributes, "id");
+        Authentication authentication = new OAuth2AuthenticationToken(oAuth2User, Collections.emptyList(), "github");
+
+        // 1. Simulamos que el servicio de autenticación procesa al usuario pre-existente y determina que es el primer admin.
+        User adminUser = new User(1L, "first-admin", "admin@test.com");
+        LoginProcessingResult firstAdminResult = new LoginProcessingResult(adminUser, true);
+        when(authenticationService.processNewLogin(any(GithubUserDto.class))).thenReturn(firstAdminResult);
+
+        // WHEN
+        successHandler.onAuthenticationSuccess(request, response, authentication);
+
+        // THEN
+        // 2. Verificamos que se redirige a la página de configuración del frontend, incluso si el usuario ya existía.
+        verify(response).sendRedirect(frontendUrlForTest + "/admin/setup");
     }
 }

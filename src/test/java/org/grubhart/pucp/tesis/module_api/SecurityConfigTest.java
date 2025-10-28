@@ -94,6 +94,6 @@ class SecurityConfigTest { // Renamed from Oauth2LoginSuccessHandlerTest to matc
         successHandler.onAuthenticationSuccess(request, response, authentication);
 
         // THEN
-        verify(response).sendRedirect("/admin/setup");
+        verify(response).sendRedirect(frontendUrl + "/admin/setup");
     }
 }
