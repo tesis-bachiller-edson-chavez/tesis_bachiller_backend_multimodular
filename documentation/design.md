@@ -9,10 +9,10 @@
 ## 1. Introducción
 
 ### 1.1. Propósito
-El presente documento describe la arquitectura, los componentes y el diseño general de la solución de software propuesta en la tesis "Propuesta de implementación de una solución para la medición de métricas de desempeño de entrega de software para equipos de desarrollo". Este documento servirá como guía técnica para la implementación del proyecto.
+El presente documento describe la arquitectura, los componentes y el diseño general de la solución de software propuesta en la tesis "Implementación de una solución para la medición de métricas DORA de entrega de software para equipos de desarrollo". Este documento servirá como guía técnica para la implementación del proyecto.
 
 ### 1.2. Resumen del Proyecto
-El proyecto consiste en el desarrollo de una plataforma para la medición continua y automatizada del rendimiento de entrega de software, centrándose en las cuatro métricas clave de DORA (Frecuencia de Despliegue, Tiempo de Espera para Cambios, Tasa de Fallo de Cambio y Tiempo Medio de Recuperación). La solución extraerá datos de herramientas existentes en el ciclo de vida de desarrollo, los procesará y los presentará en dashboards visuales para facilitar la toma de decisiones basada en datos.
+El proyecto consiste en el desarrollo de una plataforma para la medición continua y automatizada del rendimiento de entrega de software, centrándose en las cuatro métricas clave de DORA (Frecuencia de Despliegue, Tiempo de Espera para Cambios, Tasa de Fallo de Cambio y Tiempo Medio de Recuperación). La solución extraerá datos de herramientas existentes en el ciclo de vida de desarrollo, los procesará y calculará las métricas y los presentará en dashboards visuales para facilitar la toma de decisiones basada en datos.
 
 ---
 
@@ -584,7 +584,424 @@ La construcción del frontend seguirá un enfoque pragmático en tres fases prin
 
 ## Apéndice A: Diagramas de Diseño Detallado
 
-### A.1: Modelo Físico de Base de Datos (ERD)
+### A.1: 
+
+### Diagrama de clases 
+```mermaid
+classDiagram
+    direction LR
+
+    namespace module_domain {
+        class User {
+            <<Entity>>
+            +Long id
+            +String githubUsername
+            +boolean active
+            +Set<Role> roles
+        }
+        class Role {
+            <<Entity>>
+            +Long id
+            +RoleName name
+        }
+        class RoleName {
+            <<Enum>>
+            ADMIN
+            DEVELOPER
+        }
+        class Commit {
+            <<Entity>>
+            +String sha
+            +String author
+            +LocalDateTime date
+            +List<Commit> parents
+        }
+        class Deployment {
+            <<Entity>>
+            +Long id
+            +String sha
+            +String environment
+            +LocalDateTime createdAt
+            +boolean leadTimeProcessed
+        }
+        class PullRequest {
+            <<Entity>>
+            +Long id
+            +String state
+            +String firstCommitSha
+            +RepositoryConfig repository
+        }
+        class RepositoryConfig {
+            <<Entity>>
+            +Long id
+            +String repositoryUrl
+        }
+        class ChangeLeadTime {
+            <<Entity>>
+            +Long id
+            +Commit commit
+            +Deployment deployment
+            +long leadTimeInSeconds
+        }
+        class SyncStatus {
+            <<Entity>>
+            +String jobName
+            +LocalDateTime lastSuccessfulRun
+        }
+
+        class UserRepository {
+            <<Repository>>
+            +Optional<User> findByGithubUsernameIgnoreCase(String)
+            +List<User> findAllByActiveTrue()
+        }
+        class RoleRepository {
+            <<Repository>>
+            +Optional<Role> findByName(RoleName)
+        }
+        class CommitRepository {
+            <<Repository>>
+            +Optional<Commit> findBySha(String)
+        }
+        class DeploymentRepository {
+            <<Repository>>
+            +List<Deployment> findByLeadTimeProcessedFalseAndEnvironment(...)
+        }
+        class PullRequestRepository {
+            <<Repository>>
+        }
+        class RepositoryConfigRepository {
+            <<Repository>>
+        }
+        class ChangeLeadTimeRepository {
+            <<Repository>>
+        }
+        class SyncStatusRepository {
+            <<Repository>>
+        }
+
+        class GithubUserCollector {
+            <<Interface>>
+            +List<OrganizationMember> getOrganizationMembers(String)
+        }
+        class GithubCommitCollector {
+            <<Interface>>
+            +List<GithubCommitDto> getCommits(String, String, LocalDateTime)
+        }
+        class GithubPullRequestCollector {
+            <<Interface>>
+            +List<GithubPullRequestDto> getPullRequests(String, String, LocalDateTime)
+        }
+        class GithubDeploymentCollector {
+            <<Interface>>
+            +List<GitHubWorkflowRunDto> getWorkflowRuns(...)
+        }
+        class GithubUserAuthenticator {
+            <<Interface>>
+            +boolean isUserMemberOfOrganization(String, String)
+        }
+    }
+
+    namespace module_collector {
+        class GithubClientImpl {
+            <<Component>>
+            -WebClient webClient
+        }
+        class UserSyncService {
+            <<Service>>
+            +void synchronizeUsers(String)
+        }
+        class CommitSyncService {
+            <<Service>>
+            +void syncCommits()
+        }
+        class PullRequestSyncService {
+            <<Service>>
+            +void syncPullRequests()
+        }
+        class DeploymentSyncService {
+            <<Service>>
+            +void syncDeployments()
+        }
+    }
+
+    namespace module_processor {
+        class LeadTimeCalculationService {
+            <<Service>>
+            +void calculate()
+        }
+        class DeploymentFrequencyService {
+            <<Service>>
+            +List<DeploymentFrequency> calculate(...)
+        }
+    }
+
+    namespace module_api {
+        class UserController {
+            <<Controller>>
+            +ResponseEntity<UserDto> getCurrentUser()
+            +List<UserSummaryDto> getActiveUsers()
+        }
+        class DashboardController {
+            <<Controller>>
+            +ResponseEntity<String> showDashboard()
+        }
+        class UserDto { <<DTO>> }
+        class UserSummaryDto { <<DTO>> }
+    }
+
+    namespace module_administration {
+        class DataInitializer {
+            <<Component>>
+            +void run(ApplicationArguments)
+        }
+        class AuthenticationService {
+            <<Service>>
+            +LoginProcessingResult processNewLogin(GithubUserDto)
+        }
+    }
+
+%% --- Relationships ---
+
+%% module_domain relationships
+    User "1" *-- "0..*" Role : roles
+    Commit "1" *-- "0..*" Commit : parents
+    PullRequest "0..*" --* "1" RepositoryConfig
+    ChangeLeadTime "0..*" --* "1" Commit
+    ChangeLeadTime "0..*" --* "1" Deployment
+
+%% Dependencies within module_domain
+    UserRepository ..> User
+    RoleRepository ..> Role
+    CommitRepository ..> Commit
+    DeploymentRepository ..> Deployment
+    PullRequestRepository ..> PullRequest
+    RepositoryConfigRepository ..> RepositoryConfig
+    ChangeLeadTimeRepository ..> ChangeLeadTime
+    SyncStatusRepository ..> SyncStatus
+
+%% module_collector relationships
+    GithubClientImpl --|> GithubUserCollector
+    GithubClientImpl --|> GithubCommitCollector
+    GithubClientImpl --|> GithubPullRequestCollector
+    GithubClientImpl --|> GithubDeploymentCollector
+    GithubClientImpl --|> GithubUserAuthenticator
+
+    UserSyncService --> GithubUserCollector
+    UserSyncService --> UserRepository
+
+    CommitSyncService --> GithubCommitCollector
+    CommitSyncService --> CommitRepository
+    CommitSyncService --> RepositoryConfigRepository
+
+    PullRequestSyncService --> GithubPullRequestCollector
+    PullRequestSyncService --> PullRequestRepository
+    PullRequestSyncService --> RepositoryConfigRepository
+
+    DeploymentSyncService --> GithubDeploymentCollector
+    DeploymentSyncService --> DeploymentRepository
+    DeploymentSyncService --> LeadTimeCalculationService
+
+%% module_processor relationships
+    LeadTimeCalculationService --> DeploymentRepository
+    LeadTimeCalculationService --> CommitRepository
+    LeadTimeCalculationService --> ChangeLeadTimeRepository
+    DeploymentFrequencyService --> DeploymentRepository
+
+%% module_api relationships
+    UserController --> UserRepository
+    UserController ..> UserDto
+    UserController ..> UserSummaryDto
+
+%% module_administration relationships
+    DataInitializer --> RoleRepository
+    DataInitializer --> RepositoryConfigRepository
+    AuthenticationService --> UserRepository
+    AuthenticationService --> RoleRepository
+    AuthenticationService --> GithubUserAuthenticator
+```
+
+
+### Modelo Físico de Base de Datos (ERD)
+
+```mermaid
+erDiagram
+    USERS {
+        bigint id PK
+        bigint github_id "ID de GitHub (único)"
+        varchar github_username "Nombre de usuario de GitHub (único)"
+        varchar email
+        varchar name
+        varchar avatar_url
+        boolean active
+    }
+
+    ROLES {
+        bigint id PK
+        varchar name "Nombre del rol (único, enum)"
+    }
+
+    USER_ROLES {
+        bigint user_id FK
+        bigint role_id FK
+    }
+
+    COMMIT {
+        varchar sha PK "SHA del commit"
+        varchar author
+        text message
+        datetime date
+    }
+
+    COMMIT_PARENT {
+        varchar commit_sha FK "SHA del commit hijo"
+        varchar parent_sha FK "SHA del commit padre"
+    }
+
+    DEPLOYMENT {
+        bigint id PK
+        bigint github_id "ID de GitHub (único)"
+        varchar name
+        varchar sha "SHA del commit asociado"
+        varchar head_branch
+        varchar environment
+        varchar status
+        varchar conclusion
+        datetime created_at
+        datetime updated_at
+        boolean lead_time_processed
+    }
+
+    REPOSITORY_CONFIG {
+        bigint id PK
+        varchar repository_url
+    }
+
+    PULL_REQUESTS {
+        bigint id PK
+        bigint repository_id FK
+        varchar state
+        datetime created_at
+        datetime merged_at
+        varchar first_commit_sha "SHA del primer commit del PR"
+    }
+
+    CHANGE_LEAD_TIME {
+        bigint id PK
+        varchar commit_sha FK
+        bigint deployment_id FK
+        bigint lead_time_in_seconds
+    }
+
+    USERS ||--o{ USER_ROLES : "tiene"
+    ROLES ||--o{ USER_ROLES : "tiene"
+    COMMIT ||--o{ COMMIT_PARENT : "es padre de"
+    COMMIT_PARENT }o--|| COMMIT : "es hijo de"
+    DEPLOYMENT }o--|| COMMIT : "asociado a"
+    PULL_REQUESTS }o--|| REPOSITORY_CONFIG : "pertenece a"
+    PULL_REQUESTS }o--|| COMMIT : "inicia con"
+    CHANGE_LEAD_TIME }o--|| COMMIT : "calculado para"
+    CHANGE_LEAD_TIME }o--|| DEPLOYMENT : "calculado para"
+```
+
+# Diccionario de Datos
+
+A continuación se detallan las tablas que componen la base de datos de la solución, junto con sus respectivas columnas y descripciones.
+
+### Tabla: `USERS`
+Almacena la información de los usuarios sincronizados desde GitHub.
+
+| Columna           | Tipo de Dato | Descripción                                            |
+|-------------------|--------------|--------------------------------------------------------|
+| `id`              | `bigint`     | Identificador único de la entidad (PK).                |
+| `github_id`       | `bigint`     | ID único del usuario en GitHub.                        |
+| `github_username` | `varchar`    | Nombre de usuario en GitHub.                           |
+| `email`           | `varchar`    | Correo electrónico del usuario.                        |
+| `name`            | `varchar`    | Nombre completo del usuario.                           |
+| `avatar_url`      | `varchar`    | URL del avatar del usuario en GitHub.                  |
+| `active`          | `boolean`    | Indica si el usuario está activo en la organización.   |
+
+### Tabla: `ROLES`
+Define los roles que pueden ser asignados a los usuarios.
+
+| Columna | Tipo de Dato | Descripción                               |
+|---------|--------------|-------------------------------------------|
+| `id`    | `bigint`     | Identificador único de la entidad (PK).   |
+| `name`  | `varchar`    | Nombre del rol (ej. `ADMIN`, `DEVELOPER`). |
+
+### Tabla: `USER_ROLES`
+Tabla de unión para la relación muchos a muchos entre `USERS` y `ROLES`.
+
+| Columna   | Tipo de Dato | Descripción                               |
+|-----------|--------------|-------------------------------------------|
+| `user_id` | `bigint`     | Clave foránea que referencia a `USERS.id`.  |
+| `role_id` | `bigint`     | Clave foránea que referencia a `ROLES.id`.  |
+
+### Tabla: `COMMIT`
+Almacena información de los commits de los repositorios configurados.
+
+| Columna  | Tipo de Dato | Descripción                                   |
+|----------|--------------|-----------------------------------------------|
+| `sha`    | `varchar`    | Hash SHA del commit (PK).                     |
+| `author` | `varchar`    | Autor del commit.                             |
+| `message`| `text`       | Mensaje del commit.                           |
+| `date`   | `datetime`   | Fecha y hora en que se realizó el commit.     |
+
+### Tabla: `COMMIT_PARENT`
+Tabla de unión para la relación de paternidad (muchos a muchos) entre commits.
+
+| Columna      | Tipo de Dato | Descripción                                    |
+|--------------|--------------|------------------------------------------------|
+| `commit_sha` | `varchar`    | Clave foránea que referencia al commit hijo.   |
+| `parent_sha` | `varchar`    | Clave foránea que referencia al commit padre.  |
+
+### Tabla: `DEPLOYMENT`
+Registra los despliegues realizados a través de GitHub Actions.
+
+| Columna               | Tipo de Dato | Descripción                                                     |
+|-----------------------|--------------|-----------------------------------------------------------------|
+| `id`                  | `bigint`     | Identificador único de la entidad (PK).                         |
+| `github_id`           | `bigint`     | ID único del despliegue en GitHub.                              |
+| `name`                | `varchar`    | Nombre del despliegue.                                          |
+| `sha`                 | `varchar`    | SHA del commit que fue desplegado.                              |
+| `head_branch`         | `varchar`    | Rama que se desplegó.                                           |
+| `environment`         | `varchar`    | Entorno de despliegue (ej. `production`).                       |
+| `status`              | `varchar`    | Estado del workflow de despliegue.                              |
+| `conclusion`          | `varchar`    | Conclusión del workflow (ej. `success`, `failure`).             |
+| `created_at`          | `datetime`   | Fecha y hora de creación del despliegue.                        |
+| `updated_at`          | `datetime`   | Fecha y hora de la última actualización del despliegue.         |
+| `lead_time_processed` | `boolean`    | Indica si el lead time para este despliegue ya fue calculado.   |
+
+### Tabla: `REPOSITORY_CONFIG`
+Almacena la configuración de los repositorios a monitorear.
+
+| Columna          | Tipo de Dato | Descripción                               |
+|------------------|--------------|-------------------------------------------|
+| `id`             | `bigint`     | Identificador único de la entidad (PK).   |
+| `repository_url` | `varchar`    | URL del repositorio de GitHub.            |
+
+### Tabla: `PULL_REQUESTS`
+Registra los Pull Requests de los repositorios configurados.
+
+| Columna            | Tipo de Dato | Descripción                                                     |
+|--------------------|--------------|-----------------------------------------------------------------|
+| `id`               | `bigint`     | Identificador único de la entidad (PK).                         |
+| `repository_id`    | `bigint`     | Clave foránea que referencia a `REPOSITORY_CONFIG.id`.          |
+| `state`            | `varchar`    | Estado del Pull Request (ej. `open`, `closed`).                 |
+| `created_at`       | `datetime`   | Fecha y hora de creación del Pull Request.                      |
+| `merged_at`        | `datetime`   | Fecha y hora en que se fusionó el Pull Request.                 |
+| `first_commit_sha` | `varchar`    | SHA del primer commit asociado al Pull Request.                 |
+
+### Tabla: `CHANGE_LEAD_TIME`
+Almacena los cálculos de la métrica "Lead Time for Changes".
+
+| Columna                | Tipo de Dato | Descripción                                                     |
+|------------------------|--------------|-----------------------------------------------------------------|
+| `id`                   | `bigint`     | Identificador único de la entidad (PK).                         |
+| `commit_sha`           | `varchar`    | Clave foránea que referencia al `COMMIT.sha` inicial.           |
+| `deployment_id`        | `bigint`     | Clave foránea que referencia al `DEPLOYMENT.id` final.          |
+| `lead_time_in_seconds` | `bigint`     | Tiempo total en segundos entre el primer commit y el despliegue.|
+
+
 
 ```mermaid
 erDiagram
