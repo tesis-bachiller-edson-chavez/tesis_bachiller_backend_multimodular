@@ -4,22 +4,29 @@ import org.grubhart.pucp.tesis.module_domain.OrganizationMember;
 import org.grubhart.pucp.tesis.module_domain.User;
 import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.grubhart.pucp.tesis.module_domain.GithubUserCollector;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Service
 public class UserSyncService {
 
     private final GithubUserCollector githubUserCollector;
     private final UserRepository userRepository;
+    private final String organizationName;
 
-    public UserSyncService(GithubUserCollector githubUserCollector, UserRepository userRepository) {
+    public UserSyncService(GithubUserCollector githubUserCollector,
+                           UserRepository userRepository,
+                           @Value("${github.organization.name}") String organizationName) {
         this.githubUserCollector = githubUserCollector;
         this.userRepository = userRepository;
+        this.organizationName = organizationName;
     }
 
     public void synchronizeUsers(String organizationName) {
@@ -67,5 +74,10 @@ public class UserSyncService {
         if (!usersToSave.isEmpty()) {
             userRepository.saveAll(usersToSave);
         }
+    }
+
+    @Scheduled(initialDelay = 20000, cron = "0 0 2 * * ?") // Executes at 2 AM every day
+    public void scheduledSync() {
+        synchronizeUsers(organizationName);
     }
 }
