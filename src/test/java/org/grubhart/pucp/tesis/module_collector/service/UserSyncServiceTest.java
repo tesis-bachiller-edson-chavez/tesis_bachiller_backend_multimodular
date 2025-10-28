@@ -36,7 +36,7 @@ class UserSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        userSyncService = new UserSyncService(githubUserCollector, userRepository);
+        userSyncService = new UserSyncService(githubUserCollector, userRepository, "test-org");
     }
 
     @Test
