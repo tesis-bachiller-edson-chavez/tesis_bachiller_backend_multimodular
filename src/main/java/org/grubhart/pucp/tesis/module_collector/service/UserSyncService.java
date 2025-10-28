@@ -23,7 +23,7 @@ public class UserSyncService {
 
     public UserSyncService(GithubUserCollector githubUserCollector,
                            UserRepository userRepository,
-                           @Value("${github.organization.name}") String organizationName) {
+                           @Value("${dora.github.organization-name}") String organizationName) {
         this.githubUserCollector = githubUserCollector;
         this.userRepository = userRepository;
         this.organizationName = organizationName;
@@ -76,7 +76,7 @@ public class UserSyncService {
         }
     }
 
-    @Scheduled(initialDelay = 20000, cron = "0 0 2 * * ?") // Executes at 2 AM every day
+    @Scheduled(initialDelay = 20000, fixedRate = Long.MAX_VALUE) // Executes at 2 AM every day
     public void scheduledSync() {
         synchronizeUsers(organizationName);
     }
