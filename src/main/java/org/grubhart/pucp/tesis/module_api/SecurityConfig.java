@@ -35,7 +35,16 @@ public class SecurityConfig {
                 .addFilterBefore(userSynchronizationFilter, AnonymousAuthenticationFilter.class)
                 .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**", "/logout", "/api/**"))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/error", "/h2-console/**", "/actuator/health").permitAll()
+                        .requestMatchers(
+                                "/",
+                                "/error",
+                                "/h2-console/**",
+                                "/actuator/health",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(e -> e

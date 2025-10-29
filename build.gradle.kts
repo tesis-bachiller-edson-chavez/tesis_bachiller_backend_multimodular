@@ -35,6 +35,7 @@ dependencies {
     implementation("org.springframework.modulith:spring-modulith-starter-jpa")
     // Para el cifrado de secretos en la base de datos y propiedades, como se define en el design.md
     implementation("com.github.ulisesbocchio:jasypt-spring-boot-starter:3.0.5")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     runtimeOnly("com.mysql:mysql-connector-j") // Habilitado para usar MySQL
 
