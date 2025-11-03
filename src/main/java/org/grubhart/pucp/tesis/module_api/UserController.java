@@ -1,5 +1,10 @@
 package org.grubhart.pucp.tesis.module_api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.grubhart.pucp.tesis.module_api.dto.UserSummaryDto;
 import org.grubhart.pucp.tesis.module_domain.User;
 import org.grubhart.pucp.tesis.module_domain.UserRepository;
@@ -18,7 +23,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/v1/users") // Corregido para que el endpoint sea /api/v1/users
+@RequestMapping("/api/v1/users")
+@Tag(name = "Users", description = "API para gestión de usuarios de la organización")
 public class UserController {
 
     private static final Logger logger = LoggerFactory.getLogger(UserController.class);
@@ -29,6 +35,25 @@ public class UserController {
     }
 
     @GetMapping("/me")
+    @Operation(
+            summary = "Obtener información del usuario autenticado",
+            description = "Retorna los datos del usuario actualmente autenticado, incluyendo sus roles asignados",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Usuario encontrado exitosamente",
+                            content = @Content(schema = @Schema(implementation = UserDto.class))
+                    ),
+                    @ApiResponse(
+                            responseCode = "404",
+                            description = "Usuario no encontrado en la base de datos"
+                    ),
+                    @ApiResponse(
+                            responseCode = "500",
+                            description = "Error interno del servidor"
+                    )
+            }
+    )
     public ResponseEntity<UserDto> getCurrentUser(Authentication authentication) {
         if (!(authentication.getPrincipal() instanceof OAuth2User)) {
             logger.error("El principal de la autenticación no es de tipo OAuth2User. Tipo actual: {}",
@@ -49,6 +74,17 @@ public class UserController {
     }
 
     @GetMapping
+    @Operation(
+            summary = "Obtener usuarios activos con sus roles",
+            description = "Retorna una lista de todos los usuarios activos de la organización, incluyendo sus roles asignados. Cada usuario tiene al menos el rol 'DEVELOPER' por defecto.",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Lista de usuarios obtenida exitosamente",
+                            content = @Content(schema = @Schema(implementation = UserSummaryDto.class))
+                    )
+            }
+    )
     public List<UserSummaryDto> getActiveUsers() {
         return userRepository.findAllByActiveTrue().stream()
                 .map(this::mapToUserSummaryDto)
@@ -63,6 +99,14 @@ public class UserController {
     }
 
     private UserSummaryDto mapToUserSummaryDto(User user) {
-        return new UserSummaryDto(user.getGithubUsername(), user.getName(), user.getAvatarUrl());
+        Set<String> roleNames = user.getRoles().stream()
+                .map(role -> role.getName().name())
+                .collect(Collectors.toSet());
+        return new UserSummaryDto(
+                user.getGithubUsername(),
+                user.getName(),
+                user.getAvatarUrl(),
+                roleNames
+        );
     }
 }

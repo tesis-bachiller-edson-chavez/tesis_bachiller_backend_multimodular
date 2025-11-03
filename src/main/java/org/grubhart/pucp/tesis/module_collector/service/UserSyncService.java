@@ -1,6 +1,9 @@
 package org.grubhart.pucp.tesis.module_collector.service;
 
 import org.grubhart.pucp.tesis.module_domain.OrganizationMember;
+import org.grubhart.pucp.tesis.module_domain.Role;
+import org.grubhart.pucp.tesis.module_domain.RoleName;
+import org.grubhart.pucp.tesis.module_domain.RoleRepository;
 import org.grubhart.pucp.tesis.module_domain.User;
 import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.grubhart.pucp.tesis.module_domain.GithubUserCollector;
@@ -19,13 +22,16 @@ public class UserSyncService {
 
     private final GithubUserCollector githubUserCollector;
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final String organizationName;
 
     public UserSyncService(GithubUserCollector githubUserCollector,
                            UserRepository userRepository,
+                           RoleRepository roleRepository,
                            @Value("${dora.github.organization-name}") String organizationName) {
         this.githubUserCollector = githubUserCollector;
         this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
         this.organizationName = organizationName;
     }
 
@@ -52,12 +58,14 @@ public class UserSyncService {
                 newUser.setGithubUsername(githubMember.login());
                 newUser.setAvatarUrl(githubMember.avatarUrl());
                 newUser.setActive(true);
+                ensureUserHasDeveloperRole(newUser);
                 usersToSave.add(newUser);
             } else {
                 // Existing user, update info and ensure it's active
                 localUser.setGithubUsername(githubMember.login());
                 localUser.setAvatarUrl(githubMember.avatarUrl());
                 localUser.setActive(true);
+                ensureUserHasDeveloperRole(localUser);
                 usersToSave.add(localUser);
             }
         }
@@ -79,5 +87,17 @@ public class UserSyncService {
     @Scheduled(initialDelay = 20000, fixedRate = Long.MAX_VALUE) // Executes at 2 AM every day
     public void scheduledSync() {
         synchronizeUsers(organizationName);
+    }
+
+    protected void ensureUserHasDeveloperRole(User user) {
+        boolean hasDeveloperRole = user.getRoles().stream()
+                .anyMatch(role -> role.getName() == RoleName.DEVELOPER);
+
+        if (!hasDeveloperRole) {
+            Role developerRole = roleRepository.findByName(RoleName.DEVELOPER)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "DEVELOPER role not found in database. Ensure roles are initialized."));
+            user.getRoles().add(developerRole);
+        }
     }
 }
