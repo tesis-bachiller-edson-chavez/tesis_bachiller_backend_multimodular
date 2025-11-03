@@ -102,8 +102,14 @@ class UserControllerTest {
     @Test
     void getActiveUsers_shouldReturnListOfActiveUserSummaries() {
         // Given
+        Role developerRole = new Role(RoleName.DEVELOPER);
+
         User user1 = new User(1L, "activeuser", "active@test.com", "Active User", "url1");
+        user1.getRoles().add(developerRole);
+
         User user2 = new User(2L, "anotheractive", "another@test.com", "Another User", "url2");
+        user2.getRoles().add(developerRole);
+
         List<User> activeUsersFromRepo = List.of(user1, user2);
 
         when(userRepository.findAllByActiveTrue()).thenReturn(activeUsersFromRepo);
@@ -117,9 +123,13 @@ class UserControllerTest {
         assertEquals("activeuser", response.get(0).githubUsername());
         assertEquals("Active User", response.get(0).name());
         assertEquals("url1", response.get(0).avatarUrl());
+        assertNotNull(response.get(0).roles(), "Roles should not be null");
+        assertTrue(response.get(0).roles().contains("DEVELOPER"), "Should contain DEVELOPER role");
 
         assertEquals("anotheractive", response.get(1).githubUsername());
         assertEquals("Another User", response.get(1).name());
         assertEquals("url2", response.get(1).avatarUrl());
+        assertNotNull(response.get(1).roles(), "Roles should not be null");
+        assertTrue(response.get(1).roles().contains("DEVELOPER"), "Should contain DEVELOPER role");
     }
 }

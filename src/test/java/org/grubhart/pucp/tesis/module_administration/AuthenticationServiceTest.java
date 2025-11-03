@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.env.Environment;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
@@ -67,6 +68,83 @@ class AuthenticationServiceTest {
         assertThat(result.user()).isEqualTo(existingUser);
         assertThat(result.isFirstAdmin()).isFalse();
         verify(userRepository, never()).save(any(User.class)); // Verify no new user is saved
+    }
+
+    @Test
+    @DisplayName("HU-1 / AC-1.1: GIVEN an existing user logs in AND system is already initialized (admin exists), WHEN processing login, THEN return existing user without role checks")
+    void processNewLogin_whenUserExistsAndSystemInitialized_shouldReturnExistingUser() {
+        // GIVEN: An existing user is found in the repository AND the system already has an admin
+        User existingDeveloperUser = new User(1L, "developer_user", "dev@example.com");
+        existingDeveloperUser.setRoles(new HashSet<>(Set.of(developerRole)));
+
+        when(userRepository.findByGithubUsernameIgnoreCase("developer_user"))
+                .thenReturn(Optional.of(existingDeveloperUser));
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(true); // System already initialized
+
+        GithubUserDto developerDto = new GithubUserDto(1L, "developer_user", "dev@example.com");
+
+        // WHEN: The user logs in
+        LoginProcessingResult result = authenticationService.processNewLogin(developerDto);
+
+        // THEN: The existing user is returned without modifications
+        assertThat(result.user()).isEqualTo(existingDeveloperUser);
+        assertThat(result.isFirstAdmin()).isFalse();
+        verify(userRepository, never()).save(any(User.class)); // No save operation
+        verify(roleRepository, never()).findByName(any()); // No role lookup
+        verify(environment, never()).getProperty("dora.initial-admin-username"); // The short-circuit prevents this call
+    }
+
+    @Test
+    @DisplayName("AC-5.2: GIVEN an existing user (created by UserSyncService) is the initial-admin AND has no ADMIN role during bootstrap, WHEN they log in, THEN assign ADMIN role")
+    void processNewLogin_whenExistingUserIsInitialAdminWithoutRoleDuringBootstrap_shouldAssignAdminRole() {
+        // GIVEN: The user exists (created by UserSyncService), system is in bootstrap, user is initial-admin but lacks ADMIN role
+        User existingDeveloperUser = new User(1L, "initial_admin", "admin@example.com");
+        existingDeveloperUser.setRoles(new HashSet<>(Set.of(developerRole))); // Has only DEVELOPER role from UserSyncService - mutable set
+
+        when(userRepository.findByGithubUsernameIgnoreCase("initial_admin"))
+                .thenReturn(Optional.of(existingDeveloperUser));
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false); // Bootstrap mode
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn("initial_admin");
+        when(roleRepository.findByName(RoleName.ADMIN)).thenReturn(Optional.of(adminRole));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        GithubUserDto initialAdminDto = new GithubUserDto(1L, "initial_admin", "admin@example.com");
+
+        // WHEN: The initial admin logs in for the first time
+        LoginProcessingResult result = authenticationService.processNewLogin(initialAdminDto);
+
+        // THEN: The ADMIN role is added to the existing user
+        assertThat(result.user().getRoles()).contains(adminRole);
+        assertThat(result.isFirstAdmin()).isTrue();
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getRoles()).contains(adminRole);
+        assertThat(userCaptor.getValue().getRoles()).contains(developerRole); // Should keep existing role
+    }
+
+    @Test
+    @DisplayName("AC-5.2: GIVEN an existing user who is initial-admin AND already has ADMIN role during bootstrap, WHEN they log in, THEN do not modify roles")
+    void processNewLogin_whenExistingUserIsInitialAdminWithAdminRoleDuringBootstrap_shouldNotModifyRoles() {
+        // GIVEN: The user exists with ADMIN role already, system is in bootstrap, user is initial-admin
+        User existingAdminUser = new User(1L, "initial_admin", "admin@example.com");
+        existingAdminUser.setRoles(new HashSet<>(Set.of(adminRole, developerRole))); // Already has ADMIN role
+
+        when(userRepository.findByGithubUsernameIgnoreCase("initial_admin"))
+                .thenReturn(Optional.of(existingAdminUser));
+        when(userRepository.existsByRoles_Name(RoleName.ADMIN)).thenReturn(false); // Bootstrap mode
+        when(environment.getProperty("dora.initial-admin-username")).thenReturn("initial_admin");
+
+        GithubUserDto initialAdminDto = new GithubUserDto(1L, "initial_admin", "admin@example.com");
+
+        // WHEN: The initial admin logs in again
+        LoginProcessingResult result = authenticationService.processNewLogin(initialAdminDto);
+
+        // THEN: No modifications are made, user is returned as-is but not marked as "first admin" this time
+        assertThat(result.user().getRoles()).containsExactlyInAnyOrder(adminRole, developerRole);
+        assertThat(result.isFirstAdmin()).isFalse();
+        verify(userRepository, never()).save(any(User.class)); // No save operation
+        verify(roleRepository, never()).findByName(any()); // No role lookup
     }
 
     // =====================================================================================

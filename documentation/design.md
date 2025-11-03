@@ -1492,6 +1492,259 @@ sequenceDiagram
 6.  **Creación del Admin:** Asumiendo que el usuario que ha iniciado sesión es el correcto, `AuthenticationService` obtiene el rol `ADMIN` del `RoleRepository` y guarda el nuevo usuario en la base de datos a través del `UserRepository`.
 7.  **Redirección:** Finalmente, `AuthenticationService` devuelve un resultado especial (`REDIRECT_TO_CONFIG`) que instruye al `Oauth2LoginSuccessHandler` a redirigir al usuario a la página de configuración del sistema, cumpliendo así con el Criterio de Aceptación 3.2.
 
+#### HU-5: Gestionar Roles
+
+##### Diagrama de Clases
+```mermaid
+classDiagram
+    direction LR
+
+    subgraph module_api
+        direction TB
+        class UserController {
+            -userRepository: UserRepository
+            +getActiveUsers(): List<UserSummaryDto>
+            +getUserById(Long): UserDetailDto
+            -mapToUserSummaryDto(User): UserSummaryDto
+        }
+        class UserSummaryDto {
+            +githubUsername: String
+            +name: String
+            +avatarUrl: String
+            +roles: Set<String>
+        }
+        class UserDetailDto {
+            +id: Long
+            +githubUsername: String
+            +name: String
+            +email: String
+            +roles: Set<String>
+            +active: boolean
+        }
+    end
+
+    subgraph module_collector
+        direction TB
+        class UserSyncService {
+            -githubUserCollector: GithubUserCollector
+            -userRepository: UserRepository
+            -roleRepository: RoleRepository
+            -organizationName: String
+            +synchronizeUsers(String): void
+            +scheduledSync(): void
+            #ensureUserHasDeveloperRole(User): void
+        }
+        class GithubUserCollector {
+            +getOrganizationMembers(String): List<OrganizationMember>
+        }
+        class OrganizationMember {
+            +id: Long
+            +login: String
+            +avatarUrl: String
+        }
+    end
+
+    subgraph module_domain
+        direction TB
+        class User {
+            -id: Long
+            -githubId: Long
+            -githubUsername: String
+            -email: String
+            -name: String
+            -avatarUrl: String
+            -active: boolean
+            -roles: Set<Role>
+        }
+        class Role {
+            -id: Long
+            -name: RoleName
+        }
+        class RoleName {
+            <<enumeration>>
+            ADMIN
+            ENGINEERING_MANAGER
+            TECH_LEAD
+            DEVELOPER
+        }
+        class UserRepository {
+            +findAllByActiveTrue(): List<User>
+            +findById(Long): Optional<User>
+            +findAll(): List<User>
+            +saveAll(List<User>): List<User>
+        }
+        class RoleRepository {
+            +findByName(RoleName): Optional<Role>
+        }
+    end
+
+    %% --- Relaciones ---
+    UserController ..> UserRepository : uses
+    UserController ..> UserSummaryDto : creates
+    UserController ..> UserDetailDto : creates
+
+    UserSyncService ..> GithubUserCollector : uses
+    UserSyncService ..> UserRepository : uses
+    UserSyncService ..> RoleRepository : uses
+    GithubUserCollector ..> OrganizationMember : returns
+
+    UserRepository ..> User : manages
+    RoleRepository ..> Role : manages
+    User "1" *-- "many" Role : has
+    Role ..> RoleName : uses
+```
+
+##### Notas de Arquitectura
+
+1.  **Flujo de Visualización**: El `UserController` en `module_api` expone endpoints REST para consultar usuarios y sus roles. Utiliza DTOs (`UserSummaryDto` y `UserDetailDto`) para transferir información al frontend, incluyendo los roles asignados a cada usuario mediante una transformación que convierte el `Set<Role>` a `Set<String>` con los nombres de los roles.
+2.  **Asignación Automática de Roles**: El `UserSyncService` en `module_collector` sincroniza usuarios desde GitHub y garantiza que todos los usuarios tengan al menos el rol `DEVELOPER` por defecto. El método `ensureUserHasDeveloperRole()` verifica si el usuario ya tiene el rol antes de agregarlo, evitando duplicados y manteniendo la idempotencia de las operaciones.
+3.  **Separación de Módulos**: El diagrama evidencia la arquitectura modular:
+    *   `module_api`: Maneja la capa de presentación REST con DTOs y documentación OpenAPI.
+    *   `module_collector`: Contiene la lógica de sincronización con sistemas externos (GitHub) y asignación automática de roles.
+    *   `module_domain`: Define las entidades de negocio, enumeraciones de roles y repositorios de acceso a datos.
+
+##### Diagrama de Base de Datos (ERD)
+```mermaid
+erDiagram
+    users {
+        bigint id PK "Clave Primaria"
+        bigint github_id UK "ID único de GitHub"
+        varchar github_username UK "Nombre de usuario único de GitHub"
+        varchar email "Email del usuario"
+        varchar name "Nombre completo"
+        varchar avatar_url "URL del avatar de GitHub"
+        boolean active "Estado del usuario en la organización"
+    }
+
+    roles {
+        bigint id PK "Clave Primaria"
+        varchar name UK "Nombre del rol: ADMIN, ENGINEERING_MANAGER, TECH_LEAD, DEVELOPER"
+    }
+
+    user_roles {
+        bigint user_id PK, FK "Referencia a users.id"
+        bigint role_id PK, FK "Referencia a roles.id"
+    }
+
+    users ||--o{ user_roles : "tiene"
+    roles ||--o{ user_roles : "pertenece a"
+```
+
+**Explicación del Diagrama:**
+
+*   **`users`**: Almacena la información completa de cada usuario, incluyendo datos de GitHub y estado de actividad. El campo `active` indica si el usuario sigue siendo miembro de la organización de GitHub.
+*   **`roles`**: Tabla maestra que contiene los cuatro roles del sistema: `ADMIN` (administrador con acceso completo), `ENGINEERING_MANAGER` (gestor de ingeniería), `TECH_LEAD` (líder técnico) y `DEVELOPER` (desarrollador, rol por defecto).
+*   **`user_roles`**: Tabla de unión que implementa la relación "Muchos a Muchos". La clave primaria compuesta (`user_id`, `role_id`) garantiza que no existan duplicados. Esta estructura permite que un usuario tenga múltiples roles simultáneamente (ej. un usuario puede ser TECH_LEAD y DEVELOPER al mismo tiempo).
+
+##### Diagrama de Secuencia: Listar Usuarios Activos con Roles
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant Browser
+    participant "UserController" as Controller
+    participant "UserRepository" as UserRepo
+    participant "Database" as DB
+
+    Admin->>+Browser: 1. Solicita página de gestión de usuarios
+    Browser->>+Controller: 2. GET /api/v1/users
+
+    Controller->>+UserRepo: 3. findAllByActiveTrue()
+    UserRepo->>+DB: 4. SELECT u.*, r.* FROM users u LEFT JOIN user_roles ur ON u.id = ur.user_id LEFT JOIN roles r ON ur.role_id = r.id WHERE u.active = true
+    DB-->>-UserRepo: 5. Retorna List<User> con roles cargados
+    UserRepo-->>-Controller: 6. Retorna List<User>
+
+    Controller->>Controller: 7. Transforma cada User a UserSummaryDto extrayendo roles
+
+    Controller-->>-Browser: 8. Retorna JSON con List de UserSummaryDto
+    Browser-->>-Admin: 9. Renderiza tabla de usuarios con columna de roles
+```
+
+**Explicación del Flujo:**
+
+1.  **Solicitud del Cliente (1-2):** El administrador accede a la página de gestión de usuarios. El frontend realiza una petición GET al endpoint `/api/v1/users`.
+2.  **Consulta a Base de Datos (3-6):** El `UserController` utiliza el `UserRepository` para obtener todos los usuarios activos. La consulta SQL realiza un LEFT JOIN con las tablas `user_roles` y `roles` para cargar los roles asociados a cada usuario en una sola consulta, optimizando el rendimiento (evitando el problema N+1).
+3.  **Transformación a DTO (7):** El controlador itera sobre cada usuario y extrae los nombres de los roles del `Set<Role>` convirtiéndolos a un `Set<String>` (ej. `["DEVELOPER", "TECH_LEAD"]`). Esto asegura que el frontend solo reciba información necesaria y en formato simple.
+4.  **Respuesta al Cliente (8-9):** El controlador retorna una lista JSON de `UserSummaryDto` que incluye el nombre de usuario, nombre completo, avatar y roles. El frontend renderiza esta información en una tabla mostrando los roles de cada usuario.
+
+##### Diagrama de Secuencia: Asignación Automática del Rol DEVELOPER
+```mermaid
+sequenceDiagram
+
+    Scheduler->>+SyncService: 1. scheduledSync() - Ejecución programada
+    SyncService->>+GithubAPI: 2. getOrganizationMembers(organizationName)
+    GithubAPI->>GithubAPI: 3. Llama a GitHub API
+    GithubAPI-->>-SyncService: 4. Retorna List<OrganizationMember>
+
+    SyncService->>+UserRepo: 5. findAll()
+    UserRepo->>+DB: 6. SELECT * FROM users
+    DB-->>-UserRepo: 7. Retorna List<User>
+    UserRepo-->>-SyncService: 8. Retorna usuarios locales
+
+    loop Para cada miembro de GitHub
+        alt Usuario NO existe localmente
+            SyncService->>SyncService: 9a. Crea nuevo User con datos de GitHub
+            SyncService->>+SyncService: 10a. ensureUserHasDeveloperRole(newUser)
+
+            SyncService->>SyncService: 11a. Verifica: user.getRoles().stream()<br/>.anyMatch(role -> role.getName() == DEVELOPER)
+
+            alt Usuario NO tiene rol DEVELOPER
+                SyncService->>+RoleRepo: 12a. findByName(RoleName.DEVELOPER)
+                RoleRepo->>+DB: 13a. SELECT * FROM roles WHERE name = 'DEVELOPER'
+                DB-->>-RoleRepo: 14a. Retorna Role(DEVELOPER)
+                RoleRepo-->>-SyncService: 15a. Retorna Role
+
+                SyncService->>SyncService: 16a. user.getRoles().add(developerRole)
+            end
+
+            SyncService-->>-SyncService: 17a. Usuario con rol DEVELOPER garantizado
+
+            Note over SyncService: Agrega newUser a lista de usuarios a guardar
+        else Usuario ya existe localmente
+            SyncService->>SyncService: 9b. Actualiza datos (avatarUrl, username)
+            SyncService->>+SyncService: 10b. ensureUserHasDeveloperRole(existingUser)
+
+            SyncService->>SyncService: 11b. Verifica roles del usuario
+
+            alt Usuario NO tiene rol DEVELOPER
+                SyncService->>+RoleRepo: 12b. findByName(RoleName.DEVELOPER)
+                RoleRepo->>+DB: 13b. SELECT * FROM roles WHERE name = 'DEVELOPER'
+                DB-->>-RoleRepo: 14b. Retorna Role(DEVELOPER)
+                RoleRepo-->>-SyncService: 15b. Retorna Role
+
+                SyncService->>SyncService: 16b. user.getRoles().add(developerRole)
+            end
+
+            SyncService-->>-SyncService: 17b. Usuario actualizado con rol DEVELOPER
+
+            Note over SyncService: Agrega existingUser a lista de usuarios a guardar
+        end
+    end
+
+    SyncService->>+UserRepo: 18. saveAll(usersToSave)
+    UserRepo->>+DB: 19. INSERT/UPDATE en users y user_roles
+    DB-->>-UserRepo: 20. Confirma transacción
+    UserRepo-->>-SyncService: 21. Retorna usuarios guardados
+
+    SyncService-->>-Scheduler: 22. Sincronización completada
+```
+
+**Explicación del Flujo:**
+
+1.  **Ejecución Programada (1):** El scheduler de Spring ejecuta `scheduledSync()` periódicamente según la configuración `@Scheduled`.
+2.  **Obtención de Miembros de GitHub (2-4):** El `UserSyncService` consulta la API de GitHub a través del `GithubUserCollector` para obtener la lista actualizada de miembros de la organización.
+3.  **Obtención de Usuarios Locales (5-8):** El servicio consulta todos los usuarios existentes en la base de datos para compararlos con los miembros de GitHub.
+4.  **Procesamiento de Cada Miembro (9-17):**
+    *   **Nuevo Usuario (9a-17a):** Si el miembro de GitHub no existe localmente, se crea un nuevo objeto `User`. Se invoca `ensureUserHasDeveloperRole()` que verifica mediante `anyMatch()` si el usuario tiene el rol DEVELOPER. Si no lo tiene, consulta el `RoleRepository` para obtener el rol DEVELOPER y lo agrega al `Set<Role>` del usuario.
+    *   **Usuario Existente (9b-17b):** Si el usuario ya existe, se actualizan sus datos (avatar, username). Se ejecuta el mismo proceso de `ensureUserHasDeveloperRole()` para garantizar que tenga el rol DEVELOPER. Si el usuario ya tiene otros roles (ej. TECH_LEAD), el rol DEVELOPER se agrega sin eliminar los roles existentes.
+5.  **Persistencia en Lote (18-21):** El servicio guarda todos los usuarios procesados en una sola operación `saveAll()`, optimizando las transacciones de base de datos. Se insertan o actualizan registros en las tablas `users` y `user_roles`.
+6.  **Finalización (22):** La sincronización se completa exitosamente, garantizando que todos los usuarios de la organización de GitHub estén sincronizados con roles correctos en el sistema.
+
+**Características Clave de la Implementación:**
+
+*   **Idempotencia:** La verificación con `anyMatch()` antes de agregar el rol asegura que no se creen duplicados, permitiendo ejecutar la sincronización múltiples veces sin efectos secundarios.
+*   **Preservación de Roles Existentes:** El método `ensureUserHasDeveloperRole()` solo agrega el rol DEVELOPER si falta, sin modificar otros roles que el usuario pueda tener (ADMIN, TECH_LEAD, etc.).
+*   **Operaciones en Lote:** El uso de `saveAll()` reduce el número de transacciones a la base de datos, mejorando el rendimiento en sincronizaciones con muchos usuarios.
+
 #### HU-10: Recolectar Datos de GitHub
 
 ##### Diagrama de Clases
