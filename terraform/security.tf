@@ -5,8 +5,15 @@ resource "aws_security_group" "app_sg" {
   description = "Allows inbound traffic from the Load Balancer"
   vpc_id      = aws_vpc.main.id
 
-  # Permite todo el tráfico saliente.
+  # Permite el tráfico en el puerto 8080 desde cualquier lugar dentro de la VPC
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
 
+  # Permite todo el tráfico saliente.
   egress {
     from_port   = 0
     to_port     = 0
@@ -14,29 +21,6 @@ resource "aws_security_group" "app_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-
-# --- Regla de Entrada para la Aplicación ---
-# Permite el tráfico en el puerto 80 (donde escucha la app) SOLO si viene
-# desde el Security Group del Load Balancer.
-resource "aws_security_group_rule" "allow_traffic_from_alb" {
-  type                     = "ingress"
-  from_port                = 80
-  to_port                  = 80
-  protocol                 = "tcp"
-  # Referencia al SG del ALB que Beanstalk crea automáticamente.
-  # Nota: Beanstalk debe gestionar el SG del ALB para que esto funcione.
-  source_security_group_id = aws_elastic_beanstalk_environment.tesis_env.load_balancers[0] != "" ? tolist(data.aws_lb.tesis_alb.security_groups)[0] : null
-  security_group_id        = aws_security_group.app_sg.id
-}
-
-# --- Data source para obtener información del ALB creado por Beanstalk ---
-data "aws_lb" "tesis_alb" {
-  # El ARN del ALB es una de las salidas del recurso del entorno.
-  arn = aws_elastic_beanstalk_environment.tesis_env.load_balancers[0]
-  depends_on = [aws_elastic_beanstalk_environment.tesis_env]
-}
-
-
 
 # --- Security Group para la base de datos RDS ---
 resource "aws_security_group" "db_sg" {

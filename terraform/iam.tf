@@ -55,3 +55,9 @@ resource "aws_iam_role_policy_attachment" "beanstalk_ec2_ecr" {
   role       = aws_iam_role.beanstalk_ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
+
+# Política para permitir la conexión a través de SSM Session Manager
+resource "aws_iam_role_policy_attachment" "beanstalk_ec2_ssm" {
+  role       = aws_iam_role.beanstalk_ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
