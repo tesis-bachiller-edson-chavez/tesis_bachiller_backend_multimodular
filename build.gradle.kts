@@ -23,10 +23,8 @@ extra["springModulithVersion"] = "1.4.1"
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
-    // Datadog
-    implementation("com.datadoghq:dd-java-agent:0.110.0")
-    implementation("com.datadoghq:dtrace-api:0.110.0")
-
+    // Datadog Tracing API for custom annotations
+    implementation("com.datadoghq:dd-trace-api:0.110.0")
 
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation") // Para validar DTOs y otros objetos con anotaciones.
