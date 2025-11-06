@@ -14,6 +14,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.session.jdbc.config.annotation.web.http.EnableJdbcHttpSession;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -23,13 +24,14 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableJdbcHttpSession // <-- Habilita el almacenamiento de sesiones en la BD
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
     private final UserSynchronizationFilter userSynchronizationFilter;
     private final Oauth2LoginSuccessHandler oauth2LoginSuccessHandler;
 
-    @Value("${APP_CORS_ALLOWED_ORIGINS}")
+    @Value("${APP_CORS_ALLOWED_ORIGINS}") // Sin : para mantener el comportamiento estricto
     private String[] allowedOrigins;
 
     public SecurityConfig(UserSynchronizationFilter userSynchronizationFilter,
