@@ -29,7 +29,7 @@ public class SecurityConfig {
     private final UserSynchronizationFilter userSynchronizationFilter;
     private final Oauth2LoginSuccessHandler oauth2LoginSuccessHandler;
 
-    @Value("${APP_CORS_ALLOWED_ORIGINS}") // Sin : para mantener el comportamiento estricto
+    @Value("${APP_CORS_ALLOWED_ORIGINS}")
     private String[] allowedOrigins;
 
     public SecurityConfig(UserSynchronizationFilter userSynchronizationFilter,
