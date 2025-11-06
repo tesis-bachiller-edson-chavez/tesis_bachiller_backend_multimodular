@@ -28,11 +28,24 @@ FROM eclipse-temurin:24-jre-alpine
 
 WORKDIR /app
 
+# Instalar wget, descargar el agente de Datadog y luego remover wget
+RUN apk add --no-cache wget && \
+    wget -O dd-java-agent.jar https://repo1.maven.org/maven2/com/datadoghq/dd-java-agent/0.110.0/dd-java-agent-0.110.0.jar && \
+    apk del wget
+
 # Copiamos solo el JAR construido desde la etapa anterior
 COPY --from=builder /workspace/build/libs/*.jar app.jar
 
 # Exponemos el puerto 8080
 EXPOSE 8080
 
-# El comando para ejecutar la aplicación
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Variables de entorno para la configuración de Datadog.
+# Se pueden (y deben) sobreescribir al ejecutar el contenedor.
+ENV DD_SERVICE=tesis-backend
+ENV DD_LOGS_INJECTION=true
+ENV DD_PROFILING_ENABLED=true
+# ENV DD_ENV=production # Descomentar y ajustar para cada entorno
+# ENV DD_AGENT_HOST=... # Configurar según la infraestructura de AWS
+
+# El comando para ejecutar la aplicación con el agente de Datadog
+ENTRYPOINT ["java", "-javaagent:dd-java-agent.jar", "-jar", "app.jar"]

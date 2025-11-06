@@ -137,4 +137,36 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     name      = "dora.github.organization-name"
     value     = var.dora_github_organization_name
   }
+
+  # --- Variables de Entorno para Datadog ---
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_API_KEY"
+    value     = var.datadog_api_key
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_AGENT_HOST"
+    value     = "127.0.0.1" # Asume que el Agente de Datadog se ejecuta en el host
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_ENV"
+    value     = var.environment_name # e.g., "production", "staging"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_SERVICE"
+    value     = "tesis-backend"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_LOGS_INJECTION"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_PROFILING_ENABLED"
+    value     = "true"
+  }
 }

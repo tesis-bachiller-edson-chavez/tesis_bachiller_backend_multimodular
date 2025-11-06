@@ -54,3 +54,15 @@ variable "dora_github_organization_name" {
   description = "The name of the GitHub organization whose members are allowed to use the application."
   type        = string
 }
+
+variable "environment_name" {
+  description = "El nombre del entorno de despliegue (e.g., 'production', 'staging')."
+  type        = string
+  default     = "development"
+}
+
+variable "datadog_api_key" {
+  description = "La clave de API de Datadog para la instalación del agente."
+  type        = string
+  sensitive   = true
+}
