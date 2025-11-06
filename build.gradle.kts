@@ -34,7 +34,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.session:spring-session-core")
-    implementation("org.springframework.session:spring-session-jdbc") // <-- AÑADIDO para sesiones centralizadas
+    // implementation("org.springframework.session:spring-session-jdbc") // <-- REMOVIDO para sesiones centralizadas
     implementation("org.springframework.modulith:spring-modulith-starter-core")
     implementation("org.springframework.modulith:spring-modulith-starter-jpa")
     // Para el cifrado de secretos en la base de datos y propiedades, como se define en el design.md

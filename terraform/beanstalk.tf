@@ -54,6 +54,23 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     value     = "/actuator/health"
   }
 
+  # --- Configuración de Sticky Sessions ---
+  setting {
+    namespace = "aws:elbv2:targetgroup"
+    name      = "stickiness.enabled"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elbv2:targetgroup"
+    name      = "stickiness.type"
+    value     = "lb_cookie"
+  }
+  setting {
+    namespace = "aws:elbv2:targetgroup"
+    name      = "stickiness.lb_cookie.duration_seconds"
+    value     = "86400" # 24 horas
+  }
+
   # --- Configuración de Instancia y Roles ---
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
