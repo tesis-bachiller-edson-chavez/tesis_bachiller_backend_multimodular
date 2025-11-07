@@ -208,6 +208,11 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_SITE"
+    value     = "us5.datadoghq.com"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
     name      = "DD_PROFILING_ENABLED"
     value     = "true"
   }
