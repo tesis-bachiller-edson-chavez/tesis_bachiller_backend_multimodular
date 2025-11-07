@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Import Spring Boot defaults -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- Console Appender with JSON format for Datadog -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Add Datadog trace correlation -->
+            <provider class="net.logstash.logback.composite.loggingevent.mdc.MdcJsonProvider">
+                <includeMdcKeyName>dd.trace_id</includeMdcKeyName>
+                <includeMdcKeyName>dd.span_id</includeMdcKeyName>
+            </provider>
+
+            <!-- Customize field names for better Datadog integration -->
+            <fieldNames>
+                <timestamp>timestamp</timestamp>
+                <message>message</message>
+                <logger>logger.name</logger>
+                <thread>logger.thread_name</thread>
+                <level>status</level>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+
+            <!-- Add custom fields from environment variables -->
+            <customFields>{"service":"${DD_SERVICE:-tesis-backend}","env":"${DD_ENV:-development}"}</customFields>
+
+            <!-- Include caller data (file, line, method) -->
+            <includeCallerData>false</includeCallerData>
+
+            <!-- Include stack traces -->
+            <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                <maxLength>2048</maxLength>
+                <shortenedClassNameLength>20</shortenedClassNameLength>
+                <exclude>sun\.reflect\..*\.invoke.*</exclude>
+                <exclude>net\.sf\.cglib\.proxy\.MethodProxy\.invoke</exclude>
+                <rootCauseFirst>true</rootCauseFirst>
+            </throwableConverter>
+        </encoder>
+    </appender>
+
+    <!-- Root logger -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- Application specific logging -->
+    <logger name="org.grubhart.pucp.tesis" level="DEBUG"/>
+
+    <!-- Hibernate/JPA logging -->
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+
+    <!-- Spring Transaction logging -->
+    <logger name="org.springframework.transaction" level="DEBUG"/>
+
+    <!-- Reduce noise from Spring framework -->
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.springframework.security" level="INFO"/>
+</configuration>
