@@ -53,6 +53,48 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
     name      = "HealthCheckPath"
     value     = "/actuator/health"
   }
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "HealthCheckInterval"
+    value     = "30"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "HealthCheckTimeout"
+    value     = "5"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "UnhealthyThresholdCount"
+    value     = "3"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "HealthyThresholdCount"
+    value     = "2"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "MatcherHTTPCode"
+    value     = "200"
+  }
+
+  # --- FASE 4: Configuración de Sticky Sessions ---
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "StickinessEnabled"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "StickinessType"
+    value     = "lb_cookie"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:environment:process:default"
+    name      = "StickinessLBCookieDuration"
+    value     = "86400" # 24 horas en segundos
+  }
 
   # --- Configuración de Instancia y Roles ---
   setting {
