@@ -3,8 +3,15 @@
     <!-- Import Spring Boot defaults -->
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <!-- Console Appender with JSON format for Datadog -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <!-- Simple Console Appender for tests -->
+    <appender name="CONSOLE_SIMPLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Console Appender with JSON format for Datadog (production) -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
             <!-- Add Datadog trace correlation -->
             <provider class="net.logstash.logback.composite.loggingevent.mdc.MdcJsonProvider">
@@ -40,22 +47,28 @@
         </encoder>
     </appender>
 
-    <!-- Root logger -->
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-    </root>
+    <!-- Use simple logging for test profile -->
+    <springProfile name="test">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_SIMPLE"/>
+        </root>
 
-    <!-- Application specific logging -->
-    <logger name="org.grubhart.pucp.tesis" level="DEBUG"/>
+        <logger name="org.grubhart.pucp.tesis" level="DEBUG"/>
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+    </springProfile>
 
-    <!-- Hibernate/JPA logging -->
-    <logger name="org.hibernate.SQL" level="DEBUG"/>
-    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+    <!-- Use JSON logging for all other profiles (production, development) -->
+    <springProfile name="!test">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_JSON"/>
+        </root>
 
-    <!-- Spring Transaction logging -->
-    <logger name="org.springframework.transaction" level="DEBUG"/>
-
-    <!-- Reduce noise from Spring framework -->
-    <logger name="org.springframework.web" level="INFO"/>
-    <logger name="org.springframework.security" level="INFO"/>
+        <logger name="org.grubhart.pucp.tesis" level="DEBUG"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+        <logger name="org.springframework.transaction" level="DEBUG"/>
+        <logger name="org.springframework.web" level="INFO"/>
+        <logger name="org.springframework.security" level="INFO"/>
+    </springProfile>
 </configuration>
