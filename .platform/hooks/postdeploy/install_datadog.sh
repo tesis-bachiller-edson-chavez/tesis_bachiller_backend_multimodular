@@ -32,6 +32,11 @@ echo "Enabling APM non-local traffic..."
 echo "apm_config:" >> /etc/datadog-agent/datadog.yaml
 echo "  apm_non_local_traffic: true" >> /etc/datadog-agent/datadog.yaml
 
+# Enable automatic log collection from all containers
+echo "Enabling automatic log collection from containers..."
+echo "logs_config:" >> /etc/datadog-agent/datadog.yaml
+echo "  container_collect_all: true" >> /etc/datadog-agent/datadog.yaml
+
 # Configure Docker log collection
 mkdir -p /etc/datadog-agent/conf.d/docker.d
 cat > /etc/datadog-agent/conf.d/docker.d/conf.yaml <<EOF
