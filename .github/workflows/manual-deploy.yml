@@ -54,10 +54,11 @@ jobs:
 
       - name: Zip deployment package
         run: |
-          # Verificar que .ebextensions existe
-          ls -la .ebextensions/
-          # Crear el zip incluyendo .ebextensions
-          zip -r deploy.zip Dockerrun.aws.json .ebextensions/
+          # Verificar directorios de configuración
+          ls -la .ebextensions/ || echo "No .ebextensions"
+          ls -la .platform/hooks/postdeploy/ || echo "No .platform hooks"
+          # Crear el zip incluyendo configuraciones
+          zip -r deploy.zip Dockerrun.aws.json .ebextensions/ .platform/
           # Verificar contenido del zip
           unzip -l deploy.zip
 
