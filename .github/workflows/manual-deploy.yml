@@ -53,7 +53,13 @@ jobs:
           }' > Dockerrun.aws.json
 
       - name: Zip deployment package
-        run: zip -r deploy.zip Dockerrun.aws.json .ebextensions
+        run: |
+          # Verificar que .ebextensions existe
+          ls -la .ebextensions/
+          # Crear el zip incluyendo .ebextensions
+          zip -r deploy.zip Dockerrun.aws.json .ebextensions/
+          # Verificar contenido del zip
+          unzip -l deploy.zip
 
       - name: Deploy to Elastic Beanstalk
         uses: einaregilsson/beanstalk-deploy@v21
