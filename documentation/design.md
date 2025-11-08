@@ -2492,3 +2492,196 @@ Este runbook detalla el procedimiento para recuperar un entorno de Elastic Beans
 *   **Implementación Clave:** La idempotencia se logra principalmente a través del parámetro `use_existing_version_if_available: true` en la acción `einaregilsson/beanstalk-deploy`.
     *   **Problema Evitado:** Sin este parámetro, si un despliegue falla después de que la nueva versión de la aplicación ya ha sido creada en Elastic Beanstalk, un reintento del pipeline fallaría inmediatamente con un error de "Application Version already exists".
     *   **Solución:** Al establecer este parámetro en `true`, si la acción de despliegue detecta que la `version_label` que intenta crear ya existe, en lugar de fallar, la reutiliza y procede directamente al paso de despliegue. Esto permite que los reintentos del pipeline sean seguros y efectivos.
+
+## 15. Monitoreo y Observabilidad con Datadog
+
+### 15.1. Arquitectura de Monitoreo
+
+El sistema implementa una solución completa de observabilidad usando **Datadog** para recolectar métricas de infraestructura, trazas de APM (Application Performance Monitoring) y logs de aplicación. Esta integración es fundamental para el cálculo de las métricas DORA: MTTR (Mean Time To Recovery) y Change Failure Rate.
+
+```mermaid
+graph TB
+    subgraph "AWS Cloud - us-east-2"
+        subgraph "EC2 Instance - Amazon Linux 2023"
+            DA[Datadog Agent<br/>agent 7.72.1]
+            subgraph "Docker Container"
+                APP[Spring Boot App<br/>Java 24]
+                DDJA[dd-java-agent<br/>v1.55.0]
+            end
+            DA -->|Recolecta logs| DOCKER[Docker API<br/>:2375]
+            DOCKER -->|Container logs| APP
+        end
+        
+        EB[Elastic Beanstalk] -->|Gestiona| EC2
+    end
+    
+    subgraph "Datadog US5"
+        METRICS[Infrastructure<br/>Metrics]
+        APM[APM Traces<br/>& Profiling]
+        LOGS[Log Management]
+    end
+    
+    DDJA -->|APM Traces<br/>172.17.0.1:8126| DA
+    APP -->|JSON Logs<br/>stdout/stderr| DOCKER
+    DA -->|HTTPS:443| METRICS
+    DA -->|HTTPS:443| APM
+    DA -->|HTTPS:443| LOGS
+    
+    style DA fill:#632ca6,color:#fff
+    style DDJA fill:#632ca6,color:#fff
+    style APP fill:#6db33f,color:#fff
+    style METRICS fill:#632ca6,color:#fff
+    style APM fill:#632ca6,color:#fff
+    style LOGS fill:#632ca6,color:#fff
+```
+
+### 15.2. Componentes de Monitoreo
+
+#### 15.2.1. Datadog Agent (Host)
+
+El agente de Datadog se instala automáticamente en cada instancia EC2 mediante el script `.platform/hooks/postdeploy/install_datadog.sh` que se ejecuta después de cada despliegue.
+
+**Configuraciones clave:**
+- **Site**: `us5.datadoghq.com` (región US5)
+- **Logs habilitados**: `logs_enabled: true`
+- **APM non-local traffic**: `apm_non_local_traffic: true` (permite recibir trazas desde contenedores Docker)
+- **Recolección automática de logs**: `container_collect_all: true`
+
+**Responsabilidades:**
+1. Recolectar métricas del sistema (CPU, memoria, disco, red)
+2. Recibir trazas APM del dd-java-agent en puerto `0.0.0.0:8126`
+3. Recolectar logs de contenedores Docker via Docker API
+4. Enviar todos los datos a Datadog US5 via HTTPS
+
+#### 15.2.2. dd-java-agent (Aplicación)
+
+El agente Java de Datadog se inyecta en la aplicación Spring Boot mediante el argumento JVM `-javaagent:dd-java-agent.jar` configurado en el `ENTRYPOINT` del Dockerfile.
+
+**Versión**: 1.55.0 (compatible con Java 24)
+
+**Variables de entorno:**
+```bash
+DD_SERVICE=tesis-backend
+DD_ENV=production
+DD_AGENT_HOST=172.17.0.1  # Gateway de Docker
+DD_LOGS_INJECTION=true
+DD_PROFILING_ENABLED=true
+DD_SITE=us5.datadoghq.com
+```
+
+**Funcionalidades:**
+1. **Instrumentación automática**: Intercepta requests HTTP, queries SQL, llamadas externas
+2. **Trace correlation**: Inyecta `dd.trace_id` y `dd.span_id` en logs (vía MDC de Logback)
+3. **Profiling continuo**: Recolecta flamegraphs de CPU y heap allocation
+4. **Distributed tracing**: Propaga contexto de trazas entre servicios
+
+#### 15.2.3. Logging con Logback
+
+La aplicación usa **Logback** con el encoder **logstash-logback-encoder** para generar logs en formato JSON estructurado.
+
+**Configuración** (`logback-spring.xml`):
+```xml
+<appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+  <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+    <provider class="net.logstash.logback.composite.loggingevent.MdcJsonProvider">
+      <includeMdcKeyName>dd.trace_id</includeMdcKeyName>
+      <includeMdcKeyName>dd.span_id</includeMdcKeyName>
+    </provider>
+    <customFields>{"service":"${DD_SERVICE}","env":"${DD_ENV}"}</customFields>
+  </encoder>
+</appender>
+```
+
+**Ventajas del formato JSON:**
+- Parsing automático en Datadog
+- Correlación de logs con trazas APM via `dd.trace_id`
+- Búsquedas y filtros eficientes
+- Extracción automática de campos (logger, level, timestamp, message)
+
+### 15.3. Integración con Amazon Linux 2023
+
+**Desafío**: Amazon Linux 2023 usa el nuevo sistema de **Platform Hooks** (`.platform/hooks/`) en lugar del legacy `.ebextensions/` para ejecutar scripts post-despliegue.
+
+**Solución**: El script de instalación de Datadog se coloca en:
+```
+.platform/hooks/postdeploy/install_datadog.sh
+```
+
+Este script se ejecuta automáticamente después de cada despliegue y:
+1. Verifica si el agente ya está instalado (evita reinstalaciones innecesarias)
+2. Obtiene el API key desde variables de entorno de Elastic Beanstalk
+3. Instala el agente de Datadog usando el script oficial
+4. Configura APM, logs y tags
+5. Reinicia el servicio `datadog-agent`
+
+### 15.4. Conectividad Docker → Host
+
+**Problema**: Por defecto, el dd-java-agent dentro del contenedor Docker no puede conectarse al Datadog Agent en el host usando `127.0.0.1`.
+
+**Solución**: 
+1. El contenedor usa `DD_AGENT_HOST=172.17.0.1` (gateway de Docker)
+2. El Datadog Agent habilita `apm_non_local_traffic: true` para escuchar en `0.0.0.0:8126`
+
+**Diagrama de red:**
+```
+Contenedor (172.17.0.2)  →  Gateway Docker (172.17.0.1:8126)  →  Datadog Agent (host)
+```
+
+### 15.5. Métricas DORA Soportadas
+
+La integración de Datadog permite calcular las siguientes métricas DORA:
+
+#### 15.5.1. MTTR (Mean Time To Recovery)
+
+**Fuentes de datos:**
+- **Logs de errores**: Identifican el inicio de un incidente (error 5xx, excepciones no capturadas)
+- **APM error tracking**: Detecta incrementos en error rate
+- **Logs de recovery**: Identifican cuando el servicio vuelve a estado saludable
+
+**Metodología:**
+1. Detectar inicio de incidente: `status:error OR http.status_code:[500 TO 599]`
+2. Detectar fin de incidente: Retorno a `http.status_code:200` y ausencia de errores
+3. Calcular duración: `recovery_timestamp - incident_timestamp`
+
+#### 15.5.2. Change Failure Rate
+
+**Fuentes de datos:**
+- **APM Service Performance**: Error rate post-deployment
+- **Logs de deployment**: Eventos de GitHub Actions con commit SHA
+- **Error tracking**: Nuevos tipos de errores introducidos post-deployment
+
+**Metodología:**
+1. Correlacionar deployment events con commit SHA
+2. Comparar error rate 1h pre-deployment vs 1h post-deployment
+3. Calcular: `(deployments con incremento de errores) / (total deployments)`
+
+#### 15.5.3. Métricas ya implementadas
+
+- **Deploy Frequency**: Ya calculada via GitHub API (módulo `module-dora`)
+- **Lead Time for Changes**: Ya calculada via GitHub API (tiempo entre commit y merge a main)
+
+### 15.6. Dashboards y Alertas Recomendadas
+
+**Dashboards sugeridos:**
+1. **Infrastructure Overview**: CPU, memoria, disco, red del host EC2
+2. **APM Service Dashboard**: Latencia p50/p95/p99, throughput, error rate
+3. **DORA Metrics Dashboard**: MTTR, Change Failure Rate, Deploy Frequency, Lead Time
+4. **Error Tracking**: Top errores, stack traces, affected endpoints
+
+**Alertas críticas:**
+1. Error rate > 5% por 5 minutos consecutivos
+2. Latencia p95 > 2 segundos
+3. CPU > 80% por 10 minutos
+4. Memoria > 90%
+5. Disco > 85%
+
+### 15.7. Costos de Datadog
+
+**Free Trial**: 14 días con acceso completo
+**Estimación post-trial** (1 host, 1 servicio APM):
+- Infrastructure Monitoring: $15/mes
+- APM: $31/mes (hasta 150GB de trazas ingeridas)
+- Log Management: Variable según volumen (primeros 150GB gratis)
+- **Total estimado**: ~$46/mes
+
+**Nota para la tesis**: El despliegue se destruirá después de la defensa (14 de diciembre), por lo que el costo total será < $50 para todo el periodo de evaluación.
