@@ -2685,3 +2685,657 @@ La integración de Datadog permite calcular las siguientes métricas DORA:
 - **Total estimado**: ~$46/mes
 
 **Nota para la tesis**: El despliegue se destruirá después de la defensa (14 de diciembre), por lo que el costo total será < $50 para todo el periodo de evaluación.
+
+## 16. Definición y Cálculo de Métricas DORA
+
+### 16.1. Contexto y Marco Teórico
+
+Las métricas DORA (DevOps Research and Assessment) son cuatro indicadores clave de rendimiento (KPIs) que predicen el desempeño general del negocio según la investigación de Forsgren et al. (2018). Estas métricas se dividen en dos categorías:
+
+**Velocidad (Velocity)**:
+- Deployment Frequency (DF)
+- Lead Time for Changes (LTFC)
+
+**Estabilidad (Stability)**:
+- Change Failure Rate (CFR)
+- Mean Time to Restore (MTTR)
+
+La implementación en este proyecto sigue las mejores prácticas descritas en el paper "Fully Automated DORA Metrics Measurement for Continuous Improvement" (Rüegger et al., 2024), que enfatiza la automatización completa basada en datos de herramientas DevOps.
+
+### 16.2. Arquitectura de Módulos
+
+La implementación de métricas DORA en el sistema sigue una arquitectura modular basada en paquetes:
+
+```
+org.grubhart.pucp.tesis
+├── module_collector/        # Recolección de datos de fuentes externas
+│   ├── github/              # Cliente de GitHub API
+│   └── service/             # Servicios de sincronización
+├── module_processor/        # Cálculo de métricas
+│   ├── DeploymentFrequencyService
+│   ├── LeadTimeCalculationService
+│   ├── (pendiente) MTTRCalculationService
+│   └── (pendiente) CFRCalculationService
+├── module_domain/           # Entidades y repositorios
+│   ├── Deployment
+│   ├── Commit
+│   ├── ChangeLeadTime
+│   └── (pendiente) Incident
+└── module_api/              # Endpoints REST
+    └── DashboardController  # Exposición de métricas
+```
+
+**Flujo de datos**:
+1. **Recolección**: `module_collector` obtiene datos de GitHub API y Datadog API
+2. **Persistencia**: Datos crudos se almacenan en BD via `module_domain`
+3. **Procesamiento**: `module_processor` calcula métricas derivadas
+4. **Exposición**: `module_api` expone métricas via REST
+
+### 16.3. Fuentes de Datos
+
+| Métrica | Eventos Raw | Eventos Calculados | Fuente de Datos | Paquete Responsable |
+|---------|-------------|-------------------|-----------------|---------------------|
+| **DF** | Deployments | - | GitHub Actions (Workflows) | `module_collector.github` |
+| **LTFC** | Commits, Deployments | Changes | GitHub API | `module_collector.github` |
+| **MTTR** | Alerts/Incidents | Incidents | Datadog Monitoring | `module_collector.datadog` (pendiente) |
+| **CFR** | Deployments, Alerts | Changes, Incidents | GitHub + Datadog | `module_collector` + `module_processor` |
+
+### 16.4. Deployment Frequency (DF)
+
+#### 16.4.1. Definición
+
+El Deployment Frequency mide "con qué frecuencia una organización despliega código a producción o lo libera a usuarios finales" (Forsgren et al., 2018).
+
+**Fórmula**:
+```
+DF = Σ(deployments) / período_tiempo
+```
+
+**Pregunta clave**: ¿Con qué frecuencia desplegamos a producción?
+
+#### 16.4.2. Implementación Actual
+
+**Clase**: `org.grubhart.pucp.tesis.module_processor.DeploymentFrequencyService`
+
+**Definición técnica de Deployment**:
+Un deployment es un evento de despliegue exitoso a un entorno específico (ej: `production`) registrado en GitHub Actions.
+
+**Características**:
+- SHA del commit desplegado
+- Timestamp de creación
+- Entorno de destino (`production`, `staging`, etc.)
+- Estado (`success`, `failure`, etc.)
+
+**Modelo de datos**:
+```java
+@Entity
+public class Deployment {
+    @Id
+    private Long id;
+    private String sha;
+    private LocalDateTime createdAt;
+    private String environment;
+    private String status;
+    private boolean leadTimeProcessed; // Flag para evitar reprocesamiento
+}
+```
+
+**Método de cálculo**:
+
+```java
+public List<DeploymentFrequency> calculate(
+    String environment, 
+    LocalDate rangeStart, 
+    LocalDate rangeEnd, 
+    PeriodType periodType) {
+    
+    // Agrupa deployments por período (WEEKLY, BIWEEKLY, MONTHLY)
+    List<Deployment> deployments = deploymentRepository
+        .findByEnvironmentAndCreatedAtBetween(environment, periodStart, periodEnd);
+    
+    return new DeploymentFrequency(periodStart, periodEnd, deployments.size());
+}
+```
+
+**Tipos de período soportados**:
+- `WEEKLY`: Lunes a Domingo
+- `BIWEEKLY`: Períodos de 2 semanas
+- `MONTHLY`: Mes calendario completo
+
+**Ejemplo**:
+```
+Período: Semana del 6-12 Nov 2024
+Deployments exitosos: 5
+DF = 5 deployments / semana
+```
+
+#### 16.4.3. Recolección de Datos
+
+**Fuente**: GitHub Deployments API
+
+**Endpoint**:
+```
+GET /repos/{owner}/{repo}/deployments
+Query params:
+  - environment: production
+  - created_after: {start_date}
+  - created_before: {end_date}
+```
+
+**Servicio**: `DeploymentSyncService` en `module_collector.service`
+
+**Frecuencia de sincronización**: Cada 15 minutos (configurable via cron)
+
+### 16.5. Lead Time for Changes (LTFC)
+
+#### 16.5.1. Definición
+
+El Lead Time for Changes mide "cuánto tiempo toma ir desde código commiteado hasta código ejecutándose exitosamente en producción" (Forsgren et al., 2018).
+
+**Fórmula**:
+```
+LTFC = Σ(lead_time_per_commit) / Σ(commits)
+
+donde:
+lead_time_per_commit = deployment_timestamp - first_commit_timestamp
+```
+
+**Pregunta clave**: ¿Cuánto tardamos en llevar un cambio a producción?
+
+#### 16.5.2. Implementación Actual
+
+**Clase**: `org.grubhart.pucp.tesis.module_processor.LeadTimeCalculationService`
+
+**Definición técnica de Change**:
+Un change es el conjunto de commits incluidos en un deployment específico, desde el deployment anterior hasta el deployment actual.
+
+**Algoritmo de cálculo** (basado en traversal de grafo Git):
+
+1. **Identificar boundary commits**: Commits del deployment anterior
+2. **Traversal hacia atrás**: Desde commit actual hasta boundary commits
+3. **Calcular lead time**: Para cada commit nuevo, calcular duración
+4. **Persistir**: Guardar en tabla `ChangeLeadTime`
+
+**Pseudocódigo**:
+```java
+for (Deployment currentDeployment : unprocessedDeployments) {
+    // 1. Obtener deployment anterior
+    Optional<Deployment> previousDeployment = findPreviousDeployment(currentDeployment);
+    
+    // 2. Obtener commits del deployment anterior (boundary)
+    Set<String> boundaryCommitShas = getAllCommitsForDeployment(previousDeployment);
+    
+    // 3. Traversal BFS desde current deployment hasta boundary
+    Set<Commit> newCommits = getAllCommitsForDeployment(currentDeployment, boundaryCommitShas);
+    
+    // 4. Calcular lead time para cada commit nuevo
+    for (Commit commit : newCommits) {
+        long leadTimeSeconds = Duration.between(
+            commit.getDate(), 
+            currentDeployment.getCreatedAt()
+        ).getSeconds();
+        
+        saveChangeLeadTime(commit, currentDeployment, leadTimeSeconds);
+    }
+    
+    // 5. Marcar deployment como procesado
+    currentDeployment.setLeadTimeProcessed(true);
+}
+```
+
+**Modelo de datos**:
+```java
+@Entity
+public class ChangeLeadTime {
+    @Id
+    private Long id;
+    
+    @ManyToOne
+    private Commit commit;
+    
+    @ManyToOne
+    private Deployment deployment;
+    
+    private Long leadTimeInSeconds;
+}
+
+@Entity
+public class Commit {
+    @Id
+    private Long id;
+    private String sha;
+    private LocalDateTime date;
+    private String message;
+    
+    @ManyToMany
+    private Set<Commit> parents; // Grafo de commits Git
+}
+```
+
+**Ejemplo**:
+```
+Deployment 1: 2024-11-01 10:00:00
+  Commits: [A, B, C]
+
+Deployment 2: 2024-11-08 15:30:00
+  Commits: [D, E, F]
+  
+Lead times:
+  Commit D (2024-11-05 09:00): 6h 30m = (15:30 - 09:00) = 23400s
+  Commit E (2024-11-07 14:00): 1h 30m = (15:30 - 14:00) = 5400s
+  Commit F (2024-11-08 14:00): 1h 30m = (15:30 - 14:00) = 5400s
+  
+LTFC promedio = (23400 + 5400 + 5400) / 3 = 11400s = 3.17 horas
+```
+
+#### 16.5.3. Limitaciones y Consideraciones
+
+**Prácticas Git incompatibles**:
+- **Squash merges**: Pierden historial de commits individuales
+- **Rebase**: Reescribe timestamps de commits
+- **Amend commits**: Modifica metadata de commit original
+
+**Solución actual**: 
+El sistema asume desarrollo basado en **trunk-based development** con merge commits preservados.
+
+**Recomendación**: Configurar GitHub para usar "Merge commits" (no squash ni rebase) en PRs.
+
+### 16.6. Mean Time to Restore (MTTR)
+
+#### 16.6.1. Definición
+
+El MTTR mide "cuánto tiempo generalmente toma restaurar el servicio cuando ocurre un incidente o defecto que impacta a los usuarios" (Forsgren et al., 2018).
+
+**Fórmula**:
+```
+MTTR = Σ(incident_duration) / Σ(incidents)
+
+donde:
+incident_duration = resolved_timestamp - started_timestamp
+```
+
+**Pregunta clave**: ¿Qué tan rápido nos recuperamos de una falla?
+
+#### 16.6.2. Definición Técnica de Incident
+
+Un **incident** es un estado defectuoso del sistema que impacta a usuarios, caracterizado por:
+
+**Criterios de incident**:
+- Interrupción no planificada del servicio
+- Degradación significativa del rendimiento
+- Errores que impactan a usuarios finales
+
+**NO son incidents**:
+- Bugs menores sin impacto en producción
+- Degradaciones imperceptibles para usuarios
+- Mantenimientos planificados
+
+**Estados de incident** (Datadog):
+- `active`: Incident en curso
+- `stable`: Incident estabilizado pero no resuelto
+- `resolved`: Incident completamente resuelto
+
+**Severidades** (Datadog):
+- `SEV-1`: Crítico - Servicio completamente caído
+- `SEV-2`: Alto - Degradación severa
+- `SEV-3`: Medio - Impacto parcial
+- `SEV-4`: Bajo - Impacto menor
+
+#### 16.6.3. Implementación Propuesta
+
+**Fuente de datos**: Datadog Incidents API
+
+**Endpoint**:
+```
+GET https://api.us5.datadoghq.com/api/v2/incidents
+Query params:
+  - page[size]: 100
+  - filter[query]: service:tesis-backend
+  - filter[created][start]: {start_timestamp}
+  - filter[created][end]: {end_timestamp}
+```
+
+**Modelo de datos propuesto**:
+```java
+package org.grubhart.pucp.tesis.module_domain;
+
+@Entity
+public class Incident {
+    @Id
+    private String id; // ID de Datadog
+    private String service;
+    private Instant startTime;
+    private Instant endTime;
+    private String severity; // SEV-1, SEV-2, etc.
+    private String state; // active, stable, resolved
+    private String title;
+    
+    public Long getDurationSeconds() {
+        if (endTime == null) return null;
+        return Duration.between(startTime, endTime).getSeconds();
+    }
+}
+```
+
+**Servicio propuesto**:
+```java
+package org.grubhart.pucp.tesis.module_processor;
+
+@Service
+public class MTTRCalculationService {
+    
+    private final IncidentRepository incidentRepository;
+    
+    public MTTR calculate(String service, LocalDate start, LocalDate end) {
+        List<Incident> resolvedIncidents = incidentRepository
+            .findByServiceAndStateAndStartTimeBetween(
+                service, 
+                "resolved", 
+                start.atStartOfDay(), 
+                end.atTime(23, 59, 59)
+            );
+        
+        if (resolvedIncidents.isEmpty()) {
+            return new MTTR(start, end, 0, 0L);
+        }
+        
+        long totalDuration = resolvedIncidents.stream()
+            .mapToLong(Incident::getDurationSeconds)
+            .sum();
+        
+        long avgDuration = totalDuration / resolvedIncidents.size();
+        
+        return new MTTR(start, end, resolvedIncidents.size(), avgDuration);
+    }
+}
+```
+
+**Ejemplo de cálculo**:
+```
+Período: Semana del 6-12 Nov 2024
+Incidents resueltos: 3
+
+Incident 1: SEV-2, duración 300s (5 min)
+Incident 2: SEV-3, duración 120s (2 min)
+Incident 3: SEV-1, duración 600s (10 min)
+
+Total duration: 1020s
+MTTR = 1020s / 3 = 340s = 5.67 minutos
+```
+
+#### 16.6.4. Detección de Incidents vía Datadog Monitors
+
+**Alertas configuradas**:
+
+1. **High Error Rate**:
+```
+alert {
+  query: "avg(last_5m):sum:trace.servlet.request.errors{service:tesis-backend} / sum:trace.servlet.request.hits{service:tesis-backend} > 0.05"
+  message: "Error rate > 5% on tesis-backend"
+  severity: SEV-2
+}
+```
+
+2. **High Latency P95**:
+```
+alert {
+  query: "avg(last_5m):p95:trace.servlet.request.duration{service:tesis-backend} > 2000"
+  message: "P95 latency > 2s on tesis-backend"
+  severity: SEV-3
+}
+```
+
+3. **Service Unavailable**:
+```
+alert {
+  query: "avg(last_5m):sum:trace.servlet.request.hits{service:tesis-backend} < 1"
+  message: "No requests received - service down?"
+  severity: SEV-1
+}
+```
+
+### 16.7. Change Failure Rate (CFR)
+
+#### 16.7.1. Definición
+
+El CFR mide "qué porcentaje de cambios a producción resultan en servicios degradados y requieren remediación" (Forsgren et al., 2018).
+
+**Fórmula**:
+```
+CFR = Σ(incidents) / Σ(deployments)
+```
+
+**Pregunta clave**: ¿Qué proporción de nuestros deployments causan problemas?
+
+#### 16.7.2. Metodología de Cálculo
+
+**Nota importante**: Según Rüegger et al. (2024), es prácticamente imposible correlacionar un incident específico con el deployment exacto que lo causó. Por ello, el CFR se calcula como el **ratio entre incidents y deployments en un periodo dado**, no como correlación directa.
+
+**Razones para esta aproximación**:
+1. Un deployment puede causar múltiples incidents
+2. Un incident puede ser causado por interacción de múltiples deployments
+3. Algunos incidents no están relacionados con deployments (infraestructura, tráfico, etc.)
+
+#### 16.7.3. Implementación Propuesta
+
+**Servicio propuesto**:
+```java
+package org.grubhart.pucp.tesis.module_processor;
+
+@Service
+public class CFRCalculationService {
+    
+    private final DeploymentRepository deploymentRepository;
+    private final IncidentRepository incidentRepository;
+    
+    public CFR calculate(String service, LocalDate start, LocalDate end) {
+        // Contar deployments exitosos en el período
+        long deploymentCount = deploymentRepository
+            .countByEnvironmentAndCreatedAtBetween(
+                "production", 
+                start.atStartOfDay(), 
+                end.atTime(23, 59, 59)
+            );
+        
+        // Contar incidents en el mismo período
+        long incidentCount = incidentRepository
+            .countByServiceAndStartTimeBetween(
+                service,
+                start.atStartOfDay(),
+                end.atTime(23, 59, 59)
+            );
+        
+        if (deploymentCount == 0) {
+            return new CFR(start, end, 0, 0, 0.0);
+        }
+        
+        double rate = (double) incidentCount / deploymentCount;
+        
+        return new CFR(start, end, deploymentCount, incidentCount, rate);
+    }
+}
+```
+
+**Modelo de datos**:
+```java
+public class CFR {
+    private final LocalDate periodStart;
+    private final LocalDate periodEnd;
+    private final long deploymentCount;
+    private final long incidentCount;
+    private final double rate;
+    
+    // rate = incidentCount / deploymentCount
+}
+```
+
+**Ejemplo de cálculo**:
+```
+Período: Semana del 6-12 Nov 2024
+Deployments exitosos: 10
+Incidents: 2
+
+CFR = 2 / 10 = 0.20 = 20%
+```
+
+#### 16.7.4. Interpretación de Valores
+
+**Valores posibles**:
+- `CFR = 0.0` (0%): Todos los deployments exitosos, sin incidents
+- `CFR = 0.15` (15%): 15 de cada 100 deployments resultan en incident
+- `CFR > 1.0` (>100%): Múltiples incidents por deployment (problema severo)
+
+**Rangos según DORA (2022)**:
+- **Elite**: 0-15%
+- **High**: 16-30%
+- **Medium**: 31-45%
+- **Low**: >45%
+
+**CFR > 1.0 es válido**:
+Un CFR mayor a 1.0 indica que, en promedio, cada deployment genera más de un incident. Esto es una señal de:
+- Deployments altamente problemáticos
+- Múltiples subsistemas afectados por un cambio
+- Necesidad urgente de mejorar testing y QA
+
+#### 16.7.5. Limitaciones
+
+**Incidents no relacionados con deployments**:
+El CFR incluye todos los incidents del período, incluso aquellos causados por:
+- Fallos de infraestructura (no código)
+- Picos de tráfico inesperados
+- Degradación de servicios externos
+- Problemas de red/DNS
+
+**Justificación**: Estos incidents igualmente afectan la estabilidad del sistema y deben considerarse al evaluar el impacto de cambios.
+
+**Ventana temporal**:
+El período de cálculo debe ser el mismo para deployments e incidents. Se recomienda:
+- **7 días** para análisis continuo (ventana deslizante)
+- **Semanal/mensual** para reportes agregados
+
+### 16.8. Integración con Datadog API
+
+#### 16.8.1. Autenticación
+
+```java
+@Configuration
+public class DatadogConfig {
+    
+    @Value("${datadog.api.key}")
+    private String apiKey;
+    
+    @Value("${datadog.application.key}")
+    private String applicationKey;
+    
+    @Value("${datadog.site}")
+    private String site; // us5.datadoghq.com
+    
+    @Bean
+    public WebClient datadogWebClient() {
+        return WebClient.builder()
+            .baseUrl("https://api." + site)
+            .defaultHeader("DD-API-KEY", apiKey)
+            .defaultHeader("DD-APPLICATION-KEY", applicationKey)
+            .build();
+    }
+}
+```
+
+#### 16.8.2. Cliente de Datadog
+
+**Paquete propuesto**: `org.grubhart.pucp.tesis.module_collector.datadog`
+
+```java
+package org.grubhart.pucp.tesis.module_collector.datadog;
+
+@Service
+public class DatadogIncidentClient {
+    
+    private final WebClient datadogClient;
+    
+    public List<IncidentDTO> getIncidents(Instant start, Instant end, String service) {
+        return datadogClient.get()
+            .uri(uriBuilder -> uriBuilder
+                .path("/api/v2/incidents")
+                .queryParam("page[size]", 100)
+                .queryParam("filter[created][start]", start.getEpochSecond())
+                .queryParam("filter[created][end]", end.getEpochSecond())
+                .queryParam("filter[query]", "service:" + service)
+                .build())
+            .retrieve()
+            .bodyToMono(DatadogIncidentsResponse.class)
+            .map(response -> response.getData())
+            .block();
+    }
+}
+```
+
+#### 16.8.3. Sincronización de Datos
+
+**Servicio propuesto**: `org.grubhart.pucp.tesis.module_collector.service.IncidentSyncService`
+
+```java
+@Service
+public class IncidentSyncService {
+    
+    private final DatadogIncidentClient datadogClient;
+    private final IncidentRepository incidentRepository;
+    
+    @Scheduled(fixedDelay = 900000) // Cada 15 minutos
+    public void syncIncidents() {
+        Instant end = Instant.now();
+        Instant start = end.minus(1, ChronoUnit.HOURS); // Última hora
+        
+        List<IncidentDTO> incidents = datadogClient.getIncidents(start, end, "tesis-backend");
+        
+        incidents.stream()
+            .map(this::toEntity)
+            .forEach(incidentRepository::save);
+    }
+}
+```
+
+### 16.9. Optimizaciones y Consideraciones
+
+#### 16.9.1. Caché de Métricas
+
+**Estrategia**:
+- Cachear métricas calculadas por períodos completos (días/semanas pasadas)
+- Solo recalcular período actual (día/semana en curso)
+- Invalidar caché solo cuando llegan nuevos datos
+
+```java
+@Cacheable(value = "dora-metrics", key = "#metric + '-' + #start + '-' + #end")
+public DoraMetric getMetric(String metric, LocalDate start, LocalDate end) {
+    // Cálculo costoso
+}
+```
+
+#### 16.9.2. Ventanas Temporales
+
+**Recomendación del paper** (Rüegger et al., 2024):
+- **Moving average de 7 días**: Suaviza fluctuaciones de corto plazo
+- **Agregación semanal**: Para análisis de tendencias
+- **Agregación mensual**: Para reportes ejecutivos
+
+#### 16.9.3. Reducción de Llamadas a APIs Externas
+
+**GitHub API**: 
+- Rate limit: 5,000 requests/hora (autenticado)
+- Estrategia: Sincronización incremental cada 15 minutos
+
+**Datadog API**:
+- Rate limit: 300 requests/hora
+- Estrategia: Sincronización cada 15 minutos, caché de 1 hora para datos históricos
+
+### 16.10. Referencias
+
+1. Forsgren, N., Humble, J., & Kim, G. (2018). *Accelerate: The Science of Lean Software and DevOps*. IT Revolution Press.
+
+2. Rüegger, J., Kropp, M., Graf, S., & Anslow, C. (2024). Fully Automated DORA Metrics Measurement for Continuous Improvement. *ICSSP '24, München, Germany*.
+
+3. Google Cloud. (2022). *2022 Accelerate State of DevOps Report*. https://cloud.google.com/devops/state-of-devops
+
+4. Datadog API Documentation: https://docs.datadoghq.com/api/latest/incidents/
+
+5. GitHub Deployments API: https://docs.github.com/en/rest/deployments
