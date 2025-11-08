@@ -100,7 +100,7 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "InstanceType"
-    value     = "t2.micro"
+    value     = "t2.small"
   }
   setting {
     namespace = "aws:autoscaling:asg"
