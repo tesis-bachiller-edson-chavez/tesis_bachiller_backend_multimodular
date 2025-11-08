@@ -27,6 +27,11 @@ DD_SITE="us5.datadoghq.com" DD_API_KEY=$DD_API_KEY bash -c "$(curl -L https://s3
 echo "Configuring Datadog agent for logs..."
 sed -i 's/# logs_enabled: false/logs_enabled: true/' /etc/datadog-agent/datadog.yaml
 
+# Enable APM non-local traffic to accept traces from Docker containers
+echo "Enabling APM non-local traffic..."
+echo "apm_config:" >> /etc/datadog-agent/datadog.yaml
+echo "  apm_non_local_traffic: true" >> /etc/datadog-agent/datadog.yaml
+
 # Configure Docker log collection
 mkdir -p /etc/datadog-agent/conf.d/docker.d
 cat > /etc/datadog-agent/conf.d/docker.d/conf.yaml <<EOF

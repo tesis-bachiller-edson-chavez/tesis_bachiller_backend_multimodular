@@ -30,7 +30,7 @@ WORKDIR /app
 
 # Instalar wget, descargar el agente de Datadog y luego remover wget
 RUN apk add --no-cache wget && \
-    wget -O dd-java-agent.jar https://repo1.maven.org/maven2/com/datadoghq/dd-java-agent/0.110.0/dd-java-agent-0.110.0.jar && \
+    wget -O dd-java-agent.jar https://repo1.maven.org/maven2/com/datadoghq/dd-java-agent/1.55.0/dd-java-agent-1.55.0.jar && \
     apk del wget
 
 # Copiamos solo el JAR construido desde la etapa anterior
