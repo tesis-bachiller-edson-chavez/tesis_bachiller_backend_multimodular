@@ -53,6 +53,182 @@ class GithubClientImplTest {
     }
 
     @Test
+    @DisplayName("getUserRepositories debe devolver repositorios cuando la respuesta es exitosa")
+    void shouldReturnUserRepositoriesWhenResponseIsSuccessful() {
+        // Arrange
+        String jsonBody = """
+            [
+              {
+                "id": 1,
+                "name": "repo1",
+                "full_name": "user/repo1",
+                "html_url": "https://github.com/user/repo1",
+                "private": false,
+                "owner": { "login": "user" }
+              },
+              {
+                "id": 2,
+                "name": "repo2",
+                "full_name": "user/repo2",
+                "html_url": "https://github.com/user/repo2",
+                "private": true,
+                "owner": { "login": "user" }
+              }
+            ]
+            """;
+        mockWebServer.enqueue(new MockResponse().setBody(jsonBody).addHeader("Content-Type", "application/json"));
+
+        // Act
+        List<GithubRepositoryDto> repos = githubClient.getUserRepositories();
+
+        // Assert
+        assertEquals(2, repos.size());
+        assertEquals("repo1", repos.get(0).name());
+        assertEquals("https://github.com/user/repo1", repos.get(0).htmlUrl());
+        assertEquals("repo2", repos.get(1).name());
+        assertEquals("https://github.com/user/repo2", repos.get(1).htmlUrl());
+    }
+
+    @Test
+    @DisplayName("getUserRepositories debe detenerse si la respuesta de la API es nula")
+    void getUserRepositories_shouldStopWhenResponseIsNull() {
+        // Arrange
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.toEntityList(GithubRepositoryDto.class)).thenReturn(Mono.empty());
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // Act
+        List<GithubRepositoryDto> repos = clientWithMock.getUserRepositories();
+
+        // Assert
+        assertThat(repos).isNotNull().isEmpty();
+        verify(mockWebClient, times(1)).get();
+    }
+
+    @Test
+    @DisplayName("getUserRepositories debe detenerse si el cuerpo de la respuesta es nulo")
+    void getUserRepositories_shouldStopWhenResponseBodyIsNull() {
+        // Arrange
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestHeadersUriSpec requestHeadersUriSpec = mock(WebClient.RequestHeadersUriSpec.class);
+        WebClient.RequestHeadersSpec requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+        ResponseEntity<List<GithubRepositoryDto>> mockResponseEntity = mock(ResponseEntity.class);
+
+        when(mockWebClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.toEntityList(GithubRepositoryDto.class)).thenReturn(Mono.just(mockResponseEntity));
+        when(mockResponseEntity.getBody()).thenReturn(null);
+        when(mockResponseEntity.getHeaders()).thenReturn(new org.springframework.http.HttpHeaders());
+
+        GithubClientImpl clientWithMock = new GithubClientImpl(mockWebClient);
+
+        // Act
+        List<GithubRepositoryDto> repos = clientWithMock.getUserRepositories();
+
+        // Assert
+        assertThat(repos).isNotNull().isEmpty();
+        verify(mockWebClient, times(1)).get();
+    }
+
+    @Test
+    @DisplayName("getUserRepositories debe lanzar una excepción en caso de error 5xx")
+    void getUserRepositories_shouldThrowExceptionOn5xxError() {
+        // Arrange
+        mockWebServer.enqueue(new MockResponse().setResponseCode(500));
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> {
+            githubClient.getUserRepositories();
+        });
+    }
+
+    @Test
+    @DisplayName("getUserRepositories debe registrar un error y detenerse en caso de error 4xx")
+    void getUserRepositories_shouldLogErrorAndStopOn4xxError() {
+        // Arrange
+        Logger logger = (Logger) LoggerFactory.getLogger(GithubClientImpl.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        mockWebServer.enqueue(new MockResponse().setResponseCode(404));
+
+        // Act
+        List<GithubRepositoryDto> repos = githubClient.getUserRepositories();
+
+        // Assert
+        assertThat(repos).isNotNull().isEmpty();
+        assertThat(listAppender.list).anyMatch(event ->
+                event.getLevel() == Level.ERROR &&
+                event.getFormattedMessage().contains("Error fetching repositories")
+        );
+
+        logger.detachAppender(listAppender);
+    }
+
+    @Test
+    @DisplayName("getUserRepositories debe devolver resultados parciales si ocurre un error después de la primera página")
+    void getUserRepositories_shouldReturnPartialResultsOnRuntimeExceptionAfterFirstPage() throws InterruptedException {
+        // Arrange
+        Logger logger = (Logger) LoggerFactory.getLogger(GithubClientImpl.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        // --- Mock setup for the first, successful call ---
+        String firstPageBody = """
+            [
+              {
+                "id": 1, "name": "repo1", "full_name": "user/repo1", "html_url": "https://github.com/user/repo1",
+                "owner": { "login": "user" }
+              }
+            ]
+            """;
+        String nextPageUrl = String.format("http://localhost:%d/user/repos?page=2", mockWebServer.getPort());
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(firstPageBody)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Link", "<" + nextPageUrl + ">; rel=\"next\""));
+
+        // --- Mock setup for the second, failing call ---
+        // This will cause a WebClientResponseException, which is a RuntimeException
+        mockWebServer.enqueue(new MockResponse().setResponseCode(500));
+
+        // Act
+        List<GithubRepositoryDto> repos = githubClient.getUserRepositories();
+
+        // Assert
+        // 1. Check that we got the partial results from the first page
+        assertThat(repos).isNotNull();
+        assertThat(repos).hasSize(1);
+        assertThat(repos.get(0).id()).isEqualTo(1L);
+        assertThat(repos.get(0).name()).isEqualTo("repo1");
+
+        // 2. Verify that the web server was called twice
+        assertThat(mockWebServer.getRequestCount()).isEqualTo(2);
+
+        // 3. Verify that a warning was logged
+        List<ILoggingEvent> logs = listAppender.list;
+        assertThat(logs).anyMatch(event ->
+                event.getLevel() == Level.WARN &&
+                event.getFormattedMessage().contains("Error during paginated repository collection. Returning partial results.")
+        );
+
+        // Cleanup
+        logger.detachAppender(listAppender);
+    }
+
+    @Test
     void getCommits_shouldReturnCommitsWhenResponseIsSuccessful() {
         // Arrange
         String jsonBody = "[{\"sha\":\"123\",\"commit\":{\"author\":{\"name\":\"test\",\"email\":\"test@test.com\",\"date\":\"2024-01-01T00:00:00Z\"},\"message\":\"feat: test commit\"},\"html_url\":\"http://test.com\"}]";

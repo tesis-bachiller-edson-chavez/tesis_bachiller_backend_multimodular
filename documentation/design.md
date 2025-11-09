@@ -2475,6 +2475,259 @@ sequenceDiagram
     deactivate Job
 ```
 
+#### HU-21: Gestión de Repositorios
+
+##### Diagrama de Clases
+```mermaid
+classDiagram
+    direction LR
+
+    subgraph module_api
+        class RepositoryController {
+            <<RestController>>
+            +getAllRepositories(): List<RepositoryDto>
+            +syncRepositories(): ResponseEntity<RepositorySyncResultDto> @PreAuthorize("ADMIN")
+            +updateRepository(Long, UpdateRepositoryRequest): ResponseEntity<RepositoryDto> @PreAuthorize("ADMIN")
+            -mapToDto(RepositoryConfig): RepositoryDto
+        }
+        class RepositoryDto {
+            <<DTO>>
+            +id: Long
+            +repositoryUrl: String
+            +datadogServiceName: String
+            +owner: String
+            +repoName: String
+        }
+        class RepositorySyncResultDto {
+            <<DTO>>
+            +newRepositories: int
+            +totalRepositories: int
+            +unchanged: int
+        }
+        class UpdateRepositoryRequest {
+            <<DTO>>
+            +datadogServiceName: String
+        }
+    end
+
+    subgraph module_domain
+        class RepositorySyncService {
+            <<Interface>>
+            +synchronizeRepositories(): RepositorySyncResult
+        }
+        class RepositorySyncResult {
+            <<Record>>
+            +newRepositories: int
+            +totalRepositories: int
+            +unchanged: int
+        }
+        class GithubRepositoryCollector {
+            <<Interface>>
+            +getUserRepositories(): List<GithubRepositoryDto>
+        }
+        class GithubRepositoryDto {
+            <<Record>>
+            +id: Long
+            +name: String
+            +fullName: String
+            +htmlUrl: String
+            +isPrivate: boolean
+            +owner: Owner
+        }
+        class RepositoryConfig {
+            <<Entity>>
+            -id: Long
+            -repositoryUrl: String
+            -datadogServiceName: String
+            +getOwner(): String
+            +getRepoName(): String
+            +setDatadogServiceName(String): void
+        }
+        class RepositoryConfigRepository {
+            <<Repository>>
+            +findAll(): List<RepositoryConfig>
+            +findById(Long): Optional<RepositoryConfig>
+            +save(RepositoryConfig): RepositoryConfig
+            +saveAll(List<RepositoryConfig>): List<RepositoryConfig>
+        }
+    end
+
+    subgraph module_collector
+        class RepositorySyncServiceImpl {
+            <<Service>>
+            +synchronizeRepositories(): RepositorySyncResult
+        }
+        class GithubClientImpl {
+            <<Component>>
+            -webClient: WebClient
+            +getUserRepositories(): List<GithubRepositoryDto>
+            -parseNextPageUrl(List<String>): String
+        }
+    end
+
+    %% --- Relaciones ---
+    RepositoryController --> RepositoryConfigRepository : uses
+    RepositoryController --> RepositorySyncService : uses
+    RepositoryController ..> RepositoryDto : returns
+    RepositoryController ..> RepositorySyncResultDto : returns
+    RepositoryController ..> UpdateRepositoryRequest : receives
+
+    RepositorySyncServiceImpl ..|> RepositorySyncService : implements
+    RepositorySyncServiceImpl --> GithubRepositoryCollector : uses
+    RepositorySyncServiceImpl --> RepositoryConfigRepository : uses
+    RepositorySyncServiceImpl ..> RepositorySyncResult : returns
+
+    GithubClientImpl ..|> GithubRepositoryCollector : implements
+    GithubClientImpl ..> GithubRepositoryDto : returns
+
+    RepositoryConfigRepository ..> RepositoryConfig : manages
+```
+
+**Explicación del Diagrama:**
+
+1. **API REST (`RepositoryController`):** Es el punto de entrada para la gestión de repositorios. Expone tres endpoints:
+   - `GET /api/v1/repositories`: Lista todos los repositorios (acceso público).
+   - `POST /api/v1/repositories/sync`: Sincroniza desde GitHub (solo ADMIN).
+   - `PUT /api/v1/repositories/{id}`: Actualiza el `datadogServiceName` (solo ADMIN).
+
+2. **Capa de Dominio:** Define las interfaces y entidades principales:
+   - `RepositorySyncService`: Interfaz que define el contrato de sincronización.
+   - `GithubRepositoryCollector`: Interfaz para obtener repositorios desde GitHub.
+   - `RepositoryConfig`: Entidad que representa un repositorio configurado.
+   - `RepositorySyncResult` y `GithubRepositoryDto`: Records para transferir datos.
+
+3. **Implementación (`module_collector`):**
+   - `RepositorySyncServiceImpl`: Implementa la lógica de sincronización idempotente.
+   - `GithubClientImpl`: Implementa la comunicación con la API de GitHub, manejando paginación.
+
+4. **DTOs de API (`module_api`):** Define los contratos de la API REST.
+
+##### Diagrama de Base de Datos (ERD)
+```mermaid
+erDiagram
+    REPOSITORY_CONFIG {
+        bigint id PK "ID autogenerado"
+        varchar repository_url UK "URL única del repositorio en GitHub"
+        varchar datadog_service_name "Nombre del servicio en Datadog (nullable)"
+    }
+
+    REPOSITORY_CONFIG ||--o{ INCIDENTS : "tiene"
+    REPOSITORY_CONFIG ||--o{ COMMITS : "tiene"
+    REPOSITORY_CONFIG ||--o{ PULL_REQUESTS : "tiene"
+    REPOSITORY_CONFIG ||--o{ DEPLOYMENTS : "tiene"
+```
+
+**Explicación del Diagrama:**
+
+* **`REPOSITORY_CONFIG`**: Tabla central que almacena la configuración de cada repositorio. El campo `repository_url` tiene una restricción `UNIQUE` para garantizar que no se dupliquen repositorios. El campo `datadog_service_name` es opcional (nullable) y se configura manualmente por los administradores para vincular el repositorio con un servicio específico en Datadog.
+
+* **Relaciones**: Esta tabla se relaciona con múltiples entidades del sistema:
+  - `INCIDENTS`: Los incidentes están asociados a un servicio de Datadog, que se vincula a través del `datadog_service_name`.
+  - `COMMITS`, `PULL_REQUESTS`, `DEPLOYMENTS`: Todas estas entidades están relacionadas con un repositorio específico.
+
+##### Diagrama de Secuencia
+
+**Caso 1: Sincronización de Repositorios desde GitHub (Admin)**
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin User
+    participant Controller as RepositoryController
+    participant Service as RepositorySyncService
+    participant RepoRepo as RepositoryConfigRepository
+    participant GithubCollector as GithubRepositoryCollector
+    participant GithubAPI as GitHub API
+    participant DB as Database
+
+    Admin->>+Controller: POST /api/v1/repositories/sync
+    Note over Controller: Verifica rol ADMIN (@PreAuthorize)
+
+    Controller->>+Service: synchronizeRepositories()
+
+    Service->>+GithubCollector: getUserRepositories()
+    GithubCollector->>+GithubAPI: GET /user/repos?affiliation=owner,collaborator&per_page=100
+    GithubAPI-->>-GithubCollector: 200 OK + List<GithubRepositoryDto> + Link header
+
+    loop Paginación (si hay más páginas)
+        GithubCollector->>+GithubAPI: GET /user/repos?page=2
+        GithubAPI-->>-GithubCollector: 200 OK + más repositorios
+    end
+
+    GithubCollector-->>-Service: List<GithubRepositoryDto>
+
+    Service->>+RepoRepo: findAll()
+    RepoRepo->>DB: SELECT * FROM repository_config
+    DB-->>RepoRepo: List<RepositoryConfig> existentes
+    RepoRepo-->>-Service: List<RepositoryConfig>
+
+    Note over Service: Compara repos de GitHub con repos locales<br/>usando repositoryUrl como clave única
+
+    alt Hay repositorios nuevos
+        Service->>+RepoRepo: saveAll(newRepositories)
+        RepoRepo->>DB: INSERT INTO repository_config (repository_url, datadog_service_name)<br/>VALUES (..., NULL), (..., NULL)
+        DB-->>RepoRepo: Nuevos repositorios creados
+        RepoRepo-->>-Service: List<RepositoryConfig> guardados
+    end
+
+    Service-->>-Controller: RepositorySyncResult(new=3, total=10, unchanged=7)
+    Controller-->>-Admin: 200 OK + RepositorySyncResultDto
+```
+
+**Caso 2: Actualización del Nombre del Servicio de Datadog (Admin)**
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin User
+    participant Controller as RepositoryController
+    participant RepoRepo as RepositoryConfigRepository
+    participant DB as Database
+
+    Admin->>+Controller: PUT /api/v1/repositories/1<br/>{datadogServiceName: "tesis-backend"}
+    Note over Controller: Verifica rol ADMIN (@PreAuthorize)
+
+    Controller->>+RepoRepo: findById(1)
+    RepoRepo->>DB: SELECT * FROM repository_config WHERE id = 1
+    DB-->>RepoRepo: RepositoryConfig encontrado
+    RepoRepo-->>-Controller: Optional<RepositoryConfig>
+
+    alt Repositorio encontrado
+        Controller->>Controller: repo.setDatadogServiceName("tesis-backend")
+
+        Controller->>+RepoRepo: save(repo)
+        RepoRepo->>DB: UPDATE repository_config<br/>SET datadog_service_name = 'tesis-backend'<br/>WHERE id = 1
+        DB-->>RepoRepo: Actualizado
+        RepoRepo-->>-Controller: RepositoryConfig actualizado
+
+        Controller-->>Admin: 200 OK + RepositoryDto
+    else Repositorio no encontrado
+        Controller-->>Admin: 404 NOT FOUND
+    end
+
+    deactivate Controller
+```
+
+**Explicación de los Flujos:**
+
+**Flujo de Sincronización:**
+
+1. **Autenticación y Autorización (1):** Un administrador realiza una petición POST al endpoint de sincronización. El controlador verifica el rol ADMIN usando `@PreAuthorize`.
+
+2. **Obtención de Repositorios de GitHub (2-5):** El servicio invoca al `GithubRepositoryCollector`, que realiza peticiones paginadas a la API de GitHub (`/user/repos`). La paginación se maneja automáticamente usando el header `Link` de la respuesta.
+
+3. **Comparación con Repositorios Locales (6-8):** El servicio obtiene todos los repositorios existentes en la base de datos y crea un mapa usando `repositoryUrl` como clave única para comparación eficiente.
+
+4. **Sincronización Idempotente (9-11):** El servicio identifica qué repositorios de GitHub no existen localmente y solo guarda los nuevos. Los repositorios existentes **no se modifican**, preservando su configuración de `datadogServiceName`.
+
+5. **Resultado (12-13):** El servicio retorna estadísticas de la sincronización (nuevos, total, sin cambios).
+
+**Flujo de Actualización:**
+
+1. **Autenticación y Autorización (1):** Un administrador envía una petición PUT para actualizar el `datadogServiceName` de un repositorio.
+
+2. **Búsqueda del Repositorio (2-4):** El controlador busca el repositorio por su ID.
+
+3. **Actualización Condicional (5-9):** Si el repositorio existe, actualiza el campo y lo persiste. Si no existe, retorna 404.
+
 ---
 
 ## Apéndice B: Estrategia de Integración y Despliegue Continuo (CI/CD)
