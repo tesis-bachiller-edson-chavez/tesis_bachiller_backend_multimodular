@@ -65,7 +65,7 @@ public class DeploymentSyncService {
                 String owner = urlParts[0];
                 String repoName = urlParts[1];
                 log.info("Sincronizando deployments para el repositorio: {}/{}", owner, repoName);
-                syncDeploymentsForRepository(owner, repoName);
+                syncDeploymentsForRepository(owner, repoName, repoConfig);
             } catch (IllegalArgumentException e) {
                 log.error("URL de repositorio no válida en la configuración: '{}'. Saltando este repositorio.", repoConfig.getRepositoryUrl(), e);
             } catch (Exception e) {
@@ -75,7 +75,7 @@ public class DeploymentSyncService {
         log.info("Sincronización de deployments completada para todos los repositorios.");
     }
 
-    private void syncDeploymentsForRepository(String owner, String repoName) throws Exception {
+    private void syncDeploymentsForRepository(String owner, String repoName, RepositoryConfig repositoryConfig) throws Exception {
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById(JOB_NAME + "_" + repoName);
         LocalDateTime lastRun = syncStatus.map(SyncStatus::getLastSuccessfulRun).orElse(null);
 
@@ -87,7 +87,7 @@ public class DeploymentSyncService {
                 continue;
             }
             try {
-                Deployment deployment = convertToDeployment(run);
+                Deployment deployment = convertToDeployment(run, repositoryConfig.getDatadogServiceName());
                 if (!deploymentRepository.existsById(deployment.getGithubId())) {
                     newDeployments.add(deployment);
                 }
@@ -108,7 +108,7 @@ public class DeploymentSyncService {
         log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
     }
 
-    private Deployment convertToDeployment(GitHubWorkflowRunDto dto) {
+    private Deployment convertToDeployment(GitHubWorkflowRunDto dto, String serviceName) {
         if (dto.getHeadSha() == null || dto.getHeadSha().isBlank()) {
             throw new IllegalArgumentException("El SHA del commit es nulo o está vacío.");
         }
@@ -117,6 +117,7 @@ public class DeploymentSyncService {
         deployment.setName(dto.getName());
         deployment.setHeadBranch(dto.getHeadBranch());
         deployment.setSha(dto.getHeadSha());
+        deployment.setServiceName(serviceName);
         deployment.setStatus(dto.getStatus());
         deployment.setConclusion(dto.getConclusion());
         deployment.setCreatedAt(dto.getCreatedAt());

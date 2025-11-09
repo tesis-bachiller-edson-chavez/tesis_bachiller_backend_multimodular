@@ -15,12 +15,25 @@ public class RepositoryConfig {
 
     private String repositoryUrl;
 
+    /**
+     * The Datadog service name associated with this repository.
+     * This should match the DD_SERVICE environment variable used in deployment.
+     * Used to filter incidents from Datadog API for this specific service.
+     * If null, incidents won't be synchronized for this repository.
+     */
+    private String datadogServiceName;
+
 
     protected RepositoryConfig() {
     }
 
     public RepositoryConfig(String repositoryUrl) {
         this.repositoryUrl = repositoryUrl;
+    }
+
+    public RepositoryConfig(String repositoryUrl, String datadogServiceName) {
+        this.repositoryUrl = repositoryUrl;
+        this.datadogServiceName = datadogServiceName;
     }
 
     public Long getId() {
@@ -91,5 +104,13 @@ public class RepositoryConfig {
             return null;
         }
         return null;
+    }
+
+    public String getDatadogServiceName() {
+        return datadogServiceName;
+    }
+
+    public void setDatadogServiceName(String datadogServiceName) {
+        this.datadogServiceName = datadogServiceName;
     }
 }

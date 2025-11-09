@@ -18,7 +18,14 @@ public class Deployment {
     private String name;
     private String sha;
     private String headBranch;
-    private String environment; // <-- CAMPO AÑADIDO
+    private String environment;
+
+    /**
+     * The Datadog service name this deployment is associated with.
+     * Used to correlate deployments with incidents for DORA metrics.
+     */
+    private String serviceName;
+
     private String status;
     private String conclusion;
     private LocalDateTime createdAt;
@@ -35,7 +42,20 @@ public class Deployment {
         this.name = name;
         this.sha = sha;
         this.headBranch = headBranch;
-        this.environment = environment; // <-- CAMPO AÑADIDO
+        this.environment = environment;
+        this.status = status;
+        this.conclusion = conclusion;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+    }
+
+    public Deployment(Long githubId, String name, String sha, String headBranch, String environment, String serviceName, String status, String conclusion, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this.githubId = githubId;
+        this.name = name;
+        this.sha = sha;
+        this.headBranch = headBranch;
+        this.environment = environment;
+        this.serviceName = serviceName;
         this.status = status;
         this.conclusion = conclusion;
         this.createdAt = createdAt;
@@ -84,12 +104,20 @@ public class Deployment {
         this.headBranch = headBranch;
     }
 
-    public String getEnvironment() { // <-- GETTER AÑADIDO
+    public String getEnvironment() {
         return environment;
     }
 
-    public void setEnvironment(String environment) { // <-- SETTER AÑADIDO
+    public void setEnvironment(String environment) {
         this.environment = environment;
+    }
+
+    public String getServiceName() {
+        return serviceName;
+    }
+
+    public void setServiceName(String serviceName) {
+        this.serviceName = serviceName;
     }
 
     public String getStatus() {

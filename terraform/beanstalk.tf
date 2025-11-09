@@ -188,6 +188,11 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_APPLICATION_KEY"
+    value     = var.datadog_application_key
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
     name      = "DD_AGENT_HOST"
     value     = "172.17.0.1" # IP del gateway de Docker para que el contenedor pueda conectarse al host
   }

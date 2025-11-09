@@ -470,35 +470,35 @@ graph
 
 * **HU-15: Estructura Base del Frontend**
     * **Como** desarrollador, **quiero** una estructura de proyecto React con ruteo y layouts, **para** tener una base sólida sobre la cual construir la UI.
-    * **AC 15.1:** Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la `LoginPage`.
-    * **AC 15.2:** Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el `AuthenticatedLayout` (header y sidebar) de forma persistente.
+    - **AC 15.1:** Dado que la aplicación carga, cuando un usuario no está autenticado, entonces se le muestra la `LoginPage`.
+    - **AC 15.2:** Dado que un usuario está autenticado, cuando navega por la aplicación, entonces ve el `AuthenticatedLayout` (header y sidebar) de forma persistente.
 
 * **HU-16: Página de Administración de Roles**
-    * **Como** Administrador, **quiero** una interfaz para gestionar los roles de los usuarios, **para** controlar los permisos de la aplicación.
-    * **AC 16.1:** Dado que he iniciado sesión como Administrador, cuando navego a la página de administración, entonces veo una tabla con los usuarios de la organización.
+    - **Como** Administrador, **quiero** una interfaz para gestionar los roles de los usuarios, **para** controlar los permisos de la aplicación.
+    - **AC 16.1:** Dado que he iniciado sesión como Administrador, cuando navego a la página de administración, entonces veo una tabla con los usuarios de la organización.
     - **AC 16.2:** Dado que estoy viendo la tabla de usuarios, cuando cambio el rol de un usuario, entonces se realiza una llamada a la API y la UI se actualiza con el nuevo rol.
 
 * **HU-17: Implementar un Modelo de Acceso "Cerrado por Defecto" en el Arranque**
-    * **Como** administrador del sistema, **necesito** que la aplicación bloquee por defecto todos los inicios de sesión, excepto el del administrador inicial designado, cuando aún no he configurado una organización de GitHub, **para** garantizar la máxima seguridad desde el primer despliegue y prevenir cualquier registro de usuario no autorizado antes de que el sistema esté completamente configurado.
-    * **AC 17.1:** Dado que el sistema está en su estado de arranque inicial, cuando un usuario que no es el administrador inicial intenta iniciar sesión, entonces el acceso debe ser denegado.
-    * **AC 17.2:** Dado que el sistema está en su estado de arranque inicial, cuando el usuario que es el administrador inicial intenta iniciar sesión, entonces debe ser creado exitosamente con el rol de ADMIN.
-    * **AC 17.3:** Dado que un ADMIN ya existe en el sistema y la organización aún no está configurada, cuando un nuevo usuario intenta iniciar sesión, entonces su acceso debe ser denegado.
+    - **Como** administrador del sistema, **necesito** que la aplicación bloquee por defecto todos los inicios de sesión, excepto el del administrador inicial designado, cuando aún no he configurado una organización de GitHub, **para** garantizar la máxima seguridad desde el primer despliegue y prevenir cualquier registro de usuario no autorizado antes de que el sistema esté completamente configurado.
+    - **AC 17.1:** Dado que el sistema está en su estado de arranque inicial, cuando un usuario que no es el administrador inicial intenta iniciar sesión, entonces el acceso debe ser denegado.
+    - **AC 17.2:** Dado que el sistema está en su estado de arranque inicial, cuando el usuario que es el administrador inicial intenta iniciar sesión, entonces debe ser creado exitosamente con el rol de ADMIN.
+    - **AC 17.3:** Dado que un ADMIN ya existe en el sistema y la organización aún no está configurada, cuando un nuevo usuario intenta iniciar sesión, entonces su acceso debe ser denegado.
 
 * **HU-18: Interfaz de Usuario para Cerrar Sesión**
-    * **Como** usuario autenticado, **quiero** poder cerrar mi sesión de forma segura, **para** proteger mi cuenta de accesos no autorizados.
-    * **AC 18.1:** Dado que he iniciado sesión, cuando navego por la aplicación, entonces veo un elemento claramente identificable para "Cerrar Sesión".
-    * **AC 18.2:** Dado que estoy viendo el botón "Cerrar Sesión", cuando hago clic en él, entonces soy redirigido inmediatamente a la página de inicio (`/`).
-    * **AC 18.3:** Dado que he cerrado sesión, cuando intento acceder a una ruta protegida, entonces se me deniega el acceso y soy redirigido a la página de inicio de sesión.
+    - **Como** usuario autenticado, **quiero** poder cerrar mi sesión de forma segura, **para** proteger mi cuenta de accesos no autorizados.
+    - **AC 18.1:** Dado que he iniciado sesión, cuando navego por la aplicación, entonces veo un elemento claramente identificable para "Cerrar Sesión".
+    - **AC 18.2:** Dado que estoy viendo el botón "Cerrar Sesión", cuando hago clic en él, entonces soy redirigido inmediatamente a la página de inicio (`/`).
+    - **AC 18.3:** Dado que he cerrado sesión, cuando intento acceder a una ruta protegida, entonces se me deniega el acceso y soy redirigido a la página de inicio de sesión.
 
 * **HU-19: Crear Página de Inicio de Sesión**
-    * **Como** usuario no autenticado, **quiero** ver una página de bienvenida simple que me invite a iniciar sesión con mi cuenta de GitHub para poder acceder a la aplicación.
-    * **AC 19.1:** Dado que no he iniciado sesión, cuando visito la raíz de la aplicación (`/`), entonces se me presenta una página de bienvenida.
-    * **AC 19.2:** Dado que estoy en la página de bienvenida, cuando hago clic en el botón "Iniciar Sesión con GitHub", entonces soy redirigido al flujo de autorización de GitHub.
+    - **Como** usuario no autenticado, **quiero** ver una página de bienvenida simple que me invite a iniciar sesión con mi cuenta de GitHub para poder acceder a la aplicación.
+    - **AC 19.1:** Dado que no he iniciado sesión, cuando visito la raíz de la aplicación (`/`), entonces se me presenta una página de bienvenida.
+    - **AC 19.2:** Dado que estoy en la página de bienvenida, cuando hago clic en el botón "Iniciar Sesión con GitHub", entonces soy redirigido al flujo de autorización de GitHub.
 
 * **HU-20: Crear Página Principal (Home) para Usuarios Autenticados**
-    * **Como** usuario que ha iniciado sesión, **quiero** ser dirigido a una página principal o "Home" donde pueda ver contenido exclusivo y acceder a acciones como "Cerrar Sesión".
-    * **AC 20.1:** Dado que he completado el inicio de sesión con éxito, cuando soy redirigido por el sistema, entonces aterrizo en una URL protegida (ej. `/home` o `/dashboard`).
-    * **AC 20.2:** Dado que estoy en la página principal, cuando observo el contenido, entonces veo un mensaje de bienvenida simple y el botón "Cerrar Sesión".
+    - **Como** usuario que ha iniciado sesión, **quiero** ser dirigido a una página principal o "Home" donde pueda ver contenido exclusivo y acceder a acciones como "Cerrar Sesión".
+    - **AC 20.1:** Dado que he completado el inicio de sesión con éxito, cuando soy redirigido por el sistema, entonces aterrizo en una URL protegida (ej. `/home` o `/dashboard`).
+    - **AC 20.2:** Dado que estoy en la página principal, cuando observo el contenido, entonces veo un mensaje de bienvenida simple y el botón "Cerrar Sesión".
 
 ---
 
@@ -2191,6 +2191,191 @@ sequenceDiagram
 6.  **Guardar Resultados (9):** El servicio crea una lista de entidades `ChangeLeadTime` y las persiste en la base de datos a través de su repositorio.
 7.  **Marcar como Procesado (10):** Finalmente, el servicio actualiza el flag `lead_time_processed` en la entidad `Deployment` y la guarda. Este paso es crucial para garantizar la idempotencia y evitar que el trabajo se repita en la siguiente ejecución.
 
+#### HU-13: Recolectar Datos de DataDog
+
+##### Diagrama de Clases
+```mermaid
+classDiagram
+    direction LR
+
+    subgraph module_collector
+        class IncidentSyncService {
+            <<Service>>
+            +syncIncidents() @Scheduled
+            -mapToIncident(DatadogIncidentData, String): Incident
+            -updateIncident(Incident, Incident): void
+        }
+        class DatadogIncidentClient {
+            <<Component>>
+            -webClient: WebClient
+            +getIncidents(Instant, String): DatadogIncidentResponse
+        }
+        class DatadogIncidentResponse { <<DTO>> }
+        class DatadogIncidentData { <<DTO>> }
+    end
+
+    subgraph module_domain
+        class Incident {
+            <<Entity>>
+            -datadogIncidentId: String
+            -state: IncidentState
+            -severity: IncidentSeverity
+            -startTime: LocalDateTime
+            -resolvedTime: LocalDateTime
+        }
+        class IncidentRepository {
+            <<Repository>>
+            +findByDatadogIncidentId(String): Optional<Incident>
+            +save(Incident): Incident
+        }
+        class SyncStatus {
+            <<Entity>>
+            -jobName: String
+            -lastSuccessfulRun: LocalDateTime
+        }
+        class SyncStatusRepository {
+            <<Repository>>
+            +findById(String): Optional<SyncStatus>
+            +save(SyncStatus): SyncStatus
+        }
+        class RepositoryConfig {
+            <<Entity>>
+            -datadogServiceName: String
+        }
+        class RepositoryConfigRepository {
+            <<Repository>>
+            +findAll(): List<RepositoryConfig>
+        }
+    end
+
+    %% --- Relaciones ---
+    IncidentSyncService --> DatadogIncidentClient : uses
+    IncidentSyncService --> IncidentRepository : uses
+    IncidentSyncService --> SyncStatusRepository : uses
+    IncidentSyncService --> RepositoryConfigRepository : uses
+    
+    DatadogIncidentClient ..> DatadogIncidentResponse : returns
+    DatadogIncidentClient ..> DatadogIncidentData : uses
+    
+    IncidentRepository ..> Incident : manages
+    SyncStatusRepository ..> SyncStatus : manages
+    RepositoryConfigRepository ..> RepositoryConfig : manages
+```
+
+**Explicación del Diagrama:**
+
+1.  **Punto de Entrada (`IncidentSyncService`):** La lógica se inicia en el método `syncIncidents`, anotado con `@Scheduled` para su ejecución periódica. Este servicio actúa como el orquestador central.
+2.  **Configuración (`RepositoryConfigRepository`):** El servicio primero consulta todos los `RepositoryConfig` para saber qué servicios de Datadog debe monitorear.
+3.  **Sincronización Incremental (`SyncStatusRepository`):** Antes de llamar a la API, consulta el `SyncStatusRepository` para obtener la fecha de la última sincronización exitosa, asegurando que solo se pidan datos nuevos.
+4.  **Cliente HTTP (`DatadogIncidentClient`):** El servicio delega la comunicación con la API de Datadog al `DatadogIncidentClient`. Este cliente es responsable de construir la URL, añadir las cabeceras de autenticación y realizar la petición web.
+5.  **Mapeo de Datos (DTOs y `mapToIncident`):** El cliente recibe la respuesta en forma de DTOs (`DatadogIncidentResponse`). Luego, el `IncidentSyncService` utiliza su método `mapToIncident` para convertir estos DTOs en entidades de dominio (`Incident`).
+6.  **Persistencia Idempotente (`IncidentRepository`):** Para cada incidente mapeado, el servicio utiliza el `IncidentRepository` para buscar si ya existe un incidente con el mismo `datadogIncidentId`.
+    *   Si existe, lo actualiza (`updateIncident`).
+    *   Si no existe, lo guarda como una nueva entidad.
+7.  **Actualización de Estado (`SyncStatusRepository`):** Al finalizar el proceso, el servicio guarda la nueva fecha y hora de sincronización en el `SyncStatusRepository`.
+
+##### Diagrama de Base de Datos (ERD)
+```mermaid
+erDiagram
+    INCIDENTS {
+        bigint id PK
+        varchar datadog_incident_id UK "ID único de Datadog"
+        varchar title
+        varchar state "ACTIVE, STABLE, RESOLVED"
+        varchar severity "SEV1, SEV2, etc."
+        datetime start_time
+        datetime resolved_time
+        bigint duration_seconds
+        varchar service_name
+        datetime created_at
+        datetime updated_at
+    }
+
+    SYNC_STATUS {
+        varchar job_name PK "Ej: DATADOG_INCIDENT_SYNC"
+        datetime last_successful_run
+    }
+
+    REPOSITORY_CONFIG {
+        bigint id PK
+        varchar repository_url
+        varchar datadog_service_name "Nombre del servicio en Datadog"
+    }
+
+    INCIDENTS }o--|| REPOSITORY_CONFIG : "pertenece a"
+```
+
+**Explicación del Diagrama:**
+
+*   **`INCIDENTS`**: Es la tabla principal donde se almacenan los datos de los incidentes recolectados. El campo `datadog_incident_id` tiene una restricción `UNIQUE` para garantizar la idempotencia a nivel de base de datos. Los campos `state` y `severity` almacenan los valores del `enum` como cadenas de texto.
+*   **`SYNC_STATUS`**: Tabla de metadatos crucial para la sincronización incremental. El `job_name` para este proceso es `DATADOG_INCIDENT_SYNC`.
+*   **`REPOSITORY_CONFIG`**: Esta tabla, que ya existe en el sistema, se utiliza para obtener el `datadog_service_name` que se debe usar al filtrar los incidentes en la API de Datadog. La relación lógica es que un `INCIDENT` pertenece a un `REPOSITORY_CONFIG` a través del `service_name`.
+
+##### Diagrama de Secuencia
+```mermaid
+sequenceDiagram
+    participant Scheduler
+    participant Service as "IncidentSyncService"
+    participant RepoConfigRepo as "RepositoryConfigRepository"
+    participant SyncStatusRepo as "SyncStatusRepository"
+    participant Client as "DatadogIncidentClient"
+    participant DatadogAPI as "Datadog API"
+    participant IncidentRepo as "IncidentRepository"
+    participant DB as "Database"
+
+    Scheduler->>+Service: 1. syncIncidents() @Scheduled
+    
+    Service->>+RepoConfigRepo: 2. findAll()
+    RepoConfigRepo-->>-Service: 3. List<RepositoryConfig>
+
+    loop para cada RepositoryConfig
+        Service->>+SyncStatusRepo: 4. findById("DATADOG_INCIDENT_SYNC")
+        SyncStatusRepo-->>-Service: 5. Optional<SyncStatus> (con last_successful_run)
+
+        Service->>+Client: 6. getIncidents(since, serviceName)
+        Client->>+DatadogAPI: 7. GET /api/v2/incidents?filter[since]=...&filter[query]=service:...
+        DatadogAPI-->>-Client: 8. Lista de DTOs de Incidentes
+        Client-->>-Service: 9. DatadogIncidentResponse
+
+        loop para cada Incidente en la respuesta
+            Service->>+IncidentRepo: 10. findByDatadogIncidentId(id)
+            IncidentRepo-->>-Service: 11. Optional<Incident>
+
+            alt Incidente ya existe
+                Service->>Service: 12a. updateIncident(existing, mapped)
+                Service->>+IncidentRepo: 13a. save(existing)
+                IncidentRepo->>+DB: UPDATE incidents SET ...
+                DB-->>-IncidentRepo: 
+                IncidentRepo-->>-Service: 
+            else Incidente es nuevo
+                Service->>+IncidentRepo: 12b. save(mapped)
+                IncidentRepo->>+DB: INSERT INTO incidents ...
+                DB-->>-IncidentRepo: 
+                IncidentRepo-->>-Service: 
+            end
+        end
+    end
+
+    Service->>+SyncStatusRepo: 14. save(new SyncStatus)
+    SyncStatusRepo->>+DB: 15. UPDATE sync_status SET ...
+    DB-->>-SyncStatusRepo: 
+    SyncStatusRepo-->>-Service: 
+    
+    deactivate Service
+```
+
+**Explicación del Flujo:**
+
+1.  **Disparo Programado (1):** El `Scheduler` de Spring invoca el método `syncIncidents`.
+2.  **Obtener Repositorios (2-3):** El servicio obtiene la lista de todos los repositorios configurados para saber qué servicios de Datadog monitorear.
+3.  **Sincronización Incremental (4-5):** Por cada repositorio, el servicio consulta la tabla `SyncStatus` para obtener la fecha de la última ejecución exitosa.
+4.  **Recolección de Datos (6-9):** El servicio invoca al `DatadogIncidentClient`, pasándole la fecha `since` y el `serviceName`. El cliente construye la URL, realiza la llamada a la API de Datadog y devuelve los datos como DTOs.
+5.  **Procesamiento Idempotente (10-13):** Por cada incidente recibido, el servicio:
+    *   Consulta la base de datos para ver si ya existe.
+    *   Si existe, actualiza sus campos (estado, fecha de resolución, etc.).
+    *   Si no existe, lo mapea a una entidad `Incident` y lo guarda.
+6.  **Actualización de Estado (14-15):** Al finalizar el bucle de repositorios, el servicio actualiza la tabla `SyncStatus` con la fecha y hora actuales, marcando el punto de partida para la próxima ejecución.
+
 #### HU-17: Implementar un Modelo de Acceso "Cerrado por Defecto" en el Arranque
 
 ##### Diagrama de Clases
@@ -3213,87 +3398,308 @@ El período de cálculo debe ser el mismo para deployments e incidents. Se recom
 - **7 días** para análisis continuo (ventana deslizante)
 - **Semanal/mensual** para reportes agregados
 
-### 16.8. Integración con Datadog API
+### 16.8. Integración con Datadog API - Implementación
 
-#### 16.8.1. Autenticación
+Esta sección documenta la implementación completa de la sincronización de incidentes desde Datadog, desarrollada siguiendo TDD (Test-Driven Development).
+
+#### 16.8.1. Modelo de Datos
+
+**Entidad Incident** - `module_domain/Incident.java`:
 
 ```java
-@Configuration
-public class DatadogConfig {
-    
-    @Value("${datadog.api.key}")
-    private String apiKey;
-    
-    @Value("${datadog.application.key}")
-    private String applicationKey;
-    
-    @Value("${datadog.site}")
-    private String site; // us5.datadoghq.com
-    
-    @Bean
-    public WebClient datadogWebClient() {
-        return WebClient.builder()
-            .baseUrl("https://api." + site)
-            .defaultHeader("DD-API-KEY", apiKey)
-            .defaultHeader("DD-APPLICATION-KEY", applicationKey)
-            .build();
-    }
+@Entity
+@Table(name = "incidents")
+public class Incident {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String datadogIncidentId;  // ID único de Datadog
+
+    @Column(nullable = false)
+    private String title;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private IncidentState state;  // ACTIVE, STABLE, RESOLVED
+
+    @Enumerated(EnumType.STRING)
+    private IncidentSeverity severity;  // SEV1, SEV2, SEV3, SEV4, SEV5
+
+    @Column(nullable = false)
+    private LocalDateTime startTime;
+
+    private LocalDateTime resolvedTime;  // Null si aún activo
+
+    private Long durationSeconds;  // Calculado: resolvedTime - startTime
+
+    private String service;  // "tesis-backend"
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
 }
 ```
 
-#### 16.8.2. Cliente de Datadog
-
-**Paquete propuesto**: `org.grubhart.pucp.tesis.module_collector.datadog`
+**Repositorio** - `module_domain/IncidentRepository.java`:
 
 ```java
-package org.grubhart.pucp.tesis.module_collector.datadog;
+public interface IncidentRepository extends JpaRepository<Incident, Long> {
 
-@Service
+    Optional<Incident> findByDatadogIncidentId(String datadogIncidentId);
+
+    // Para cálculo de MTTR: incidentes resueltos en un período
+    List<Incident> findByServiceAndStateAndStartTimeBetween(
+        String service,
+        IncidentState state,
+        LocalDateTime start,
+        LocalDateTime end
+    );
+
+    // Para cálculo de CFR: contar incidentes en un período
+    long countByServiceAndStartTimeBetween(
+        String service,
+        LocalDateTime start,
+        LocalDateTime end
+    );
+}
+```
+
+#### 16.8.2. DTOs de Datadog API
+
+**Paquete**: `module_collector/datadog/dto/`
+
+La API de Datadog Incidents v2 retorna JSON con estructura anidada:
+
+```java
+public record DatadogIncidentResponse(
+    List<DatadogIncidentData> data,
+    DatadogMeta meta
+) {}
+
+public record DatadogIncidentData(
+    String id,  // "incident-123"
+    String type,  // "incidents"
+    DatadogIncidentAttributes attributes
+) {}
+
+public record DatadogIncidentAttributes(
+    String title,
+    @JsonProperty("customer_impact_scope") String customerImpactScope,
+    Instant created,
+    Instant modified,
+    Instant resolved,  // Null si activo
+    String state,  // "active", "stable", "resolved"
+    String severity,  // "SEV-1", "SEV-2", etc.
+    DatadogIncidentFields fields
+) {}
+```
+
+**Ventajas de usar records**:
+- Inmutabilidad por defecto
+- Menos boilerplate (sin getters/setters explícitos)
+- Serialización/deserialización automática con Jackson
+
+#### 16.8.3. Cliente HTTP - DatadogIncidentClient
+
+**Ubicación**: `module_collector/datadog/DatadogIncidentClient.java`
+
+```java
+@Component
 public class DatadogIncidentClient {
-    
-    private final WebClient datadogClient;
-    
-    public List<IncidentDTO> getIncidents(Instant start, Instant end, String service) {
-        return datadogClient.get()
-            .uri(uriBuilder -> uriBuilder
-                .path("/api/v2/incidents")
-                .queryParam("page[size]", 100)
-                .queryParam("filter[created][start]", start.getEpochSecond())
-                .queryParam("filter[created][end]", end.getEpochSecond())
-                .queryParam("filter[query]", "service:" + service)
-                .build())
-            .retrieve()
-            .bodyToMono(DatadogIncidentsResponse.class)
-            .map(response -> response.getData())
-            .block();
+
+    private final WebClient webClient;
+
+    @Autowired
+    public DatadogIncidentClient(
+            WebClient.Builder webClientBuilder,
+            @Value("${datadog.base-url:https://us5.datadoghq.com}") String baseUrl,
+            @Value("${datadog.api-key}") String apiKey,
+            @Value("${datadog.application-key}") String applicationKey) {
+
+        this.webClient = webClientBuilder
+                .baseUrl(baseUrl)
+                .defaultHeader("DD-API-KEY", apiKey)
+                .defaultHeader("DD-APPLICATION-KEY", applicationKey)
+                .build();
+    }
+
+    public DatadogIncidentResponse getIncidents(Instant since) {
+        String formattedSince = DateTimeFormatter.ISO_INSTANT.format(since);
+        String uri = UriComponentsBuilder.fromPath("/api/v2/incidents")
+                .queryParam("filter[since]", formattedSince)
+                .build()
+                .toUriString();
+
+        return webClient.get()
+                .uri(uri)
+                .retrieve()
+                .bodyToMono(DatadogIncidentResponse.class)
+                .block();
     }
 }
 ```
 
-#### 16.8.3. Sincronización de Datos
+**Características**:
+- Usa **WebClient** (reactivo) en lugar de RestTemplate
+- **Autenticación dual**: DD-API-KEY + DD-APPLICATION-KEY
+- **Filtro temporal**: `filter[since]` para sincronización incremental
+- **URL encoding automático**: Los corchetes `[]` se encodean como `%5B%5D`
 
-**Servicio propuesto**: `org.grubhart.pucp.tesis.module_collector.service.IncidentSyncService`
+#### 16.8.4. Servicio de Sincronización
+
+**Ubicación**: `module_collector/service/IncidentSyncService.java`
 
 ```java
 @Service
 public class IncidentSyncService {
-    
+
+    private static final String JOB_NAME = "DATADOG_INCIDENT_SYNC";
     private final DatadogIncidentClient datadogClient;
     private final IncidentRepository incidentRepository;
-    
-    @Scheduled(fixedDelay = 900000) // Cada 15 minutos
+    private final SyncStatusRepository syncStatusRepository;
+    private final String serviceName;
+
+    @Scheduled(fixedRate = 900000)  // Cada 15 minutos
     public void syncIncidents() {
-        Instant end = Instant.now();
-        Instant start = end.minus(1, ChronoUnit.HOURS); // Última hora
-        
-        List<IncidentDTO> incidents = datadogClient.getIncidents(start, end, "tesis-backend");
-        
-        incidents.stream()
-            .map(this::toEntity)
-            .forEach(incidentRepository::save);
+        Instant since = getLastSyncTimestamp();
+        DatadogIncidentResponse response = datadogClient.getIncidents(since);
+
+        int created = 0, updated = 0;
+
+        for (DatadogIncidentData incidentData : response.data()) {
+            Incident incident = mapToIncident(incidentData);
+            Optional<Incident> existing = incidentRepository
+                .findByDatadogIncidentId(incident.getDatadogIncidentId());
+
+            if (existing.isPresent()) {
+                updateIncident(existing.get(), incident);
+                updated++;
+            } else {
+                incidentRepository.save(incident);
+                created++;
+            }
+        }
+
+        updateSyncStatus();
+        log.info("Incident sync completed: {} created, {} updated", created, updated);
+    }
+
+    private Incident mapToIncident(DatadogIncidentData data) {
+        LocalDateTime createdAt = LocalDateTime.ofInstant(
+            data.attributes().created(), ZoneOffset.UTC);
+        LocalDateTime resolvedTime = data.attributes().resolved() != null
+            ? LocalDateTime.ofInstant(data.attributes().resolved(), ZoneOffset.UTC)
+            : null;
+
+        // Cálculo automático de duración
+        Long durationSeconds = null;
+        if (resolvedTime != null) {
+            durationSeconds = Duration.between(createdAt, resolvedTime).getSeconds();
+        }
+
+        return new Incident(
+            data.id(),
+            data.attributes().title(),
+            mapState(data.attributes().state()),
+            mapSeverity(data.attributes().severity()),
+            createdAt,
+            resolvedTime,
+            durationSeconds,
+            serviceName,
+            createdAt,
+            LocalDateTime.now()
+        );
     }
 }
 ```
+
+**Lógica de Upsert**:
+1. Consulta incidente por `datadogIncidentId`
+2. Si existe → actualiza estado, resolvedTime, durationSeconds
+3. Si no existe → crea nuevo registro
+
+**Mapeo de Estados**:
+- `"resolved"` → `IncidentState.RESOLVED`
+- `"stable"` → `IncidentState.STABLE`
+- `"active"` / default → `IncidentState.ACTIVE`
+
+**Mapeo de Severidad**:
+- `"SEV-1"` → `IncidentSeverity.SEV1`
+- `"SEV-2"` → `IncidentSeverity.SEV2`
+- etc.
+
+#### 16.8.5. Configuración
+
+**application.properties**:
+
+```properties
+# Datadog Configuration
+datadog.api-key=${DD_API_KEY}
+datadog.application-key=${DD_APPLICATION_KEY}
+datadog.base-url=https://us5.datadoghq.com
+datadog.service-name=tesis-backend
+```
+
+**terraform/variables.tf**:
+
+```hcl
+variable "datadog_application_key" {
+  description = "La clave de aplicación de Datadog para acceder a la API de Incidents."
+  type        = string
+  sensitive   = true
+}
+```
+
+**terraform/beanstalk.tf**:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:application:environment"
+  name      = "DD_APPLICATION_KEY"
+  value     = var.datadog_application_key
+}
+```
+
+**IMPORTANTE**: Las claves NUNCA se versionen - se definen solo en `terraform.tfvars` (excluido en `.gitignore`)
+
+#### 16.8.6. Testing (TDD)
+
+La implementación siguió estrictamente Test-Driven Development:
+
+**1. IncidentTest** (5 tests):
+- Getters/setters
+- Constructor con todos los argumentos
+- Equals/hashCode
+- Manejo de incidentes activos (sin resolución)
+
+**2. IncidentRepositoryTest** (@DataJpaTest, 6 tests):
+- Persistencia básica
+- `findByDatadogIncidentId`
+- `findByServiceAndStateAndStartTimeBetween` (filtros complejos)
+- `countByServiceAndStartTimeBetween`
+- Constraint de unicidad en `datadogIncidentId`
+
+**3. DatadogIncidentClientTest** (MockWebServer, 5 tests):
+- Headers de autenticación
+- Query params con URL encoding
+- Deserialización de JSON complejo
+- Manejo de respuestas vacías
+- Manejo de errores HTTP (401, 500)
+
+**4. IncidentSyncServiceTest** (@ExtendWith(MockitoExtension), 7 tests):
+- Sincronización desde epoch (primera vez)
+- Sincronización incremental (desde último sync)
+- Creación de nuevos incidentes
+- Actualización de incidentes existentes
+- Manejo de incidentes activos sin resolución
+- Actualización de SyncStatus
+- Manejo de respuestas vacías
+
+**Cobertura total**: >85% en todos los componentes
 
 ### 16.9. Optimizaciones y Consideraciones
 

@@ -155,6 +155,20 @@ class RepositoryConfigTest {
         assertNull(repoName);
     }
 
+    @Test
+    @DisplayName("Debe establecer y obtener el nombre del servicio de Datadog correctamente")
+    void shouldSetAndGetDatadogServiceName() {
+        // Arrange
+        RepositoryConfig config = new RepositoryConfig("https://github.com/test/repo");
+        String serviceName = "my-datadog-service";
+
+        // Act
+        config.setDatadogServiceName(serviceName);
+
+        // Assert
+        assertEquals(serviceName, config.getDatadogServiceName());
+    }
+
     // Nota de Cobertura: El caso `length < 1` en getOwner() y getRepoName() es ahora cubierto
     // por la prueba `shouldReturnNullForDelimiterOnlyUrls`, que produce un array de longitud 0.
 }

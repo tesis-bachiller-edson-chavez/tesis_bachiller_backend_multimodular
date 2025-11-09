@@ -66,3 +66,9 @@ variable "datadog_api_key" {
   type        = string
   sensitive   = true
 }
+
+variable "datadog_application_key" {
+  description = "La clave de aplicación de Datadog para acceder a la API de Incidents."
+  type        = string
+  sensitive   = true
+}
