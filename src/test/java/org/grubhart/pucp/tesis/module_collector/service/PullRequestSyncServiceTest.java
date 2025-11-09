@@ -50,7 +50,7 @@ class PullRequestSyncServiceTest {
     void shouldFetchPullRequestsForConfiguredRepository() {
         RepositoryConfig config = new RepositoryConfig("https://github.com/test-owner/test-repo");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(config));
-        when(syncStatusRepository.findById(eq("PULL_REQUEST_SYNC"))).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(eq("PULL_REQUEST_SYNC_test-owner/test-repo"))).thenReturn(Optional.empty());
         pullRequestSyncService.syncPullRequests();
         verify(githubClient).getPullRequests(eq("test-owner"), eq("test-repo"), any(LocalDateTime.class));
     }
@@ -59,7 +59,7 @@ class PullRequestSyncServiceTest {
     void shouldSaveNewPullRequestsAndIgnoreExistingOnes() {
         RepositoryConfig config = new RepositoryConfig("https://github.com/test-owner/test-repo");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(config));
-        when(syncStatusRepository.findById(eq("PULL_REQUEST_SYNC"))).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
 
         GithubPullRequestDto existingDto = new GithubPullRequestDto();
         existingDto.setId(123L);
@@ -119,7 +119,7 @@ class PullRequestSyncServiceTest {
     void shouldNotSaveWhenAllPullRequestsAlreadyExist() {
         RepositoryConfig config = new RepositoryConfig("https://github.com/test-owner/test-repo");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(config));
-        when(syncStatusRepository.findById(eq("PULL_REQUEST_SYNC"))).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
 
         GithubPullRequestDto existingDto = new GithubPullRequestDto();
         existingDto.setId(123L);
@@ -147,7 +147,7 @@ class PullRequestSyncServiceTest {
         verify(syncStatusRepository).save(captor.capture());
 
         SyncStatus savedStatus = captor.getValue();
-        assertThat(savedStatus.getJobName()).isEqualTo("PULL_REQUEST_SYNC");
+        assertThat(savedStatus.getJobName()).isEqualTo("PULL_REQUEST_SYNC_test-owner/test-repo");
         assertThat(savedStatus.getLastSuccessfulRun()).isCloseTo(LocalDateTime.now(), org.assertj.core.api.Assertions.within(java.time.temporal.ChronoUnit.SECONDS.getDuration()));
     }
 
@@ -177,5 +177,21 @@ class PullRequestSyncServiceTest {
         assertDoesNotThrow(() -> pullRequestSyncService.syncPullRequests());
         verify(pullRequestRepository, never()).saveAll(any());
         verify(syncStatusRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldSyncForAllConfiguredRepositories() {
+        // GIVEN
+        RepositoryConfig repo1 = new RepositoryConfig("https://github.com/owner1/repo1");
+        RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
+
+        // WHEN
+        pullRequestSyncService.syncPullRequests();
+
+        // THEN
+        verify(githubClient, times(1)).getPullRequests(eq("owner1"), eq("repo1"), any());
+        verify(githubClient, times(1)).getPullRequests(eq("owner2"), eq("repo2"), any());
+        verify(syncStatusRepository, times(2)).save(any());
     }
 }

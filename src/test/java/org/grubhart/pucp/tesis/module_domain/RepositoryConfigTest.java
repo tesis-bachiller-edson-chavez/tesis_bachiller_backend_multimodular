@@ -156,17 +156,26 @@ class RepositoryConfigTest {
     }
 
     @Test
-    @DisplayName("Debe establecer y obtener el nombre del servicio de Datadog correctamente")
-    void shouldSetAndGetDatadogServiceName() {
+    @DisplayName("Debe establecer y obtener todos los valores correctamente")
+    void shouldSetAndGetValuesCorrectly() {
         // Arrange
-        RepositoryConfig config = new RepositoryConfig("https://github.com/test/repo");
-        String serviceName = "my-datadog-service";
+        RepositoryConfig config = new RepositoryConfig();
+        String url = "https://github.com/new-owner/new-repo";
+        String serviceName = "new-service";
+        String workflowFile = "new-deploy.yml";
 
         // Act
+        config.setRepositoryUrl(url);
         config.setDatadogServiceName(serviceName);
+        config.setDeploymentWorkflowFileName(workflowFile);
 
         // Assert
+        assertNull(config.getId()); // ID es nulo antes de persistir
+        assertEquals(url, config.getRepositoryUrl());
         assertEquals(serviceName, config.getDatadogServiceName());
+        assertEquals(workflowFile, config.getDeploymentWorkflowFileName());
+        assertEquals("new-owner", config.getOwner());
+        assertEquals("new-repo", config.getRepoName());
     }
 
     // Nota de Cobertura: El caso `length < 1` en getOwner() y getRepoName() es ahora cubierto

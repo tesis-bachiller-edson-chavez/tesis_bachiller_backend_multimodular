@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 public class PullRequestSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(PullRequestSyncService.class);
+    private static final String JOB_NAME_PREFIX = "PULL_REQUEST_SYNC_";
 
     private final PullRequestRepository pullRequestRepository;
     private final SyncStatusRepository syncStatusRepository;
@@ -60,7 +61,8 @@ public class PullRequestSyncService {
             return;
         }
 
-        Optional<SyncStatus> syncStatus = syncStatusRepository.findById("PULL_REQUEST_SYNC");
+        String jobName = JOB_NAME_PREFIX + owner + "/" + repo;
+        Optional<SyncStatus> syncStatus = syncStatusRepository.findById(jobName);
         LocalDateTime lastSync = syncStatus.map(SyncStatus::getLastSuccessfulRun)
                 .orElse(LocalDateTime.now().minusYears(1)); // Si nunca se ha sincronizado, trae los PRs de hace un año.
 
@@ -70,9 +72,7 @@ public class PullRequestSyncService {
 
             if (pullRequestDtos.isEmpty()) {
                 log.info("No se encontraron nuevos Pull Requests.");
-                // Actualizamos el estado y salimos temprano si no hay nada que procesar
-                SyncStatus newSyncStatus = new SyncStatus("PULL_REQUEST_SYNC", LocalDateTime.now());
-                syncStatusRepository.save(newSyncStatus);
+                updateSyncStatus(jobName);
                 log.info("Sincronización de Pull Requests para {}/{} completada exitosamente.", owner, repo);
                 return;
             }
@@ -102,12 +102,16 @@ public class PullRequestSyncService {
                 log.info("Todos los Pull Requests recibidos ya existían en la base de datos.");
             }
 
-            SyncStatus newSyncStatus = new SyncStatus("PULL_REQUEST_SYNC", LocalDateTime.now());
-            syncStatusRepository.save(newSyncStatus);
+            updateSyncStatus(jobName);
             log.info("Sincronización de Pull Requests para {}/{} completada exitosamente.", owner, repo);
 
         } catch (Exception e) {
             log.error("Error durante la sincronización de Pull Requests para {}/{}: {}", owner, repo, e.getMessage(), e);
         }
+    }
+
+    private void updateSyncStatus(String jobName) {
+        SyncStatus newSyncStatus = new SyncStatus(jobName, LocalDateTime.now());
+        syncStatusRepository.save(newSyncStatus);
     }
 }

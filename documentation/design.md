@@ -2523,7 +2523,7 @@ classDiagram
         }
         class GithubRepositoryCollector {
             <<Interface>>
-            +getUserRepositories(): List<GithubRepositoryDto>
+            +getOrgRepositories(String organizationName): List<GithubRepositoryDto>
         }
         class GithubRepositoryDto {
             <<Record>>
@@ -2560,7 +2560,7 @@ classDiagram
         class GithubClientImpl {
             <<Component>>
             -webClient: WebClient
-            +getUserRepositories(): List<GithubRepositoryDto>
+            +getOrgRepositories(String organizationName): List<GithubRepositoryDto>
             -parseNextPageUrl(List<String>): String
         }
     end
@@ -2644,7 +2644,7 @@ sequenceDiagram
 
     Controller->>+Service: synchronizeRepositories()
 
-    Service->>+GithubCollector: getUserRepositories()
+    Service->>+GithubCollector: getOrgRepositories(String organizationName)
     GithubCollector->>+GithubAPI: GET /user/repos?affiliation=owner,collaborator&per_page=100
     GithubAPI-->>-GithubCollector: 200 OK + List<GithubRepositoryDto> + Link header
 

@@ -35,11 +35,14 @@ class RepositorySyncServiceTest {
 
     private RepositorySyncService repositorySyncService;
 
+    private static final String ORG_NAME = "test-org";
+
     @BeforeEach
     void setUp() {
         repositorySyncService = new RepositorySyncService(
                 githubRepositoryCollector,
-                repositoryConfigRepository
+                repositoryConfigRepository,
+                ORG_NAME
         );
     }
 
@@ -53,7 +56,7 @@ class RepositorySyncServiceTest {
                 new GithubRepositoryDto(2L, "repo2", "user/repo2", "https://github.com/user/repo2", false,
                         new GithubRepositoryDto.Owner("user"))
         );
-        when(githubRepositoryCollector.getUserRepositories()).thenReturn(githubRepos);
+        when(githubRepositoryCollector.getOrgRepositories(ORG_NAME)).thenReturn(githubRepos);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of());
 
         // When
@@ -85,7 +88,7 @@ class RepositorySyncServiceTest {
                         new GithubRepositoryDto.Owner("user"))
         );
 
-        when(githubRepositoryCollector.getUserRepositories()).thenReturn(githubRepos);
+        when(githubRepositoryCollector.getOrgRepositories(ORG_NAME)).thenReturn(githubRepos);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(existingRepo));
 
         // When
@@ -110,7 +113,7 @@ class RepositorySyncServiceTest {
                         new GithubRepositoryDto.Owner("user"))
         );
 
-        when(githubRepositoryCollector.getUserRepositories()).thenReturn(githubRepos);
+        when(githubRepositoryCollector.getOrgRepositories(ORG_NAME)).thenReturn(githubRepos);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(existingRepo));
 
         // When
@@ -134,7 +137,7 @@ class RepositorySyncServiceTest {
                         new GithubRepositoryDto.Owner("user"))
         );
 
-        when(githubRepositoryCollector.getUserRepositories()).thenReturn(githubRepos);
+        when(githubRepositoryCollector.getOrgRepositories(ORG_NAME)).thenReturn(githubRepos);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(existingRepo));
 
         // When
@@ -166,7 +169,7 @@ class RepositorySyncServiceTest {
                         new GithubRepositoryDto.Owner("user"))
         );
 
-        when(githubRepositoryCollector.getUserRepositories()).thenReturn(githubRepos);
+        when(githubRepositoryCollector.getOrgRepositories(ORG_NAME)).thenReturn(githubRepos);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(existingRepo1, existingRepo2));
 
         // When
@@ -188,7 +191,7 @@ class RepositorySyncServiceTest {
         // Given
         RepositoryConfig existingRepo = new RepositoryConfig("https://github.com/user/repo1", null);
 
-        when(githubRepositoryCollector.getUserRepositories()).thenReturn(List.of());
+        when(githubRepositoryCollector.getOrgRepositories(ORG_NAME)).thenReturn(List.of());
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(existingRepo));
 
         // When
@@ -217,7 +220,7 @@ class RepositorySyncServiceTest {
                         new GithubRepositoryDto.Owner("user"))
         );
 
-        when(githubRepositoryCollector.getUserRepositories()).thenReturn(githubRepos);
+        when(githubRepositoryCollector.getOrgRepositories(ORG_NAME)).thenReturn(githubRepos);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(existingRepo1, existingRepo2));
 
         // When

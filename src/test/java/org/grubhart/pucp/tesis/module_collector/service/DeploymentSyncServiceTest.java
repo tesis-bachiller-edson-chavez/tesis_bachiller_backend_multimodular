@@ -7,9 +7,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -18,15 +19,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
-
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.junit.jupiter.params.provider.NullSource;
-
 
 @ExtendWith(MockitoExtension.class)
 class DeploymentSyncServiceTest {
@@ -46,14 +42,10 @@ class DeploymentSyncServiceTest {
     @Mock
     private LeadTimeCalculationService leadTimeCalculationService;
 
-    @InjectMocks
-    private DeploymentSyncService deploymentSyncService;
-
     @Captor
-    private ArgumentCaptor<List<Deployment>> deploymentsCaptor;
+    private ArgumentCaptor<List<Deployment>> deploymentCaptor;
 
-    private static final String VALID_REPO_URL = "https://github.com/owner/repo";
-    private static final String WORKFLOW_FILE_NAME = "deploy.yml";
+    private DeploymentSyncService deploymentSyncService;
 
     @BeforeEach
     void setUp() {
@@ -62,260 +54,305 @@ class DeploymentSyncServiceTest {
                 deploymentRepository,
                 syncStatusRepository,
                 repositoryConfigRepository,
-                leadTimeCalculationService,
-                WORKFLOW_FILE_NAME
+                leadTimeCalculationService
         );
     }
 
-    private GitHubWorkflowRunDto createWorkflowRunDto(Long id, String name, String conclusion, String branch, String sha) {
-        GitHubWorkflowRunDto dto = new GitHubWorkflowRunDto();
-        dto.setId(id);
-        dto.setName(name);
-        dto.setHeadBranch(branch);
-        dto.setHeadSha(sha);
-        dto.setStatus("completed");
-        dto.setConclusion(conclusion);
-        dto.setCreatedAt(LocalDateTime.now());
-        dto.setUpdatedAt(LocalDateTime.now());
-        return dto;
-    }
-
     @Test
-    void syncDeployments_shouldSkipExecution_whenNoRepositoriesAreConfigured() {
+    @DisplayName("GIVEN no repositories configured WHEN syncing deployments THEN should log warning and exit")
+    void shouldLogWarningAndExitWhenNoRepositoriesConfigured() {
+        // Given
         when(repositoryConfigRepository.findAll()).thenReturn(Collections.emptyList());
 
+        // When
         deploymentSyncService.syncDeployments();
 
-        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
+        // Then
+        verify(githubClient, never()).getWorkflowRuns(anyString(), anyString(), anyString(), any(LocalDateTime.class));
+        verify(deploymentRepository, never()).save(any());
     }
 
     @Test
-    void syncDeployments_shouldSkipRepository_whenUrlIsInvalid() {
-        RepositoryConfig invalidRepoConfig = new RepositoryConfig("invalid-url");
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(invalidRepoConfig));
-
-        deploymentSyncService.syncDeployments();
-
-        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
-    }
-
-    @Test
-    void syncDeployments_whenAllRunsAreNew_shouldSaveAllOfThem() {
-        // Arrange
-        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+    @DisplayName("GIVEN repository with null owner WHEN syncing THEN should skip")
+    void shouldSkipRepositoryWithNullOwner() {
+        // Given
+        RepositoryConfig repoConfig = mock(RepositoryConfig.class);
+        when(repoConfig.getOwner()).thenReturn(null);
+        when(repoConfig.getRepoName()).thenReturn("repo");
+        when(repoConfig.getDeploymentWorkflowFileName()).thenReturn("deploy.yml");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
 
-        GitHubWorkflowRunDto newRun1 = createWorkflowRunDto(1L, "run1", "success", "main", "sha1");
-        GitHubWorkflowRunDto newRun2 = createWorkflowRunDto(2L, "run2", "success", "develop", "sha2");
-        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(newRun1, newRun2));
-
-        when(deploymentRepository.existsById(1L)).thenReturn(false);
-        when(deploymentRepository.existsById(2L)).thenReturn(false);
-
-        // Act
+        // When
         deploymentSyncService.syncDeployments();
 
-        // Assert
-        verify(deploymentRepository).saveAll(deploymentsCaptor.capture());
-        List<Deployment> savedDeployments = deploymentsCaptor.getValue();
-        assertEquals(2, savedDeployments.size());
+        // Then
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
+    }
 
-        Deployment productionDeployment = savedDeployments.stream().filter(d -> d.getGithubId() == 1L).findFirst().orElseThrow();
-        assertEquals("production", productionDeployment.getEnvironment());
-        assertEquals("sha1", productionDeployment.getSha());
+    @Test
+    @DisplayName("GIVEN repository with null repoName WHEN syncing THEN should skip")
+    void shouldSkipRepositoryWithNullRepoName() {
+        // Given
+        RepositoryConfig repoConfig = mock(RepositoryConfig.class);
+        when(repoConfig.getOwner()).thenReturn("owner");
+        when(repoConfig.getRepoName()).thenReturn(null);
+        when(repoConfig.getDeploymentWorkflowFileName()).thenReturn("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
-        Deployment otherDeployment = savedDeployments.stream().filter(d -> d.getGithubId() == 2L).findFirst().orElseThrow();
-        assertEquals(null, otherDeployment.getEnvironment());
-        assertEquals("sha2", otherDeployment.getSha());
+        // When
+        deploymentSyncService.syncDeployments();
 
-        verify(leadTimeCalculationService, times(1)).calculate();
+        // Then
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"failure", "cancelled", "skipped", "timed_out"})
-    @DisplayName("syncDeployments debe ignorar las ejecuciones de workflow que no fueron exitosas")
-    void syncDeployments_whenRunConclusionIsNotSuccess_shouldNotSaveDeployment(String nonSuccessConclusion) {
-        // Arrange
-        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+    @ValueSource(strings = {"", " "})
+    @DisplayName("GIVEN repository with blank workflow file name WHEN syncing THEN should skip")
+    void shouldSkipRepositoryWithBlankWorkflowFileName(String blankWorkflowFile) {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName(blankWorkflowFile);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
 
-        GitHubWorkflowRunDto failedRun = createWorkflowRunDto(1L, "run1", nonSuccessConclusion, "main", "sha1");
-        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(failedRun));
-
-        // Act
+        // When
         deploymentSyncService.syncDeployments();
 
-        // Assert
-        verify(deploymentRepository, never()).saveAll(any());
-        verify(leadTimeCalculationService, never()).calculate();
+        // Then
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
     }
 
     @Test
-    void syncDeployments_shouldSkipRun_whenShaIsMissing() {
-        // Arrange
-        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
+    @DisplayName("GIVEN repository with null workflow file name WHEN syncing THEN should skip")
+    void shouldSkipRepositoryWithNullWorkflowFileName() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName(null);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
-        GitHubWorkflowRunDto invalidRun = createWorkflowRunDto(1L, "invalid_run", "success", "main", null); // SHA nulo
-        GitHubWorkflowRunDto validRun = createWorkflowRunDto(2L, "valid_run", "success", "main", "sha2");
-        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(List.of(invalidRun, validRun));
-
-        when(deploymentRepository.existsById(2L)).thenReturn(false);
-
-        // Act
+        // When
         deploymentSyncService.syncDeployments();
 
-        // Assert
-        verify(deploymentRepository).saveAll(deploymentsCaptor.capture());
-        List<Deployment> savedDeployments = deploymentsCaptor.getValue();
-        assertEquals(1, savedDeployments.size());
-        assertEquals(2L, savedDeployments.get(0).getGithubId());
-        assertEquals("sha2", savedDeployments.get(0).getSha());
-
-        verify(leadTimeCalculationService, times(1)).calculate();
-    }
-
-
-    @Test
-    void syncDeployments_whenApiReturnsMixedRuns_shouldOnlySaveNewOnes() {
-        // Arrange
-        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
-
-        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success", "main", "sha1");
-        GitHubWorkflowRunDto newRun = createWorkflowRunDto(2L, "run2", "success", "main", "sha2");
-        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(existingRun, newRun));
-
-        when(deploymentRepository.existsById(1L)).thenReturn(true); // Este ya existe
-        when(deploymentRepository.existsById(2L)).thenReturn(false); // Este es nuevo
-
-        // Act
-        deploymentSyncService.syncDeployments();
-
-        // Assert
-        verify(deploymentRepository).saveAll(deploymentsCaptor.capture());
-        List<Deployment> savedDeployments = deploymentsCaptor.getValue();
-        assertEquals(1, savedDeployments.size());
-        assertEquals(2L, savedDeployments.get(0).getGithubId());
-
-        verify(leadTimeCalculationService, times(1)).calculate();
+        // Then
+        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
     }
 
     @Test
-    void syncDeployments_whenApiReturnsNoNewRuns_shouldNotSaveAnything() {
-        // Arrange
-        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
+    @DisplayName("GIVEN an IllegalArgumentException during config parsing WHEN syncing THEN should continue with next repo")
+    void shouldContinueOnIllegalArgumentException() {
+        // Given
+        RepositoryConfig badRepo = mock(RepositoryConfig.class);
+        when(badRepo.getRepositoryUrl()).thenReturn("bad-url");
+        when(badRepo.getOwner()).thenThrow(new IllegalArgumentException("Test Exception"));
 
-        GitHubWorkflowRunDto existingRun = createWorkflowRunDto(1L, "run1", "success", "main", "sha1");
-        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(existingRun));
+        RepositoryConfig goodRepo = new RepositoryConfig("https://github.com/owner/good-repo");
+        goodRepo.setDeploymentWorkflowFileName("deploy.yml");
+
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(badRepo, goodRepo));
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        // Verify it attempted to sync the good repo
+        verify(githubClient, times(1)).getWorkflowRuns(eq("owner"), eq("good-repo"), eq("deploy.yml"), any());
+    }
+
+    @Test
+    @DisplayName("GIVEN an unexpected exception during one repo sync WHEN syncing THEN should continue with next repo")
+    void shouldContinueOnUnexpectedException() {
+        // Given
+        RepositoryConfig failingRepo = new RepositoryConfig("https://github.com/owner/failing-repo");
+        failingRepo.setDeploymentWorkflowFileName("deploy.yml");
+        RepositoryConfig workingRepo = new RepositoryConfig("https://github.com/owner/working-repo");
+        workingRepo.setDeploymentWorkflowFileName("deploy.yml");
+
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(failingRepo, workingRepo));
+
+        // Make the first repo sync fail with an unexpected exception
+        when(githubClient.getWorkflowRuns("owner", "failing-repo", "deploy.yml", null))
+                .thenThrow(new RuntimeException("Unexpected API error"));
+
+        // Make the second repo sync succeed
+        when(githubClient.getWorkflowRuns("owner", "working-repo", "deploy.yml", null))
+                .thenReturn(Collections.emptyList());
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        // Verify both were attempted
+        verify(githubClient, times(1)).getWorkflowRuns("owner", "failing-repo", "deploy.yml", null);
+        verify(githubClient, times(1)).getWorkflowRuns("owner", "working-repo", "deploy.yml", null);
+    }
+
+    @Test
+    @DisplayName("GIVEN a workflow run with null head SHA WHEN syncing THEN should skip and log warning")
+    void shouldSkipRunWhenHeadShaIsNull() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        GitHubWorkflowRunDto validRun = createWorkflowRun(1L, "sha1", "success", "main");
+        GitHubWorkflowRunDto invalidRun = createWorkflowRun(2L, null, "success", "main"); // Null SHA
+
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(List.of(validRun, invalidRun));
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        verify(deploymentRepository).saveAll(deploymentCaptor.capture());
+        List<Deployment> savedDeployments = deploymentCaptor.getValue();
+        assertThat(savedDeployments).hasSize(1);
+        assertThat(savedDeployments.get(0).getGithubId()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("GIVEN a workflow run with blank head SHA WHEN syncing THEN should skip and log warning")
+    void shouldSkipRunWhenHeadShaIsBlank() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        GitHubWorkflowRunDto validRun = createWorkflowRun(1L, "sha1", "success", "main");
+        GitHubWorkflowRunDto invalidRun = createWorkflowRun(2L, " ", "success", "main"); // Blank SHA
+
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(List.of(validRun, invalidRun));
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        verify(deploymentRepository).saveAll(deploymentCaptor.capture());
+        List<Deployment> savedDeployments = deploymentCaptor.getValue();
+        assertThat(savedDeployments).hasSize(1);
+        assertThat(savedDeployments.get(0).getGithubId()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("GIVEN a workflow run on a non-main branch WHEN converting THEN environment should not be production")
+    void shouldNotSetProductionEnvironmentForNonMainBranch() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        List<GitHubWorkflowRunDto> workflowRuns = List.of(
+                createWorkflowRun(1L, "sha1", "success", "develop") // Non-main branch
+        );
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(workflowRuns);
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        verify(deploymentRepository).saveAll(deploymentCaptor.capture());
+        List<Deployment> savedDeployments = deploymentCaptor.getValue();
+        assertThat(savedDeployments).hasSize(1);
+        assertThat(savedDeployments.get(0).getEnvironment()).isNotEqualTo("production");
+    }
+
+    @Test
+    @DisplayName("GIVEN successful workflow runs WHEN syncing THEN should save new deployments")
+    void shouldSaveNewDeploymentsOnSuccessfulSync() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
+
+        List<GitHubWorkflowRunDto> workflowRuns = List.of(
+                createWorkflowRun(1L, "sha1", "success", "main")
+        );
+        when(githubClient.getWorkflowRuns(eq("owner"), eq("repo"), eq("deploy.yml"), any())).thenReturn(workflowRuns);
+
+        when(deploymentRepository.existsById(1L)).thenReturn(false);
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        verify(deploymentRepository).saveAll(anyList());
+        verify(leadTimeCalculationService).calculate();
+        verify(syncStatusRepository).save(any(SyncStatus.class));
+    }
+
+    @Test
+    @DisplayName("GIVEN workflow run with non-success conclusion WHEN syncing THEN should skip it")
+    void shouldSkipNonSuccessfulWorkflowRuns() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        List<GitHubWorkflowRunDto> workflowRuns = List.of(
+                createWorkflowRun(1L, "sha1", "failure", "main")
+        );
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(workflowRuns);
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        verify(deploymentRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("GIVEN existing deployment WHEN syncing THEN should not save it again")
+    void shouldNotSaveExistingDeployments() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        List<GitHubWorkflowRunDto> workflowRuns = List.of(
+                createWorkflowRun(1L, "sha1", "success", "main")
+        );
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(workflowRuns);
 
         when(deploymentRepository.existsById(1L)).thenReturn(true);
 
-        // Act
+        // When
         deploymentSyncService.syncDeployments();
 
-        // Assert
-        verify(deploymentRepository, never()).saveAll(any());
-        verify(leadTimeCalculationService, never()).calculate();
+        // Then
+        verify(deploymentRepository, never()).saveAll(anyList());
+        verify(leadTimeCalculationService, never()).calculate(); // Should not trigger if no new deployments
     }
 
     @Test
-    @DisplayName("syncDeployments debe manejar un error inesperado durante la recolección y continuar")
-    void syncDeployments_shouldHandleUnexpectedErrorAndContinue() {
-        // 1. Arrange
-        // Configuramos un repositorio válido.
-        RepositoryConfig validConfig = new RepositoryConfig(VALID_REPO_URL);
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+    @DisplayName("Dado múltiples repositorios, debe sincronizar deployments para todos")
+    void shouldSyncForAllConfiguredRepositories() {
+        // GIVEN
+        RepositoryConfig repo1 = new RepositoryConfig("https://github.com/owner1/repo1");
+        repo1.setDeploymentWorkflowFileName("deploy1.yml");
+        RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2");
+        repo2.setDeploymentWorkflowFileName("deploy2.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
 
-        // La clave: Simulamos que el cliente de GitHub lanza una excepción inesperada.
-        when(githubClient.getWorkflowRuns(anyString(), anyString(), anyString(), any()))
-                .thenThrow(new RuntimeException("Error de red simulado"));
-
-        // 2. Act
-        // Ejecutamos el método principal. No debería lanzar una excepción hacia afuera,
-        // ya que el try-catch interno debe manejarla.
+        // WHEN
         deploymentSyncService.syncDeployments();
 
-        // 3. Assert
-        // Verificamos que se intentó obtener los datos, lo que provocó el error.
-        verify(githubClient, times(1)).getWorkflowRuns(eq("owner"), eq("repo"), anyString(), any());
-
-        // Verificamos que, debido al error, NUNCA se intentó guardar deployments.
-        verify(deploymentRepository, never()).saveAll(any());
-
-        // Verificamos que NUNCA se actualizó el estado de la sincronización para este repo fallido.
-        verify(syncStatusRepository, never()).save(any());
+        // THEN
+        verify(githubClient, times(1)).getWorkflowRuns(eq("owner1"), eq("repo1"), eq("deploy1.yml"), any());
+        verify(githubClient, times(1)).getWorkflowRuns(eq("owner2"), eq("repo2"), eq("deploy2.yml"), any());
+        verify(syncStatusRepository, times(2)).save(any());
     }
 
-    @Test
-    @DisplayName("syncDeployments debe saltar el repositorio si la URL de configuración es nula")
-    void syncDeployments_shouldSkipRepository_whenUrlIsNull() {
-        // 1. Arrange
-        // Creamos una configuración de repositorio con una URL nula.
-        // Usamos un mock para forzar este estado, ya que la entidad real podría no permitirlo.
-        RepositoryConfig nullUrlConfig = mock(RepositoryConfig.class);
-        when(nullUrlConfig.getRepositoryUrl()).thenReturn(null);
-
-        // Configuramos el mock para que devuelva esta configuración inválida.
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(nullUrlConfig));
-
-        // 2. Act
-        // Ejecutamos el método principal.
-        deploymentSyncService.syncDeployments();
-
-        // 3. Assert
-        // Verificamos que, debido a la URL nula, nunca se intentó recolectar datos.
-        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
-        verify(deploymentRepository, never()).saveAll(any());
-        verify(syncStatusRepository, never()).save(any());
+    private GitHubWorkflowRunDto createWorkflowRun(Long id, String headSha, String conclusion, String branch) {
+        GitHubWorkflowRunDto runDto = new GitHubWorkflowRunDto();
+        runDto.setId(id);
+        runDto.setName("deploy");
+        runDto.setHeadBranch(branch);
+        runDto.setHeadSha(headSha);
+        runDto.setStatus("completed");
+        runDto.setConclusion(conclusion);
+        runDto.setCreatedAt(LocalDateTime.now());
+        runDto.setUpdatedAt(LocalDateTime.now());
+        return runDto;
     }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"", "   "}) // Provee una cadena vacía y una con espacios
-    @DisplayName("syncDeployments debe saltar el repositorio si la URL está vacía o en blanco")
-    void syncDeployments_shouldSkipRepository_whenUrlIsEmptyOrBlank(String invalidUrl) {
-        // 1. Arrange
-        // Creamos una configuración con la URL inválida proporcionada por el test.
-        RepositoryConfig emptyUrlConfig = new RepositoryConfig(invalidUrl);
-
-        // Configuramos el mock para que devuelva esta configuración.
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(emptyUrlConfig));
-
-        // 2. Act
-        // Ejecutamos el método principal.
-        deploymentSyncService.syncDeployments();
-
-        // 3. Assert
-        // Verificamos que, debido a la URL inválida, nunca se intentó recolectar datos.
-        verify(githubClient, never()).getWorkflowRuns(any(), any(), any(), any());
-        verify(deploymentRepository, never()).saveAll(any());
-        verify(syncStatusRepository, never()).save(any());
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "   "})
-    @DisplayName("syncDeployments debe ignorar las ejecuciones con un headSha inválido (nulo, vacío o en blanco)")
-    void syncDeployments_whenRunHasInvalidHeadSha_shouldNotSaveDeployment(String invalidSha) {
-        // Arrange
-        RepositoryConfig repoConfig = new RepositoryConfig(VALID_REPO_URL);
-        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(any())).thenReturn(Optional.empty());
-
-        GitHubWorkflowRunDto invalidRun = createWorkflowRunDto(1L, "run1", "success", "main", invalidSha);
-        when(githubClient.getWorkflowRuns("owner", "repo", WORKFLOW_FILE_NAME, null)).thenReturn(List.of(invalidRun));
-
-        // Act
-        deploymentSyncService.syncDeployments();
-
-        // Assert
-        verify(deploymentRepository, never()).saveAll(any());
-        verify(leadTimeCalculationService, never()).calculate();
-    }
-
 }

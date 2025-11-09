@@ -19,7 +19,7 @@ import java.util.Optional;
 public class IncidentSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(IncidentSyncService.class);
-    private static final String JOB_NAME = "DATADOG_INCIDENT_SYNC";
+    private static final String JOB_NAME_PREFIX = "DATADOG_INCIDENT_SYNC_";
 
     private final DatadogIncidentClient datadogClient;
     private final IncidentRepository incidentRepository;
@@ -59,11 +59,13 @@ public class IncidentSyncService {
                 continue;
             }
 
+            String jobName = JOB_NAME_PREFIX + serviceName;
+
             try {
                 log.info("Syncing incidents for service: {} (repository: {})",
                         serviceName, repository.getRepositoryUrl());
 
-                Instant since = getLastSyncTimestamp();
+                Instant since = getLastSyncTimestamp(jobName);
                 DatadogIncidentResponse response = datadogClient.getIncidents(since, serviceName);
 
                 int created = 0;
@@ -86,6 +88,7 @@ public class IncidentSyncService {
                     }
                 }
 
+                updateSyncStatus(jobName);
                 totalCreated += created;
                 totalUpdated += updated;
                 log.info("Service {} sync completed: {} created, {} updated", serviceName, created, updated);
@@ -94,14 +97,13 @@ public class IncidentSyncService {
                 log.error("Error syncing incidents for service {}: {}", serviceName, e.getMessage(), e);
             }
         }
-
-        updateSyncStatus();
+        
         log.info("Incident sync completed for all services: {} total created, {} total updated",
                 totalCreated, totalUpdated);
     }
 
-    private Instant getLastSyncTimestamp() {
-        Optional<SyncStatus> syncStatus = syncStatusRepository.findById(JOB_NAME);
+    private Instant getLastSyncTimestamp(String jobName) {
+        Optional<SyncStatus> syncStatus = syncStatusRepository.findById(jobName);
         if (syncStatus.isPresent()) {
             LocalDateTime lastRun = syncStatus.get().getLastSuccessfulRun();
             return lastRun.toInstant(ZoneOffset.UTC);
@@ -154,9 +156,9 @@ public class IncidentSyncService {
         incidentRepository.save(existing);
     }
 
-    private void updateSyncStatus() {
+    private void updateSyncStatus(String jobName) {
         LocalDateTime now = LocalDateTime.now();
-        SyncStatus syncStatus = new SyncStatus(JOB_NAME, now);
+        SyncStatus syncStatus = new SyncStatus(jobName, now);
         syncStatusRepository.save(syncStatus);
     }
 
