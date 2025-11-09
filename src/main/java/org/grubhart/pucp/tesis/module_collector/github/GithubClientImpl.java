@@ -8,6 +8,8 @@ import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
 import org.grubhart.pucp.tesis.module_domain.GithubDeploymentCollector;
 import org.grubhart.pucp.tesis.module_domain.GithubPullRequestCollector;
 import org.grubhart.pucp.tesis.module_domain.GithubPullRequestDto;
+import org.grubhart.pucp.tesis.module_domain.GithubRepositoryCollector;
+import org.grubhart.pucp.tesis.module_domain.GithubRepositoryDto;
 import org.grubhart.pucp.tesis.module_domain.GithubUserAuthenticator;
 import org.grubhart.pucp.tesis.module_domain.GithubUserCollector;
 import org.grubhart.pucp.tesis.module_domain.OrganizationMember;
@@ -38,7 +40,7 @@ import java.util.stream.Stream;
  * con la API de GitHub, implementando los contratos definidos en el dominio.
  */
 @Component
-public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCollector, GithubPullRequestCollector, GithubDeploymentCollector, GithubUserCollector {
+public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCollector, GithubPullRequestCollector, GithubDeploymentCollector, GithubUserCollector, GithubRepositoryCollector {
 
     private static final Logger logger = LoggerFactory.getLogger(GithubClientImpl.class);
     private final WebClient webClient;
@@ -338,6 +340,57 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         return allMembers.stream()
                 .map(dto -> new OrganizationMember(dto.id(), dto.login(), dto.avatarUrl()))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<GithubRepositoryDto> getUserRepositories() {
+        String initialUrl = UriComponentsBuilder.fromPath("/user/repos")
+                .queryParam("affiliation", "owner,collaborator")
+                .queryParam("sort", "updated")
+                .queryParam("per_page", 100)
+                .build()
+                .toString();
+
+        logger.info("Fetching user repositories from GitHub");
+
+        List<GithubRepositoryDto> allRepositories = new ArrayList<>();
+        String nextPageUrl = initialUrl;
+
+        try {
+            while (nextPageUrl != null) {
+                final String currentUrl = nextPageUrl;
+                try {
+                    ResponseEntity<List<GithubRepositoryDto>> responseEntity = webClient.get()
+                            .uri(currentUrl)
+                            .retrieve()
+                            .toEntityList(GithubRepositoryDto.class)
+                            .block();
+
+                    if (responseEntity != null) {
+                        if (responseEntity.getBody() != null) {
+                            allRepositories.addAll(responseEntity.getBody());
+                        }
+                        nextPageUrl = parseNextPageUrl(responseEntity.getHeaders().get("Link"));
+                    } else {
+                        nextPageUrl = null;
+                    }
+                } catch (WebClientResponseException e) {
+                    logger.error("Error fetching repositories from {}: {} {}", currentUrl, e.getStatusCode().value(), e.getStatusText(), e);
+                    if (e.getStatusCode().is5xxServerError()) {
+                        throw new RuntimeException("Failed to fetch repositories from GitHub due to a server error: " + e.getMessage(), e);
+                    }
+                    nextPageUrl = null; // Stop pagination on client or non-5xx server errors
+                }
+            }
+        } catch (RuntimeException e) {
+            if (allRepositories.isEmpty()) {
+                throw e; // Rethrow if error happened on the first page
+            }
+            logger.warn("Error during paginated repository collection. Returning partial results. Error: {}", e.getMessage());
+        }
+
+        logger.info("Successfully fetched {} repositories from GitHub", allRepositories.size());
+        return allRepositories;
     }
 
     String parseNextPageUrl(List<String> linkHeaders) {
