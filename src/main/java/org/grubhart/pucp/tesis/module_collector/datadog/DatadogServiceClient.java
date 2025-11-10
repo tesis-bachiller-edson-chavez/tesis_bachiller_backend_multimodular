@@ -37,18 +37,38 @@ public class DatadogServiceClient {
      * @return DatadogServiceResponse containing the list of services
      */
     public DatadogServiceResponse getServices() {
-        logger.debug("Fetching services from Datadog Service Catalog");
+        logger.info("Fetching services from Datadog Service Catalog API");
+        String endpoint = "/api/v2/services/definitions";
+        logger.info("Using endpoint: {}", endpoint);
 
         try {
+            // Log the raw response as String first for debugging
+            String rawResponse = webClient.get()
+                    .uri(endpoint)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .doOnSuccess(body -> logger.info("Raw Datadog API response: {}", body))
+                    .doOnError(error -> logger.error("Error fetching services from Datadog", error))
+                    .block();
+
+            if (rawResponse == null || rawResponse.isEmpty()) {
+                logger.warn("Received null or empty response from Datadog");
+                return new DatadogServiceResponse(null);
+            }
+
+            // Now try to parse it
             DatadogServiceResponse response = webClient.get()
-                    .uri("/api/v2/services/definitions")
+                    .uri(endpoint)
                     .retrieve()
                     .bodyToMono(DatadogServiceResponse.class)
-                    .doOnError(error -> logger.error("Error fetching services from Datadog", error))
                     .block();
 
             int serviceCount = response != null && response.data() != null ? response.data().size() : 0;
             logger.info("Successfully fetched {} services from Datadog", serviceCount);
+
+            if (serviceCount == 0) {
+                logger.warn("No services found in Datadog. Response data is null: {}", response == null || response.data() == null);
+            }
 
             return response;
         } catch (Exception e) {
