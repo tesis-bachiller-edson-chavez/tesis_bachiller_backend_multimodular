@@ -94,7 +94,8 @@ public class DatadogIncidentClient {
 
         while (hasMorePages) {
             pageCount++;
-            logger.debug("Fetching incidents page {} (offset: {})", pageCount, offset);
+            final int currentPage = pageCount; // Capture for lambda
+            logger.debug("Fetching incidents page {} (offset: {})", currentPage, offset);
 
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/v2/incidents")
                     .queryParam("filter[since]", formattedSince)
@@ -113,12 +114,12 @@ public class DatadogIncidentClient {
                         .uri(uri)
                         .retrieve()
                         .bodyToMono(DatadogIncidentResponse.class)
-                        .doOnError(error -> logger.error("Error fetching incidents page {} from Datadog", pageCount, error))
+                        .doOnError(error -> logger.error("Error fetching incidents page {} from Datadog", currentPage, error))
                         .block();
 
                 if (response != null && response.data() != null && !response.data().isEmpty()) {
                     allIncidents.addAll(response.data());
-                    logger.debug("Fetched {} incidents from page {}", response.data().size(), pageCount);
+                    logger.debug("Fetched {} incidents from page {}", response.data().size(), currentPage);
 
                     // Check if there are more pages
                     // If the response has fewer items than pageSize, it's the last page
