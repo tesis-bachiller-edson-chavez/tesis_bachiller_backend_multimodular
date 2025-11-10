@@ -97,11 +97,12 @@ public class DeploymentSyncService implements DeploymentSyncTrigger {
             deploymentRepository.saveAll(newDeployments);
             log.info("Se guardaron {} nuevos deployments para {}/{}.", newDeployments.size(), owner, repoName);
             leadTimeCalculationService.calculate();
+            updateSyncStatus(repoName);
         } else {
             log.info("No se encontraron nuevos deployments para {}/{}.", owner, repoName);
+            log.debug("SyncStatus not updated - no new deployments found");
         }
 
-        updateSyncStatus(repoName);
         log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
     }
 

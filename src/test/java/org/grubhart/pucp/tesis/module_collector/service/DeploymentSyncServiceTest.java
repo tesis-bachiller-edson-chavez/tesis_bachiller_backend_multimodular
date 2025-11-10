@@ -282,7 +282,7 @@ class DeploymentSyncServiceTest {
     }
 
     @Test
-    @DisplayName("GIVEN workflow run with non-success conclusion WHEN syncing THEN should skip it")
+    @DisplayName("GIVEN workflow run with non-success conclusion WHEN syncing THEN should skip it and not update sync status")
     void shouldSkipNonSuccessfulWorkflowRuns() {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
@@ -299,10 +299,11 @@ class DeploymentSyncServiceTest {
 
         // Then
         verify(deploymentRepository, never()).saveAll(anyList());
+        verify(syncStatusRepository, never()).save(any(SyncStatus.class)); // Should not update sync status if no deployments saved
     }
 
     @Test
-    @DisplayName("GIVEN existing deployment WHEN syncing THEN should not save it again")
+    @DisplayName("GIVEN existing deployment WHEN syncing THEN should not save it again and not update sync status")
     void shouldNotSaveExistingDeployments() {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
@@ -322,6 +323,7 @@ class DeploymentSyncServiceTest {
         // Then
         verify(deploymentRepository, never()).saveAll(anyList());
         verify(leadTimeCalculationService, never()).calculate(); // Should not trigger if no new deployments
+        verify(syncStatusRepository, never()).save(any(SyncStatus.class)); // Should not update sync status if no new deployments
     }
 
     @Test
@@ -370,6 +372,26 @@ class DeploymentSyncServiceTest {
         assertThat(savedDeployment.getRepository()).isNotNull();
         assertThat(savedDeployment.getRepository()).isEqualTo(repoConfig);
         assertThat(savedDeployment.getServiceName()).isEqualTo("test-service");
+    }
+
+    @Test
+    @DisplayName("GIVEN no workflow runs from GitHub WHEN syncing THEN should not update sync status")
+    void shouldNotUpdateSyncStatusWhenNoWorkflowRunsFound() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        // GitHub returns empty list (no workflow runs)
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(Collections.emptyList());
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        verify(deploymentRepository, never()).saveAll(anyList());
+        verify(leadTimeCalculationService, never()).calculate();
+        verify(syncStatusRepository, never()).save(any(SyncStatus.class)); // Critical: should not update sync status
     }
 
     private GitHubWorkflowRunDto createWorkflowRun(Long id, String headSha, String conclusion, String branch) {
