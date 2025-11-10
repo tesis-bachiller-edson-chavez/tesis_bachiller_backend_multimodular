@@ -48,24 +48,24 @@ class LeadTimeCalculationServiceTest {
         LocalDateTime now = LocalDateTime.now();
 
         // Ancient History (before previous deployment)
-        Commit ancientCommit = new Commit("sha-ancient", "author", "ancient", now.minusDays(10));
+        Commit ancientCommit = new Commit("sha-ancient", "author", "ancient", now.minusDays(10), null);
 
         // Previous Deployment History (main branch)
-        Commit prevDeployCommit = new Commit("sha-prev-deploy", "author", "prev deploy", now.minusDays(5));
+        Commit prevDeployCommit = new Commit("sha-prev-deploy", "author", "prev deploy", now.minusDays(5), null);
         prevDeployCommit.setParents(Collections.singletonList(ancientCommit));
 
         // Feature Branch
-        Commit featureCommitA = new Commit("sha-feature-A", "author", "feat: A", now.minusDays(4));
+        Commit featureCommitA = new Commit("sha-feature-A", "author", "feat: A", now.minusDays(4), null);
         featureCommitA.setParents(Collections.singletonList(prevDeployCommit));
-        Commit featureCommitB = new Commit("sha-feature-B", "author", "feat: B", now.minusDays(3));
+        Commit featureCommitB = new Commit("sha-feature-B", "author", "feat: B", now.minusDays(3), null);
         featureCommitB.setParents(Collections.singletonList(featureCommitA));
 
         // Main Branch evolution
-        Commit mainCommit = new Commit("sha-main", "author", "fix on main", now.minusDays(2));
+        Commit mainCommit = new Commit("sha-main", "author", "fix on main", now.minusDays(2), null);
         mainCommit.setParents(Collections.singletonList(prevDeployCommit));
 
         // Merge Commit (current deployment)
-        Commit currentDeployCommit = new Commit("sha-current-deploy", "author", "Merge branch 'feature'", now.minusDays(1));
+        Commit currentDeployCommit = new Commit("sha-current-deploy", "author", "Merge branch 'feature'", now.minusDays(1), null);
         currentDeployCommit.setParents(Arrays.asList(mainCommit, featureCommitB)); // Merges main and feature
 
         // --- Set up Mocks ---
@@ -153,10 +153,10 @@ class LeadTimeCalculationServiceTest {
         // Arrange: A simple commit history
         LocalDateTime now = LocalDateTime.now();
 
-        Commit commitA = new Commit("sha-A", "author", "feat: A", now.minusDays(3));
-        Commit commitB = new Commit("sha-B", "author", "feat: B", now.minusDays(2));
+        Commit commitA = new Commit("sha-A", "author", "feat: A", now.minusDays(3), null);
+        Commit commitB = new Commit("sha-B", "author", "feat: B", now.minusDays(2), null);
         commitB.setParents(Collections.singletonList(commitA));
-        Commit currentDeployCommit = new Commit("sha-current-deploy", "author", "Deploy", now.minusDays(1));
+        Commit currentDeployCommit = new Commit("sha-current-deploy", "author", "Deploy", now.minusDays(1), null);
         currentDeployCommit.setParents(Collections.singletonList(commitB));
 
         // --- Set up Mocks ---
@@ -226,10 +226,10 @@ class LeadTimeCalculationServiceTest {
         LocalDateTime now = LocalDateTime.now();
 
         // Commit B is MISSING from the repository, Commit A is its parent but should not be reached
-        Commit commitA = new Commit("sha-A", "author", "feat: A", now.minusDays(3));
-        Commit commitC = new Commit("sha-C", "author", "feat: C", now.minusDays(1));
+        Commit commitA = new Commit("sha-A", "author", "feat: A", now.minusDays(3), null);
+        Commit commitC = new Commit("sha-C", "author", "feat: C", now.minusDays(1), null);
         // We create a "dummy" parent object for C that points to the missing sha
-        commitC.setParents(Collections.singletonList(new Commit("sha-B", "author", "feat: B", now.minusDays(2))));
+        commitC.setParents(Collections.singletonList(new Commit("sha-B", "author", "feat: B", now.minusDays(2), null)));
 
         // --- Set up Mocks ---
         Deployment currentDeployment = new Deployment();

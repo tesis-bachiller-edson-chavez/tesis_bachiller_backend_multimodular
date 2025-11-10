@@ -26,7 +26,7 @@ class CommitTest {
         String message = "feat: test commit";
 
         // When
-        Commit commit = new Commit(sha, author, message, now);
+        Commit commit = new Commit(sha, author, message, now, null);
 
         // Then
         assertEquals(sha, commit.getSha());

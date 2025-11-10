@@ -39,9 +39,9 @@ class DeploymentFrequencyServiceTest {
         PeriodType periodType = PeriodType.MONTHLY;
 
         List<Deployment> deploymentsInNovember = List.of(
-            new Deployment(1L, "deploy-1", "sha1", "main", environment, "success", "success", LocalDate.of(2025, 11, 5).atStartOfDay(), LocalDate.of(2025, 11, 5).atStartOfDay()),
-            new Deployment(2L, "deploy-2", "sha2", "main", environment, "success", "success", LocalDate.of(2025, 11, 15).atStartOfDay(), LocalDate.of(2025, 11, 15).atStartOfDay()),
-            new Deployment(3L, "deploy-3", "sha3", "main", environment, "success", "success", LocalDate.of(2025, 11, 25).atStartOfDay(), LocalDate.of(2025, 11, 25).atStartOfDay())
+            new Deployment(1L, null, "deploy-1", "sha1", "main", environment, "success", "success", LocalDate.of(2025, 11, 5).atStartOfDay(), LocalDate.of(2025, 11, 5).atStartOfDay()),
+            new Deployment(2L, null, "deploy-2", "sha2", "main", environment, "success", "success", LocalDate.of(2025, 11, 15).atStartOfDay(), LocalDate.of(2025, 11, 15).atStartOfDay()),
+            new Deployment(3L, null, "deploy-3", "sha3", "main", environment, "success", "success", LocalDate.of(2025, 11, 25).atStartOfDay(), LocalDate.of(2025, 11, 25).atStartOfDay())
         );
 
         when(deploymentRepository.findByEnvironmentAndCreatedAtBetween(environment, rangeStart, rangeEnd))
@@ -67,8 +67,8 @@ class DeploymentFrequencyServiceTest {
         PeriodType periodType = PeriodType.WEEKLY;
 
         List<Deployment> deploymentsInWeek45 = List.of(
-            new Deployment(4L, "deploy-4", "sha4", "main", environment, "success", "success", LocalDate.of(2025, 11, 4).atStartOfDay(), LocalDate.of(2025, 11, 4).atStartOfDay()),
-            new Deployment(5L, "deploy-5", "sha5", "main", environment, "success", "success", LocalDate.of(2025, 11, 8).atStartOfDay(), LocalDate.of(2025, 11, 8).atStartOfDay())
+            new Deployment(4L, null, "deploy-4", "sha4", "main", environment, "success", "success", LocalDate.of(2025, 11, 4).atStartOfDay(), LocalDate.of(2025, 11, 4).atStartOfDay()),
+            new Deployment(5L, null, "deploy-5", "sha5", "main", environment, "success", "success", LocalDate.of(2025, 11, 8).atStartOfDay(), LocalDate.of(2025, 11, 8).atStartOfDay())
         );
 
         // The service will calculate the boundaries of the week and query for it
@@ -98,10 +98,10 @@ class DeploymentFrequencyServiceTest {
         PeriodType periodType = PeriodType.BIWEEKLY;
 
         List<Deployment> deploymentsInBiweek = List.of(
-            new Deployment(6L, "d6", "s6", "main", environment, "s", "s", LocalDate.of(2025, 11, 4).atStartOfDay(), null),
-            new Deployment(7L, "d7", "s7", "main", environment, "s", "s", LocalDate.of(2025, 11, 8).atStartOfDay(), null),
-            new Deployment(8L, "d8", "s8", "main", environment, "s", "s", LocalDate.of(2025, 11, 11).atStartOfDay(), null),
-            new Deployment(9L, "d9", "s9", "main", environment, "s", "s", LocalDate.of(2025, 11, 15).atStartOfDay(), null)
+            new Deployment(6L, null, "d6", "s6", "main", environment, "s", "s", LocalDate.of(2025, 11, 4).atStartOfDay(), null),
+            new Deployment(7L, null, "d7", "s7", "main", environment, "s", "s", LocalDate.of(2025, 11, 8).atStartOfDay(), null),
+            new Deployment(8L, null, "d8", "s8", "main", environment, "s", "s", LocalDate.of(2025, 11, 11).atStartOfDay(), null),
+            new Deployment(9L, null, "d9", "s9", "main", environment, "s", "s", LocalDate.of(2025, 11, 15).atStartOfDay(), null)
         );
 
         // The service will calculate the boundaries of the bi-weekly period
