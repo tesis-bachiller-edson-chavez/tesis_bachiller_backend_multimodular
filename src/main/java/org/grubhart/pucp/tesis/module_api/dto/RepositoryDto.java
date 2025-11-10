@@ -20,6 +20,9 @@ public record RepositoryDto(
         String owner,
 
         @Schema(description = "Nombre del repositorio extraído de la URL", example = "repo")
-        String repoName
+        String repoName,
+
+        @Schema(description = "Nombre del archivo de workflow de deployment en GitHub Actions (puede ser null)", example = "deploy.yml")
+        String deploymentWorkflowFileName
 ) {
 }
