@@ -35,15 +35,18 @@ public class LeadTimeCalculationService {
         List<Deployment> processedDeployments = new ArrayList<>();
 
         for (Deployment currentDeployment : unprocessedDeployments) {
-            Optional<Deployment> previousDeploymentOpt = deploymentRepository.findFirstByEnvironmentAndCreatedAtBefore(PRODUCTION_ENVIRONMENT, currentDeployment.getCreatedAt(), SORT_BY_CREATED_AT_DESC);
+            Long repositoryId = currentDeployment.getRepository().getId();
+
+            Optional<Deployment> previousDeploymentOpt = deploymentRepository.findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(
+                    repositoryId, PRODUCTION_ENVIRONMENT, currentDeployment.getCreatedAt(), SORT_BY_CREATED_AT_DESC);
 
             // 1. Get all commits from the previous deployment to use as boundary
             Set<String> previousDeploymentCommitShas = previousDeploymentOpt
-                    .map(this::getAllCommitsForDeployment)
+                    .map(prevDep -> getAllCommitsForDeployment(prevDep, repositoryId))
                     .orElse(Collections.emptySet());
 
             // 2. Traverse the graph backwards from the current deployment's commit
-            Set<Commit> commitsToProcess = getAllCommitsForDeployment(currentDeployment, previousDeploymentCommitShas);
+            Set<Commit> commitsToProcess = getAllCommitsForDeployment(currentDeployment, repositoryId, previousDeploymentCommitShas);
 
 
             if (!commitsToProcess.isEmpty()) {
@@ -66,19 +69,19 @@ public class LeadTimeCalculationService {
         }
     }
 
-    private Set<String> getAllCommitsForDeployment(Deployment deployment) {
-        Set<Commit> commits = getAllCommitsForDeployment(deployment, Collections.emptySet());
+    private Set<String> getAllCommitsForDeployment(Deployment deployment, Long repositoryId) {
+        Set<Commit> commits = getAllCommitsForDeployment(deployment, repositoryId, Collections.emptySet());
         return commits.stream()
                 .map(Commit::getSha)
                 .collect(Collectors.toSet());
     }
 
-    private Set<Commit> getAllCommitsForDeployment(Deployment deployment, Set<String> boundaryCommitShas) {
+    private Set<Commit> getAllCommitsForDeployment(Deployment deployment, Long repositoryId, Set<String> boundaryCommitShas) {
         Set<Commit> commitsInDeployment = new HashSet<>();
         Queue<String> commitsToVisit = new LinkedList<>();
         Set<String> visitedShas = new HashSet<>();
 
-        commitRepository.findBySha(deployment.getSha()).ifPresent(initialCommit -> {
+        commitRepository.findByRepositoryIdAndSha(repositoryId, deployment.getSha()).ifPresent(initialCommit -> {
             commitsToVisit.add(initialCommit.getSha());
             visitedShas.add(initialCommit.getSha());
         });
@@ -89,7 +92,7 @@ public class LeadTimeCalculationService {
                 continue; // Stop traversing this path
             }
 
-            Optional<Commit> commitOpt = commitRepository.findBySha(currentSha);
+            Optional<Commit> commitOpt = commitRepository.findByRepositoryIdAndSha(repositoryId, currentSha);
             if (commitOpt.isPresent()) {
                 Commit currentCommit = commitOpt.get();
                 commitsInDeployment.add(currentCommit);

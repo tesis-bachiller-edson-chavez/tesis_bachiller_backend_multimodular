@@ -266,4 +266,89 @@ class LeadTimeCalculationServiceTest {
         verify(deploymentRepository).saveAll(processedDeploymentsCaptor.capture());
         assertThat(processedDeploymentsCaptor.getValue().get(0).isLeadTimeProcessed()).isTrue();
     }
+
+    @Test
+    void shouldFilterDeploymentsByRepository_WhenCalculatingLeadTime() {
+        // GIVEN: Two different repositories with deployments
+        LocalDateTime now = LocalDateTime.now();
+
+        RepositoryConfig repoA = new RepositoryConfig("https://github.com/owner/repo-a");
+        RepositoryConfig repoB = new RepositoryConfig("https://github.com/owner/repo-b");
+
+        // Repository A commits
+        Commit commitA1 = new Commit("sha-a1", "author", "commit A1", now.minusDays(3), repoA);
+        Commit commitA2 = new Commit("sha-a2", "author", "commit A2", now.minusDays(2), repoA);
+        commitA2.setParents(Collections.singletonList(commitA1));
+
+        // Repository B commits
+        Commit commitB1 = new Commit("sha-b1", "author", "commit B1", now.minusDays(4), repoB);
+        Commit commitB2 = new Commit("sha-b2", "author", "commit B2", now.minusDays(1), repoB);
+        commitB2.setParents(Collections.singletonList(commitB1));
+
+        // Deployments timeline:
+        // Day -4: Repo B deploys (sha-b1)
+        // Day -3: Repo A deploys (sha-a1) <- Previous for Repo A
+        // Day -2: Repo B deploys (sha-b2) <- Should NOT be used as previous for Repo A
+        // Day -1: Repo A deploys (sha-a2) <- Current deployment for Repo A
+
+        Deployment previousDeploymentA = new Deployment();
+        previousDeploymentA.setSha("sha-a1");
+        previousDeploymentA.setCreatedAt(now.minusDays(3));
+        previousDeploymentA.setRepository(repoA);
+        previousDeploymentA.setEnvironment("production");
+
+        Deployment deploymentB = new Deployment();
+        deploymentB.setSha("sha-b2");
+        deploymentB.setCreatedAt(now.minusDays(2));
+        deploymentB.setRepository(repoB);
+        deploymentB.setEnvironment("production");
+
+        Deployment currentDeploymentA = new Deployment();
+        currentDeploymentA.setSha("sha-a2");
+        currentDeploymentA.setCreatedAt(now.minusDays(1));
+        currentDeploymentA.setRepository(repoA);
+        currentDeploymentA.setEnvironment("production");
+
+        // Mock repository methods
+        when(deploymentRepository.findByLeadTimeProcessedFalseAndEnvironment(eq("production"), any(Sort.class)))
+                .thenReturn(Collections.singletonList(currentDeploymentA));
+
+        // CRITICAL: Should find previous deployment from SAME repository only
+        when(deploymentRepository.findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(
+                eq(repoA.getId()), eq("production"), eq(currentDeploymentA.getCreatedAt()), any(Sort.class)))
+                .thenReturn(Optional.of(previousDeploymentA));
+
+        // Mock commit lookups filtered by repository
+        when(commitRepository.findByRepositoryIdAndSha(eq(repoA.getId()), eq("sha-a1")))
+                .thenReturn(Optional.of(commitA1));
+        when(commitRepository.findByRepositoryIdAndSha(eq(repoA.getId()), eq("sha-a2")))
+                .thenReturn(Optional.of(commitA2));
+        when(commitRepository.findByRepositoryIdAndSha(eq(repoB.getId()), anyString()))
+                .thenReturn(Optional.empty());
+
+        // WHEN
+        service.calculate();
+
+        // THEN
+        // 1. Should have used repository-filtered query for previous deployment
+        verify(deploymentRepository).findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(
+                eq(repoA.getId()), eq("production"), eq(currentDeploymentA.getCreatedAt()), any(Sort.class));
+
+        // 2. Should have queried commits with repository filter
+        verify(commitRepository, atLeastOnce()).findByRepositoryIdAndSha(eq(repoA.getId()), anyString());
+
+        // 3. Should NOT have queried commits from repository B
+        verify(commitRepository, never()).findByRepositoryIdAndSha(eq(repoB.getId()), anyString());
+
+        // 4. Should process only commit A2 (new commit after previous deployment A1)
+        verify(changeLeadTimeRepository).saveAll(changeLeadTimeCaptor.capture());
+        List<ChangeLeadTime> savedLeadTimes = changeLeadTimeCaptor.getValue();
+        assertThat(savedLeadTimes).hasSize(1);
+        assertThat(savedLeadTimes.get(0).getCommit().getSha()).isEqualTo("sha-a2");
+
+        // 5. Verify deployment is marked as processed
+        ArgumentCaptor<List<Deployment>> processedDeploymentsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(deploymentRepository).saveAll(processedDeploymentsCaptor.capture());
+        assertThat(processedDeploymentsCaptor.getValue().get(0).isLeadTimeProcessed()).isTrue();
+    }
 }
