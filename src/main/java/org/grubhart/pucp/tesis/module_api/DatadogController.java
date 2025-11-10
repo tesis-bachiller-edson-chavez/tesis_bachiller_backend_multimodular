@@ -7,8 +7,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.grubhart.pucp.tesis.module_api.dto.DatadogServiceDto;
-import org.grubhart.pucp.tesis.module_collector.datadog.DatadogServiceClient;
-import org.grubhart.pucp.tesis.module_collector.datadog.dto.DatadogServiceResponse;
+import org.grubhart.pucp.tesis.module_domain.DatadogServiceCollector;
+import org.grubhart.pucp.tesis.module_domain.DatadogServicesResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -33,10 +33,10 @@ public class DatadogController {
 
     private static final Logger logger = LoggerFactory.getLogger(DatadogController.class);
 
-    private final DatadogServiceClient datadogServiceClient;
+    private final DatadogServiceCollector datadogServiceCollector;
 
-    public DatadogController(DatadogServiceClient datadogServiceClient) {
-        this.datadogServiceClient = datadogServiceClient;
+    public DatadogController(DatadogServiceCollector datadogServiceCollector) {
+        this.datadogServiceCollector = datadogServiceCollector;
     }
 
     @GetMapping("/services")
@@ -64,7 +64,7 @@ public class DatadogController {
         logger.debug("Fetching services from Datadog");
 
         try {
-            DatadogServiceResponse response = datadogServiceClient.getServices();
+            DatadogServicesResponse response = datadogServiceCollector.getServices();
 
             if (response == null || response.data() == null) {
                 logger.warn("No services found in Datadog response");
@@ -72,8 +72,8 @@ public class DatadogController {
             }
 
             List<DatadogServiceDto> services = response.data().stream()
-                    .filter(service -> service.attributes() != null && service.attributes().name() != null)
-                    .map(service -> new DatadogServiceDto(service.attributes().name()))
+                    .filter(service -> service.attributes() != null && service.attributes().serviceName() != null)
+                    .map(service -> new DatadogServiceDto(service.attributes().serviceName()))
                     .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
                     .collect(Collectors.toList());
 
