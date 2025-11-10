@@ -416,17 +416,22 @@ class IncidentSyncServiceTest {
     }
 
     @Test
-    @DisplayName("GIVEN successful sync WHEN completing THEN should update sync status")
+    @DisplayName("GIVEN successful sync with incidents WHEN completing THEN should update sync status")
     void shouldUpdateSyncStatusAfterSuccessfulSync() {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
         when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
-        DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(
-                Collections.emptyList(),
-                new DatadogMeta(new DatadogPagination(0, 0))
+
+        // Create a response with at least one incident so SyncStatus will be updated
+        Instant now = Instant.now();
+        DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
+                List.of(new DatadogIncidentData("inc-1", "incidents",
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                new DatadogMeta(new DatadogPagination(0, 1))
         );
-        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(emptyResponse);
+        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
+        when(incidentRepository.findByDatadogIncidentId(any())).thenReturn(Optional.empty());
 
         // When
         LocalDateTime beforeSync = LocalDateTime.now();
