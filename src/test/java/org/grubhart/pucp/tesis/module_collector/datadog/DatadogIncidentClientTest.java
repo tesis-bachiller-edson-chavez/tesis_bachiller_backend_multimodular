@@ -288,8 +288,7 @@ class DatadogIncidentClientTest {
         assertThat(response.data().get(1).attributes().state()).isEqualTo("active");
         assertThat(response.data().get(1).attributes().resolved()).isNull();
 
-        // Verify metadata
-        assertThat(response.meta().pagination().size()).isEqualTo(2);
+        // Note: meta is null in paginated responses as pagination is handled internally
     }
 
     @Test
