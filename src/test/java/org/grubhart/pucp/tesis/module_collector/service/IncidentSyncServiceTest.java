@@ -282,6 +282,7 @@ class IncidentSyncServiceTest {
 
         Incident existingIncident = new Incident(
                 "incident-123",
+                repoConfig,
                 "Database connection timeout",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV2,

@@ -57,7 +57,7 @@ class DeploymentTest {
         String conclusion = "success";
 
         // When
-        Deployment deployment = new Deployment(githubId, name, sha, headBranch, environment, status, conclusion, now, now);
+        Deployment deployment = new Deployment(githubId, null, name, sha, headBranch, environment, status, conclusion, now, now);
 
         // Then
         assertAll("Verify all fields are initialized by the constructor",
