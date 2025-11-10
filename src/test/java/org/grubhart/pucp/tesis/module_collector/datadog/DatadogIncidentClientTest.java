@@ -359,7 +359,7 @@ class DatadogIncidentClientTest {
     }
 
     @Test
-    @DisplayName("GIVEN API returns response with null data WHEN fetching incidents THEN it should handle it gracefully")
+    @DisplayName("GIVEN API returns response with null data WHEN fetching incidents THEN it should return empty list")
     void shouldHandleResponseWithNullData() {
         // Given
         String jsonResponse = """
@@ -384,7 +384,7 @@ class DatadogIncidentClientTest {
 
         // Then
         assertThat(response).isNotNull();
-        assertThat(response.data()).isNull();
+        assertThat(response.data()).isNotNull().isEmpty(); // Pagination returns empty list instead of null
     }
 
     @Test
