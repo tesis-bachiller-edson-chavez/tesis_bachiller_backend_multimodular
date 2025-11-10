@@ -83,14 +83,15 @@ class LeadTimeCalculationServiceTest {
 
         when(deploymentRepository.findByLeadTimeProcessedFalseAndEnvironment(eq("production"), any(Sort.class)))
                 .thenReturn(Collections.singletonList(currentDeployment));
-        when(deploymentRepository.findFirstByEnvironmentAndCreatedAtBefore(anyString(), any(LocalDateTime.class), any(Sort.class)))
+        when(deploymentRepository.findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(
+                eq(1L), anyString(), any(LocalDateTime.class), any(Sort.class)))
                 .thenReturn(Optional.of(previousDeployment));
 
         // Mock the commit repository to return commits by SHA
         Map<String, Commit> commitMap = Arrays.asList(ancientCommit, prevDeployCommit, featureCommitA, featureCommitB, mainCommit, currentDeployCommit)
                 .stream().collect(Collectors.toMap(Commit::getSha, Function.identity()));
-        when(commitRepository.findBySha(anyString())).thenAnswer(invocation -> {
-            String sha = invocation.getArgument(0);
+        when(commitRepository.findByRepositoryIdAndSha(eq(1L), anyString())).thenAnswer(invocation -> {
+            String sha = invocation.getArgument(1);
             return Optional.ofNullable(commitMap.get(sha));
         });
 
@@ -136,11 +137,13 @@ class LeadTimeCalculationServiceTest {
                 .thenReturn(Collections.singletonList(currentDeployment));
 
         // 2. No previous deployment (simplifies the test)
-        when(deploymentRepository.findFirstByEnvironmentAndCreatedAtBefore(anyString(), any(LocalDateTime.class), any(Sort.class)))
+        when(deploymentRepository.findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(
+                eq(1L), anyString(), any(LocalDateTime.class), any(Sort.class)))
                 .thenReturn(Optional.empty());
 
         // 3. The commit for the current deployment is not found
-        when(commitRepository.findBySha("sha-non-existent")).thenReturn(Optional.empty());
+        when(commitRepository.findByRepositoryIdAndSha(eq(1L), eq("sha-non-existent")))
+                .thenReturn(Optional.empty());
 
         // WHEN
         service.calculate();
@@ -183,14 +186,15 @@ class LeadTimeCalculationServiceTest {
                 .thenReturn(Collections.singletonList(currentDeployment));
 
         // 2. KEY: No previous deployment is found
-        when(deploymentRepository.findFirstByEnvironmentAndCreatedAtBefore(anyString(), any(LocalDateTime.class), any(Sort.class)))
+        when(deploymentRepository.findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(
+                eq(1L), anyString(), any(LocalDateTime.class), any(Sort.class)))
                 .thenReturn(Optional.empty());
 
         // Mock the commit repository to return commits by SHA
         Map<String, Commit> commitMap = Arrays.asList(commitA, commitB, currentDeployCommit)
                 .stream().collect(Collectors.toMap(Commit::getSha, Function.identity()));
-        when(commitRepository.findBySha(anyString())).thenAnswer(invocation -> {
-            String sha = invocation.getArgument(0);
+        when(commitRepository.findByRepositoryIdAndSha(eq(1L), anyString())).thenAnswer(invocation -> {
+            String sha = invocation.getArgument(1);
             return Optional.ofNullable(commitMap.get(sha));
         });
 
@@ -259,12 +263,13 @@ class LeadTimeCalculationServiceTest {
                 .thenReturn(Collections.singletonList(currentDeployment));
 
         // 2. No previous deployment to simplify the boundary
-        when(deploymentRepository.findFirstByEnvironmentAndCreatedAtBefore(anyString(), any(LocalDateTime.class), any(Sort.class)))
+        when(deploymentRepository.findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(
+                eq(1L), anyString(), any(LocalDateTime.class), any(Sort.class)))
                 .thenReturn(Optional.empty());
 
         // 3. KEY: Mock the repository to return C, but not its parent B
-        when(commitRepository.findBySha("sha-C")).thenReturn(Optional.of(commitC));
-        when(commitRepository.findBySha("sha-B")).thenReturn(Optional.empty()); // The "hole" in the history
+        when(commitRepository.findByRepositoryIdAndSha(eq(1L), eq("sha-C"))).thenReturn(Optional.of(commitC));
+        when(commitRepository.findByRepositoryIdAndSha(eq(1L), eq("sha-B"))).thenReturn(Optional.empty()); // The "hole" in the history
 
         // WHEN
         service.calculate();
