@@ -341,7 +341,7 @@ class DatadogIncidentClientTest {
     }
 
     @Test
-    @DisplayName("GIVEN API returns empty body WHEN fetching incidents THEN it should return null")
+    @DisplayName("GIVEN API returns empty body WHEN fetching incidents THEN it should return empty list")
     void shouldReturnNullWhenApiReturnsEmptyBody() {
         // Given
         mockWebServer.enqueue(new MockResponse()
@@ -355,7 +355,8 @@ class DatadogIncidentClientTest {
         DatadogIncidentResponse response = datadogClient.getIncidents(since);
 
         // Then
-        assertThat(response).isNull();
+        assertThat(response).isNotNull();
+        assertThat(response.data()).isNotNull().isEmpty(); // Pagination returns empty list for empty body
     }
 
     @Test
