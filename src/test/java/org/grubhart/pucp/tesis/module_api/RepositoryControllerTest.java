@@ -126,7 +126,7 @@ class RepositoryControllerTest {
     void updateRepository_whenRepositoryExists_shouldUpdateAndReturn() {
         // Given
         Long repoId = 1L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service-name");
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service-name", null);
 
         RepositoryConfig existingRepo = new RepositoryConfig("https://github.com/user/repo1", "old-service");
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.of(existingRepo));
@@ -151,7 +151,7 @@ class RepositoryControllerTest {
     void updateRepository_whenSettingNull_shouldAllowIt() {
         // Given
         Long repoId = 1L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest(null);
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest(null, null);
 
         RepositoryConfig existingRepo = new RepositoryConfig("https://github.com/user/repo1", "service1");
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.of(existingRepo));
@@ -174,7 +174,7 @@ class RepositoryControllerTest {
     void updateRepository_whenRepositoryNotFound_shouldReturn404() {
         // Given
         Long repoId = 999L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest("service-name");
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest("service-name", null);
 
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.empty());
 
@@ -194,7 +194,7 @@ class RepositoryControllerTest {
     void updateRepository_whenSaveThrowsException_shouldReturnInternalServerError() {
         // Given
         Long repoId = 1L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service");
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service", null);
 
         RepositoryConfig existingRepo = new RepositoryConfig("https://github.com/user/repo1", "old-service");
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.of(existingRepo));
