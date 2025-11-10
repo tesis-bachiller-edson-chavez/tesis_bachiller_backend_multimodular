@@ -42,8 +42,11 @@ public class DatadogController {
     @GetMapping("/services")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
-            summary = "Obtener servicios de Datadog",
-            description = "Obtiene la lista de servicios disponibles en Datadog Service Catalog. **Requiere rol de ADMIN**.",
+            summary = "Obtener servicios de Datadog APM",
+            description = "Obtiene la lista de servicios con trazas APM activas en el environment configurado. " +
+                    "Este endpoint consulta el API de Service Dependencies de Datadog, que automáticamente " +
+                    "incluye todos los servicios que tienen instrumentación APM y están enviando trazas. " +
+                    "**Requiere rol de ADMIN**.",
             responses = {
                     @ApiResponse(
                             responseCode = "200",
@@ -61,13 +64,13 @@ public class DatadogController {
             }
     )
     public ResponseEntity<List<DatadogServiceDto>> getServices() {
-        logger.debug("Fetching services from Datadog");
+        logger.debug("Fetching services from Datadog APM");
 
         try {
             DatadogServicesResponse response = datadogServiceCollector.getServices();
 
             if (response == null || response.data() == null) {
-                logger.warn("No services found in Datadog response");
+                logger.warn("No services found in Datadog APM response");
                 return ResponseEntity.ok(Collections.emptyList());
             }
 
@@ -77,10 +80,10 @@ public class DatadogController {
                     .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
                     .collect(Collectors.toList());
 
-            logger.info("Successfully fetched {} services from Datadog", services.size());
+            logger.info("Successfully fetched {} services from Datadog APM", services.size());
             return ResponseEntity.ok(services);
         } catch (Exception e) {
-            logger.error("Error fetching services from Datadog", e);
+            logger.error("Error fetching services from Datadog APM", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
