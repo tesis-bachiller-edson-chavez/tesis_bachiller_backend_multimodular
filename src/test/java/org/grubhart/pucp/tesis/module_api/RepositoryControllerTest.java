@@ -126,7 +126,7 @@ class RepositoryControllerTest {
     void updateRepository_whenRepositoryExists_shouldUpdateAndReturn() {
         // Given
         Long repoId = 1L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service-name");
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service-name", "deploy.yml");
 
         RepositoryConfig existingRepo = new RepositoryConfig("https://github.com/user/repo1", "old-service");
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.of(existingRepo));
@@ -140,10 +140,12 @@ class RepositoryControllerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().repositoryUrl()).isEqualTo("https://github.com/user/repo1");
         assertThat(response.getBody().datadogServiceName()).isEqualTo("new-service-name");
+        assertThat(response.getBody().deploymentWorkflowFileName()).isEqualTo("deploy.yml");
 
         verify(repositoryConfigRepository).findById(repoId);
         verify(repositoryConfigRepository).save(existingRepo);
         assertThat(existingRepo.getDatadogServiceName()).isEqualTo("new-service-name");
+        assertThat(existingRepo.getDeploymentWorkflowFileName()).isEqualTo("deploy.yml");
     }
 
     @Test
@@ -151,7 +153,7 @@ class RepositoryControllerTest {
     void updateRepository_whenSettingNull_shouldAllowIt() {
         // Given
         Long repoId = 1L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest(null);
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest(null, null);
 
         RepositoryConfig existingRepo = new RepositoryConfig("https://github.com/user/repo1", "service1");
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.of(existingRepo));
@@ -164,9 +166,11 @@ class RepositoryControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().datadogServiceName()).isNull();
+        assertThat(response.getBody().deploymentWorkflowFileName()).isNull();
 
         verify(repositoryConfigRepository).save(existingRepo);
         assertThat(existingRepo.getDatadogServiceName()).isNull();
+        assertThat(existingRepo.getDeploymentWorkflowFileName()).isNull();
     }
 
     @Test
@@ -174,7 +178,7 @@ class RepositoryControllerTest {
     void updateRepository_whenRepositoryNotFound_shouldReturn404() {
         // Given
         Long repoId = 999L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest("service-name");
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest("service-name", "deploy.yml");
 
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.empty());
 
@@ -194,7 +198,7 @@ class RepositoryControllerTest {
     void updateRepository_whenSaveThrowsException_shouldReturnInternalServerError() {
         // Given
         Long repoId = 1L;
-        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service");
+        UpdateRepositoryRequest request = new UpdateRepositoryRequest("new-service", "manual-deploy.yml");
 
         RepositoryConfig existingRepo = new RepositoryConfig("https://github.com/user/repo1", "old-service");
         when(repositoryConfigRepository.findById(repoId)).thenReturn(Optional.of(existingRepo));

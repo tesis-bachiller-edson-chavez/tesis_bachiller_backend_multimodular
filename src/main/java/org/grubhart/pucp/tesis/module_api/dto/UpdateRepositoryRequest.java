@@ -8,6 +8,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "Datos para actualizar un repositorio")
 public record UpdateRepositoryRequest(
         @Schema(description = "Nombre del servicio en Datadog (puede ser null para eliminar la asociación)", example = "tesis-backend", nullable = true)
-        String datadogServiceName
+        String datadogServiceName,
+
+        @Schema(description = "Nombre del archivo de workflow de deployment de GitHub Actions (puede ser null)", example = "deploy.yml", nullable = true)
+        String deploymentWorkflowFileName
 ) {
 }

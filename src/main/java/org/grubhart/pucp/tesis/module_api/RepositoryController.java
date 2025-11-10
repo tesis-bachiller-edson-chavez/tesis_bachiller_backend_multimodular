@@ -139,14 +139,17 @@ public class RepositoryController {
     public ResponseEntity<RepositoryDto> updateRepository(
             @PathVariable Long id,
             @RequestBody UpdateRepositoryRequest request) {
-        logger.debug("Updating repository {} with datadogServiceName: {}", id, request.datadogServiceName());
+        logger.debug("Updating repository {} with datadogServiceName: {} and deploymentWorkflowFileName: {}",
+                id, request.datadogServiceName(), request.deploymentWorkflowFileName());
 
         try {
             return repositoryConfigRepository.findById(id)
                     .map(repo -> {
                         repo.setDatadogServiceName(request.datadogServiceName());
+                        repo.setDeploymentWorkflowFileName(request.deploymentWorkflowFileName());
                         RepositoryConfig updated = repositoryConfigRepository.save(repo);
-                        logger.info("Repository {} updated with datadogServiceName: {}", id, request.datadogServiceName());
+                        logger.info("Repository {} updated with datadogServiceName: {} and deploymentWorkflowFileName: {}",
+                                id, request.datadogServiceName(), request.deploymentWorkflowFileName());
                         return ResponseEntity.ok(mapToDto(updated));
                     })
                     .orElseGet(() -> {
@@ -164,6 +167,7 @@ public class RepositoryController {
                 repo.getId(),
                 repo.getRepositoryUrl(),
                 repo.getDatadogServiceName(),
+                repo.getDeploymentWorkflowFileName(),
                 repo.getOwner(),
                 repo.getRepoName()
         );

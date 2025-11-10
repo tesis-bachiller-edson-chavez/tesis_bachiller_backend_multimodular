@@ -2539,9 +2539,12 @@ classDiagram
             -id: Long
             -repositoryUrl: String
             -datadogServiceName: String
+            -deploymentWorkflowFileName: String
             +getOwner(): String
             +getRepoName(): String
             +setDatadogServiceName(String): void
+            +getDeploymentWorkflowFileName(): String
+            +setDeploymentWorkflowFileName(String): void
         }
         class RepositoryConfigRepository {
             <<Repository>>
@@ -2609,6 +2612,7 @@ erDiagram
         bigint id PK "ID autogenerado"
         varchar repository_url UK "URL única del repositorio en GitHub"
         varchar datadog_service_name "Nombre del servicio en Datadog (nullable)"
+        varchar deployment_workflow_file_name "Nombre del workflow de deployment (nullable)"
     }
 
     REPOSITORY_CONFIG ||--o{ INCIDENTS : "tiene"
@@ -2619,7 +2623,9 @@ erDiagram
 
 **Explicación del Diagrama:**
 
-* **`REPOSITORY_CONFIG`**: Tabla central que almacena la configuración de cada repositorio. El campo `repository_url` tiene una restricción `UNIQUE` para garantizar que no se dupliquen repositorios. El campo `datadog_service_name` es opcional (nullable) y se configura manualmente por los administradores para vincular el repositorio con un servicio específico en Datadog.
+* **`REPOSITORY_CONFIG`**: Tabla central que almacena la configuración de cada repositorio. El campo `repository_url` tiene una restricción `UNIQUE` para garantizar que no se dupliquen repositorios. Los campos `datadog_service_name` y `deployment_workflow_file_name` son opcionales (nullable) y se configuran manualmente por los administradores:
+  - `datadog_service_name`: Vincula el repositorio con un servicio específico en Datadog para sincronizar incidentes.
+  - `deployment_workflow_file_name`: Define el archivo de workflow de GitHub Actions usado para deployments (ej. "deploy.yml", "manual-deploy.yml").
 
 * **Relaciones**: Esta tabla se relaciona con múltiples entidades del sistema:
   - `INCIDENTS`: Los incidentes están asociados a un servicio de Datadog, que se vincula a través del `datadog_service_name`.
@@ -2644,12 +2650,12 @@ sequenceDiagram
 
     Controller->>+Service: synchronizeRepositories()
 
-    Service->>+GithubCollector: getOrgRepositories(String organizationName)
-    GithubCollector->>+GithubAPI: GET /user/repos?affiliation=owner,collaborator&per_page=100
+    Service->>+GithubCollector: getOrgRepositories(organizationName)
+    GithubCollector->>+GithubAPI: GET /orgs/{org}/repos?type=all&sort=updated&per_page=70
     GithubAPI-->>-GithubCollector: 200 OK + List<GithubRepositoryDto> + Link header
 
     loop Paginación (si hay más páginas)
-        GithubCollector->>+GithubAPI: GET /user/repos?page=2
+        GithubCollector->>+GithubAPI: GET <next_page_url_from_link_header>
         GithubAPI-->>-GithubCollector: 200 OK + más repositorios
     end
 
@@ -2712,7 +2718,7 @@ sequenceDiagram
 
 1. **Autenticación y Autorización (1):** Un administrador realiza una petición POST al endpoint de sincronización. El controlador verifica el rol ADMIN usando `@PreAuthorize`.
 
-2. **Obtención de Repositorios de GitHub (2-5):** El servicio invoca al `GithubRepositoryCollector`, que realiza peticiones paginadas a la API de GitHub (`/user/repos`). La paginación se maneja automáticamente usando el header `Link` de la respuesta.
+2. **Obtención de Repositorios de GitHub (2-5):** El servicio invoca al `GithubRepositoryCollector`, que realiza peticiones paginadas a la API de GitHub (`/orgs/{org}/repos`) usando el nombre de organización configurado en `dora.github.organization-name`. La paginación se maneja automáticamente usando el header `Link` de la respuesta.
 
 3. **Comparación con Repositorios Locales (6-8):** El servicio obtiene todos los repositorios existentes en la base de datos y crea un mapa usando `repositoryUrl` como clave única para comparación eficiente.
 

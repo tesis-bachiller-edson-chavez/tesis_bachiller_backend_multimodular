@@ -16,6 +16,9 @@ public record RepositoryDto(
         @Schema(description = "Nombre del servicio en Datadog asociado al repositorio (puede ser null)", example = "tesis-backend")
         String datadogServiceName,
 
+        @Schema(description = "Nombre del archivo de workflow de deployment de GitHub Actions (puede ser null)", example = "deploy.yml")
+        String deploymentWorkflowFileName,
+
         @Schema(description = "Propietario del repositorio extraído de la URL", example = "user")
         String owner,
 

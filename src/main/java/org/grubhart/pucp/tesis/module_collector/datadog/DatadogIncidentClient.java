@@ -1,6 +1,8 @@
 package org.grubhart.pucp.tesis.module_collector.datadog;
 
 import org.grubhart.pucp.tesis.module_collector.datadog.dto.DatadogIncidentResponse;
+import org.grubhart.pucp.tesis.module_domain.DatadogServiceCollector;
+import org.grubhart.pucp.tesis.module_domain.DatadogServicesResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,7 +19,7 @@ import java.time.format.DateTimeFormatter;
  * Uses WebClient to fetch incident data for DORA metrics calculation (MTTR, CFR).
  */
 @Component
-public class DatadogIncidentClient {
+public class DatadogIncidentClient implements DatadogServiceCollector {
 
     private static final Logger logger = LoggerFactory.getLogger(DatadogIncidentClient.class);
     private final WebClient webClient;
@@ -97,6 +99,35 @@ public class DatadogIncidentClient {
             return response;
         } catch (Exception e) {
             logger.error("Failed to fetch incidents from Datadog API", e);
+            throw e;
+        }
+    }
+
+    /**
+     * Fetches the list of APM services from Datadog.
+     * This endpoint returns all services that are actively sending traces to Datadog.
+     *
+     * @return DatadogServicesResponse containing the list of service names
+     */
+    public DatadogServicesResponse getServices() {
+        logger.debug("Fetching services from Datadog APM");
+
+        String uri = "/api/v2/services/definitions";
+
+        try {
+            DatadogServicesResponse response = webClient.get()
+                    .uri(uri)
+                    .retrieve()
+                    .bodyToMono(DatadogServicesResponse.class)
+                    .doOnError(error -> logger.error("Error fetching services from Datadog", error))
+                    .block();
+
+            int serviceCount = response != null && response.data() != null ? response.data().size() : 0;
+            logger.info("Successfully fetched {} services from Datadog", serviceCount);
+
+            return response;
+        } catch (Exception e) {
+            logger.error("Failed to fetch services from Datadog API", e);
             throw e;
         }
     }
