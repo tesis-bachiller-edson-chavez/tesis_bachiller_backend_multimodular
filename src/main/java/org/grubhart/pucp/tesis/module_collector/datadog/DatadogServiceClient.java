@@ -1,6 +1,8 @@
 package org.grubhart.pucp.tesis.module_collector.datadog;
 
 import org.grubhart.pucp.tesis.module_collector.datadog.dto.DatadogServiceResponse;
+import org.grubhart.pucp.tesis.module_domain.DatadogServiceCollector;
+import org.grubhart.pucp.tesis.module_domain.DatadogServicesResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,7 +14,7 @@ import org.springframework.web.reactive.function.client.WebClient;
  * Uses WebClient to fetch service definitions from Datadog.
  */
 @Component
-public class DatadogServiceClient {
+public class DatadogServiceClient implements DatadogServiceCollector {
 
     private static final Logger logger = LoggerFactory.getLogger(DatadogServiceClient.class);
     private final WebClient webClient;
@@ -38,9 +40,10 @@ public class DatadogServiceClient {
      * If you want to list services from APM/traces automatically, you may need to use
      * a different endpoint or approach.
      *
-     * @return DatadogServiceResponse containing the list of services
+     * @return DatadogServicesResponse containing the list of services
      */
-    public DatadogServiceResponse getServices() {
+    @Override
+    public DatadogServicesResponse getServices() {
         String endpoint = "/api/v2/services/definitions";
         logger.info("Fetching services from Datadog Service Catalog: {}", endpoint);
 
@@ -59,14 +62,14 @@ public class DatadogServiceClient {
 
             if (rawResponse == null || rawResponse.isEmpty()) {
                 logger.warn("Received null or empty response from Datadog Service Catalog");
-                return new DatadogServiceResponse(null);
+                return new DatadogServicesResponse(null);
             }
 
             // Now try to parse it
-            DatadogServiceResponse response = webClient.get()
+            DatadogServicesResponse response = webClient.get()
                     .uri(endpoint)
                     .retrieve()
-                    .bodyToMono(DatadogServiceResponse.class)
+                    .bodyToMono(DatadogServicesResponse.class)
                     .block();
 
             int serviceCount = response != null && response.data() != null ? response.data().size() : 0;
@@ -79,7 +82,7 @@ public class DatadogServiceClient {
                         "Consider registering services manually or entering service names directly.");
             }
 
-            return response != null ? response : new DatadogServiceResponse(null);
+            return response != null ? response : new DatadogServicesResponse(null);
         } catch (Exception e) {
             logger.error("Failed to fetch services from Datadog API. " +
                     "Verify your API key and Application key have the correct permissions.", e);

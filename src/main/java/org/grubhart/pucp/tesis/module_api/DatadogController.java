@@ -72,8 +72,8 @@ public class DatadogController {
             }
 
             List<DatadogServiceDto> services = response.data().stream()
-                    .filter(service -> service.attributes() != null && service.attributes().serviceName() != null)
-                    .map(service -> new DatadogServiceDto(service.attributes().serviceName()))
+                    .filter(service -> service.attributes() != null && service.attributes().name() != null)
+                    .map(service -> new DatadogServiceDto(service.attributes().name()))
                     .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
                     .collect(Collectors.toList());
 
