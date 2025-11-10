@@ -86,8 +86,15 @@ class IncidentSyncServiceTest {
         RepositoryConfig validServiceConfig = new RepositoryConfig("https://github.com/test/repo-valid", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(nullServiceConfig, validServiceConfig));
 
-        DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(Collections.emptyList(), new DatadogMeta(new DatadogPagination(0, 0)));
-        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(emptyResponse);
+        // Create a response with at least one incident so SyncStatus will be updated
+        Instant now = Instant.now();
+        DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
+                List.of(new DatadogIncidentData("inc-1", "incidents",
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                new DatadogMeta(new DatadogPagination(0, 1))
+        );
+        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
+        when(incidentRepository.findByDatadogIncidentId(any())).thenReturn(Optional.empty());
 
         // When
         incidentSyncService.syncIncidents();
@@ -106,8 +113,15 @@ class IncidentSyncServiceTest {
         RepositoryConfig validServiceConfig = new RepositoryConfig("https://github.com/test/repo-valid", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(blankServiceConfig, validServiceConfig));
 
-        DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(Collections.emptyList(), new DatadogMeta(new DatadogPagination(0, 0)));
-        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(emptyResponse);
+        // Create a response with at least one incident so SyncStatus will be updated
+        Instant now = Instant.now();
+        DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
+                List.of(new DatadogIncidentData("inc-1", "incidents",
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                new DatadogMeta(new DatadogPagination(0, 1))
+        );
+        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
+        when(incidentRepository.findByDatadogIncidentId(any())).thenReturn(Optional.empty());
 
         // When
         incidentSyncService.syncIncidents();
@@ -131,8 +145,15 @@ class IncidentSyncServiceTest {
         when(datadogClient.getIncidents(any(Instant.class), eq(failingService)))
                 .thenThrow(new RuntimeException("API connection failed"));
 
-        DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(Collections.emptyList(), new DatadogMeta(new DatadogPagination(0, 0)));
-        when(datadogClient.getIncidents(any(Instant.class), eq(workingService))).thenReturn(emptyResponse);
+        // Create a response with at least one incident so SyncStatus will be updated
+        Instant now = Instant.now();
+        DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
+                List.of(new DatadogIncidentData("inc-1", "incidents",
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                new DatadogMeta(new DatadogPagination(0, 1))
+        );
+        when(datadogClient.getIncidents(any(Instant.class), eq(workingService))).thenReturn(responseWithIncident);
+        when(incidentRepository.findByDatadogIncidentId(any())).thenReturn(Optional.empty());
 
         // When
         incidentSyncService.syncIncidents();
@@ -151,8 +172,15 @@ class IncidentSyncServiceTest {
         RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2", "service2");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
 
-        DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(Collections.emptyList(), new DatadogMeta(new DatadogPagination(0, 0)));
-        when(datadogClient.getIncidents(any(Instant.class), anyString())).thenReturn(emptyResponse);
+        // Create responses with at least one incident so SyncStatus will be updated
+        Instant now = Instant.now();
+        DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
+                List.of(new DatadogIncidentData("inc-1", "incidents",
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                new DatadogMeta(new DatadogPagination(0, 1))
+        );
+        when(datadogClient.getIncidents(any(Instant.class), anyString())).thenReturn(responseWithIncident);
+        when(incidentRepository.findByDatadogIncidentId(any())).thenReturn(Optional.empty());
 
         // WHEN
         incidentSyncService.syncIncidents();
@@ -165,17 +193,22 @@ class IncidentSyncServiceTest {
 
 
     @Test
-    @DisplayName("GIVEN no previous sync WHEN syncing incidents THEN should fetch incidents from epoch time")
+    @DisplayName("GIVEN no previous sync WHEN syncing incidents THEN should fetch incidents from 30 days ago")
     void shouldFetchIncidentsFromEpochWhenNoPreviousSync() {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
         when(syncStatusRepository.findById(JOB_NAME_PREFIX + SERVICE_NAME)).thenReturn(Optional.empty());
-        DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(
-                Collections.emptyList(),
-                new DatadogMeta(new DatadogPagination(0, 0))
+
+        // Create a response with at least one incident so SyncStatus will be updated
+        Instant now = Instant.now();
+        DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
+                List.of(new DatadogIncidentData("inc-1", "incidents",
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                new DatadogMeta(new DatadogPagination(0, 1))
         );
-        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(emptyResponse);
+        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
+        when(incidentRepository.findByDatadogIncidentId(any())).thenReturn(Optional.empty());
 
         // When
         incidentSyncService.syncIncidents();
@@ -409,7 +442,7 @@ class IncidentSyncServiceTest {
     }
 
     @Test
-    @DisplayName("GIVEN empty response from Datadog WHEN syncing THEN should not save any incidents")
+    @DisplayName("GIVEN empty response from Datadog WHEN syncing THEN should not save any incidents or update sync status")
     void shouldHandleEmptyResponseGracefully() {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
@@ -426,7 +459,7 @@ class IncidentSyncServiceTest {
 
         // Then
         verify(incidentRepository, never()).save(any(Incident.class));
-        verify(syncStatusRepository).save(any(SyncStatus.class)); // Still updates sync status
+        verify(syncStatusRepository, never()).save(any(SyncStatus.class)); // Should NOT update sync status when no incidents
     }
 
     @Test
