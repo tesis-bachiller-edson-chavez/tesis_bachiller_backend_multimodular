@@ -336,13 +336,22 @@ class DeploymentSyncServiceTest {
         repo2.setDeploymentWorkflowFileName("deploy2.yml");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
 
+        // Configure workflow runs for both repos
+        GitHubWorkflowRunDto run1 = createWorkflowRun(1L, "sha1", "success", "main");
+        GitHubWorkflowRunDto run2 = createWorkflowRun(2L, "sha2", "success", "main");
+        when(githubClient.getWorkflowRuns(eq("owner1"), eq("repo1"), eq("deploy1.yml"), any()))
+                .thenReturn(List.of(run1));
+        when(githubClient.getWorkflowRuns(eq("owner2"), eq("repo2"), eq("deploy2.yml"), any()))
+                .thenReturn(List.of(run2));
+        when(deploymentRepository.existsById(anyLong())).thenReturn(false);
+
         // WHEN
         deploymentSyncService.syncDeployments();
 
         // THEN
         verify(githubClient, times(1)).getWorkflowRuns(eq("owner1"), eq("repo1"), eq("deploy1.yml"), any());
         verify(githubClient, times(1)).getWorkflowRuns(eq("owner2"), eq("repo2"), eq("deploy2.yml"), any());
-        verify(syncStatusRepository, times(2)).save(any());
+        verify(syncStatusRepository, times(2)).save(any()); // Should save for both repos since both have new deployments
     }
 
     @Test
