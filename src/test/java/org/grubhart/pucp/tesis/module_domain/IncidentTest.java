@@ -60,6 +60,7 @@ class IncidentTest {
         // When
         Incident incident = new Incident(
                 datadogIncidentId,
+                null,
                 title,
                 state,
                 severity,
@@ -96,6 +97,7 @@ class IncidentTest {
         // When
         Incident incident = new Incident(
                 "INC-789",
+                null,
                 "Ongoing database issue",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
@@ -122,6 +124,7 @@ class IncidentTest {
         LocalDateTime now = LocalDateTime.now();
         Incident incident1 = new Incident(
                 "INC-123",
+                null,
                 "Title 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -136,6 +139,7 @@ class IncidentTest {
 
         Incident incident2 = new Incident(
                 "INC-123",
+                null,
                 "Title 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -150,6 +154,7 @@ class IncidentTest {
 
         Incident incident3 = new Incident(
                 "INC-456",
+                null,
                 "Title 2",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
@@ -177,6 +182,7 @@ class IncidentTest {
         LocalDateTime now = LocalDateTime.now();
         Incident incident = new Incident(
                 "INC-123",
+                null,
                 "Title",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
