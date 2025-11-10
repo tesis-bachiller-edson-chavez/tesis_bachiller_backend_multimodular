@@ -348,8 +348,6 @@ class LeadTimeCalculationServiceTest {
                 .thenReturn(Optional.of(commitA1));
         when(commitRepository.findByRepositoryIdAndSha(eq(repoA.getId()), eq("sha-a2")))
                 .thenReturn(Optional.of(commitA2));
-        when(commitRepository.findByRepositoryIdAndSha(eq(repoB.getId()), anyString()))
-                .thenReturn(Optional.empty());
 
         // WHEN
         service.calculate();
