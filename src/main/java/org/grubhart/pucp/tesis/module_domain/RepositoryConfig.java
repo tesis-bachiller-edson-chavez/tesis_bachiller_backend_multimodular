@@ -23,6 +23,13 @@ public class RepositoryConfig {
      */
     private String datadogServiceName;
 
+    /**
+     * The file name of the GitHub Actions workflow that handles deployments.
+     * Example: "deploy.yml"
+     */
+    private String deploymentWorkflowFileName;
+
+
 
     protected RepositoryConfig() {
     }
@@ -75,6 +82,14 @@ public class RepositoryConfig {
         return null;
     }
 
+    public String getDeploymentWorkflowFileName(){
+        return  deploymentWorkflowFileName;
+    }
+
+    public void setDeploymentWorkflowFileName(String deploymentWorkflowFileName) {
+        this.deploymentWorkflowFileName = deploymentWorkflowFileName;
+    }
+
     public String getRepoName() {
         if (repositoryUrl == null) {
             return null;
@@ -112,5 +127,9 @@ public class RepositoryConfig {
 
     public void setDatadogServiceName(String datadogServiceName) {
         this.datadogServiceName = datadogServiceName;
+    }
+
+    public void setRepositoryUrl(String repositoryUrl) {
+        this.repositoryUrl = repositoryUrl;
     }
 }

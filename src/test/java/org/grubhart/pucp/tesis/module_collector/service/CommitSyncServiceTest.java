@@ -400,4 +400,21 @@ class CommitSyncServiceTest {
         // La aserción clave: verificamos que NUNCA se intentó guardar ninguna relación de parentesco.
         verify(commitParentRepository, never()).saveAll(any());
     }
+
+    @Test
+    @DisplayName("Dado múltiples repositorios, debe sincronizar commits para todos")
+    void shouldSyncForAllConfiguredRepositories() {
+        // GIVEN
+        RepositoryConfig repo1 = new RepositoryConfig("https://github.com/owner1/repo1");
+        RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
+
+        // WHEN
+        commitSyncService.syncCommits();
+
+        // THEN
+        verify(githubCommitCollector, times(1)).getCommits(eq("owner1"), eq("repo1"), any());
+        verify(githubCommitCollector, times(1)).getCommits(eq("owner2"), eq("repo2"), any());
+        verify(syncStatusRepository, times(2)).save(any());
+    }
 }

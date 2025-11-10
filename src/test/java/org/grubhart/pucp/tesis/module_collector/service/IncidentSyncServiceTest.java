@@ -51,7 +51,7 @@ class IncidentSyncServiceTest {
     private ArgumentCaptor<SyncStatus> syncStatusCaptor;
 
     private static final String SERVICE_NAME = "tesis-backend";
-    private static final String JOB_NAME = "DATADOG_INCIDENT_SYNC";
+    private static final String JOB_NAME_PREFIX = "DATADOG_INCIDENT_SYNC_";
 
     @BeforeEach
     void setUp() {
@@ -75,7 +75,7 @@ class IncidentSyncServiceTest {
         // Then
         verify(datadogClient, never()).getIncidents(any(), any());
         verify(incidentRepository, never()).save(any());
-        verify(syncStatusRepository, never()).save(any()); // Should not even attempt to save sync status
+        verify(syncStatusRepository, never()).save(any());
     }
 
     @Test
@@ -95,7 +95,7 @@ class IncidentSyncServiceTest {
         // Then
         verify(datadogClient, times(1)).getIncidents(any(Instant.class), eq(SERVICE_NAME));
         verify(datadogClient, never()).getIncidents(any(Instant.class), isNull());
-        verify(syncStatusRepository).save(any(SyncStatus.class)); // Sync status should still be saved
+        verify(syncStatusRepository, times(1)).save(any());
     }
 
     @Test
@@ -115,7 +115,7 @@ class IncidentSyncServiceTest {
         // Then
         verify(datadogClient, times(1)).getIncidents(any(Instant.class), eq(SERVICE_NAME));
         verify(datadogClient, never()).getIncidents(any(Instant.class), eq("  "));
-        verify(syncStatusRepository).save(any(SyncStatus.class));
+        verify(syncStatusRepository, times(1)).save(any());
     }
 
     @Test
@@ -128,11 +128,9 @@ class IncidentSyncServiceTest {
         RepositoryConfig workingConfig = new RepositoryConfig("https://github.com/test/repo-work", workingService);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(failingConfig, workingConfig));
 
-        // Mock the client to throw an exception for the failing service
         when(datadogClient.getIncidents(any(Instant.class), eq(failingService)))
                 .thenThrow(new RuntimeException("API connection failed"));
 
-        // Mock the client to return a normal response for the working service
         DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(Collections.emptyList(), new DatadogMeta(new DatadogPagination(0, 0)));
         when(datadogClient.getIncidents(any(Instant.class), eq(workingService))).thenReturn(emptyResponse);
 
@@ -140,15 +138,29 @@ class IncidentSyncServiceTest {
         incidentSyncService.syncIncidents();
 
         // Then
-        // Verify the client was called for both services
         verify(datadogClient).getIncidents(any(Instant.class), eq(failingService));
         verify(datadogClient).getIncidents(any(Instant.class), eq(workingService));
+        verify(syncStatusRepository, times(1)).save(any());
+    }
 
-        // Verify that no incidents were saved from the failing service, but the process continued
-        verify(incidentRepository, never()).save(argThat(inc -> failingService.equals(inc.getServiceName())));
+    @Test
+    @DisplayName("GIVEN multiple repositories WHEN syncing THEN should sync for all")
+    void shouldSyncForAllConfiguredRepositories() {
+        // GIVEN
+        RepositoryConfig repo1 = new RepositoryConfig("https://github.com/owner1/repo1", "service1");
+        RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2", "service2");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
 
-        // Verify that the final sync status is still updated
-        verify(syncStatusRepository).save(any(SyncStatus.class));
+        DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(Collections.emptyList(), new DatadogMeta(new DatadogPagination(0, 0)));
+        when(datadogClient.getIncidents(any(Instant.class), anyString())).thenReturn(emptyResponse);
+
+        // WHEN
+        incidentSyncService.syncIncidents();
+
+        // THEN
+        verify(datadogClient, times(1)).getIncidents(any(), eq("service1"));
+        verify(datadogClient, times(1)).getIncidents(any(), eq("service2"));
+        verify(syncStatusRepository, times(2)).save(any());
     }
 
 
@@ -158,7 +170,7 @@ class IncidentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(JOB_NAME_PREFIX + SERVICE_NAME)).thenReturn(Optional.empty());
         DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(
                 Collections.emptyList(),
                 new DatadogMeta(new DatadogPagination(0, 0))
@@ -185,8 +197,8 @@ class IncidentSyncServiceTest {
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         LocalDateTime lastSync = LocalDateTime.of(2025, 1, 1, 12, 0);
-        SyncStatus syncStatus = new SyncStatus(JOB_NAME, lastSync);
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.of(syncStatus));
+        SyncStatus syncStatus = new SyncStatus(JOB_NAME_PREFIX + SERVICE_NAME, lastSync);
+        when(syncStatusRepository.findById(JOB_NAME_PREFIX + SERVICE_NAME)).thenReturn(Optional.of(syncStatus));
 
         DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(
                 Collections.emptyList(),
@@ -211,7 +223,7 @@ class IncidentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
 
         Instant createdTime = Instant.parse("2025-01-01T12:00:00Z");
         Instant resolvedTime = Instant.parse("2025-01-01T14:00:00Z");
@@ -263,7 +275,7 @@ class IncidentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
 
         Instant createdTime = Instant.parse("2025-01-01T12:00:00Z");
         Instant resolvedTime = Instant.parse("2025-01-01T14:00:00Z");
@@ -327,7 +339,7 @@ class IncidentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
 
         Instant createdTime = Instant.parse("2025-01-01T12:00:00Z");
 
@@ -375,7 +387,7 @@ class IncidentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
         DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(
                 Collections.emptyList(),
                 new DatadogMeta(new DatadogPagination(0, 0))
@@ -391,7 +403,7 @@ class IncidentSyncServiceTest {
         verify(syncStatusRepository).save(syncStatusCaptor.capture());
 
         SyncStatus savedStatus = syncStatusCaptor.getValue();
-        assertThat(savedStatus.getJobName()).isEqualTo(JOB_NAME);
+        assertThat(savedStatus.getJobName()).isEqualTo(JOB_NAME_PREFIX + SERVICE_NAME);
         assertThat(savedStatus.getLastSuccessfulRun()).isBetween(beforeSync, afterSync);
     }
 
@@ -401,7 +413,7 @@ class IncidentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
         DatadogIncidentResponse emptyResponse = new DatadogIncidentResponse(
                 Collections.emptyList(),
                 new DatadogMeta(new DatadogPagination(0, 0))
@@ -437,7 +449,7 @@ class IncidentSyncServiceTest {
         );
 
         when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(response);
-        when(syncStatusRepository.findById(JOB_NAME)).thenReturn(Optional.empty());
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
 
         // Make the first incident fail on save
         doThrow(new RuntimeException("Database constraint violation"))

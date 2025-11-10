@@ -7,6 +7,8 @@ import org.grubhart.pucp.tesis.module_domain.RepositoryConfigRepository;
 import org.grubhart.pucp.tesis.module_domain.RepositorySyncResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -26,12 +28,15 @@ public class RepositorySyncService implements org.grubhart.pucp.tesis.module_dom
 
     private final GithubRepositoryCollector githubRepositoryCollector;
     private final RepositoryConfigRepository repositoryConfigRepository;
+    private final String organizationName;
 
     public RepositorySyncService(
             GithubRepositoryCollector githubRepositoryCollector,
-            RepositoryConfigRepository repositoryConfigRepository) {
+            RepositoryConfigRepository repositoryConfigRepository,
+            @Value("${dora.github.organization-name}") String organizationName) {
         this.githubRepositoryCollector = githubRepositoryCollector;
         this.repositoryConfigRepository = repositoryConfigRepository;
+        this.organizationName = organizationName;
     }
 
     /**
@@ -42,11 +47,12 @@ public class RepositorySyncService implements org.grubhart.pucp.tesis.module_dom
      *
      * @return Resultado de la sincronización con estadísticas
      */
+    @Scheduled(initialDelay = 10000, fixedRate = 3600000)
     public RepositorySyncResult synchronizeRepositories() {
-        logger.info("Starting repository synchronization from GitHub");
+        logger.info("Starting repository synchronization from GitHub for organization '{}'", organizationName);
 
         // 1. Get remote repositories from GitHub
-        List<GithubRepositoryDto> githubRepos = githubRepositoryCollector.getUserRepositories();
+        List<GithubRepositoryDto> githubRepos = githubRepositoryCollector.getOrgRepositories(organizationName);
         logger.debug("Fetched {} repositories from GitHub", githubRepos.size());
 
         // Create a map for fast lookup by URL

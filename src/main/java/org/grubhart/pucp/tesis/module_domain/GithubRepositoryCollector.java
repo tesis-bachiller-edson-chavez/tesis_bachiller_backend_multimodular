@@ -9,9 +9,10 @@ import java.util.List;
 public interface GithubRepositoryCollector {
 
     /**
-     * Obtiene la lista de repositorios del usuario autenticado.
+     * Obtiene la lista de repositorios de una organización en GitHub.
      *
-     * @return Lista de repositorios accesibles por el usuario autenticado
+     * @param organizationName Nombre de la organización en GitHub
+     * @return Lista de repositorios de la organización
      */
-    List<GithubRepositoryDto> getUserRepositories();
+    List<GithubRepositoryDto> getOrgRepositories(String organizationName);
 }

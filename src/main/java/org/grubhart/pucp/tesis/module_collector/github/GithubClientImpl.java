@@ -343,15 +343,15 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
     }
 
     @Override
-    public List<GithubRepositoryDto> getUserRepositories() {
-        String initialUrl = UriComponentsBuilder.fromPath("/user/repos")
-                .queryParam("affiliation", "owner,collaborator")
+    public List<GithubRepositoryDto> getOrgRepositories(String organizationName) {
+        String initialUrl = UriComponentsBuilder.fromPath("/orgs/{org}/repos")
+                .queryParam("type", "all")
                 .queryParam("sort", "updated")
-                .queryParam("per_page", 100)
-                .build()
+                .queryParam("per_page", 70)
+                .buildAndExpand(organizationName)
                 .toString();
 
-        logger.info("Fetching user repositories from GitHub");
+        logger.info("Fetching repositories for organization '{}' from GitHub", organizationName);
 
         List<GithubRepositoryDto> allRepositories = new ArrayList<>();
         String nextPageUrl = initialUrl;
@@ -359,6 +359,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
         try {
             while (nextPageUrl != null) {
                 final String currentUrl = nextPageUrl;
+                logger.info("Requesting repositories from URL: {}", currentUrl);
                 try {
                     ResponseEntity<List<GithubRepositoryDto>> responseEntity = webClient.get()
                             .uri(currentUrl)
@@ -389,24 +390,31 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
             logger.warn("Error during paginated repository collection. Returning partial results. Error: {}", e.getMessage());
         }
 
-        logger.info("Successfully fetched {} repositories from GitHub", allRepositories.size());
+        logger.info("Successfully fetched {} repositories from GitHub for organization '{}'", allRepositories.size(), organizationName);
         return allRepositories;
     }
 
     String parseNextPageUrl(List<String> linkHeaders) {
-        if (linkHeaders == null) {
+        if (linkHeaders == null || linkHeaders.isEmpty()) {
             return null;
         }
 
-        Pattern nextLinkPattern = Pattern.compile("<([^>]+)>\s*;\s*rel=\"next\"");
+        Pattern nextLinkPattern = Pattern.compile("<([^>]+)>\\s*;\\s*rel=\"next\"");
 
-        return linkHeaders.stream()
-                .filter(Objects::nonNull)
-                .flatMap(header -> Stream.of(header.split(",")))
-                .map(part -> nextLinkPattern.matcher(part.trim()))
-                .filter(Matcher::find)
-                .map(matcher -> matcher.group(1))
-                .findFirst()
-                .orElse(null);
+        for (String linkHeader : linkHeaders) {
+            if (linkHeader == null) {
+                continue;
+            }
+            // The header can contain multiple links, separated by a comma
+            String[] links = linkHeader.split(",\\s*");
+            for (String link : links) {
+                Matcher matcher = nextLinkPattern.matcher(link);
+                if (matcher.find()) {
+                    return matcher.group(1);
+                }
+            }
+        }
+
+        return null;
     }
 }
