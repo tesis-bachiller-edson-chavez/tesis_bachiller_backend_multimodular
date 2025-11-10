@@ -13,6 +13,8 @@ public interface CommitRepository extends JpaRepository<Commit, String> {
 
     Optional<Commit> findBySha(String sha);
 
+    Optional<Commit> findByRepositoryIdAndSha(Long repositoryId, String sha);
+
     Optional<Commit> findFirstByOrderByDateDesc();
 
     @Query(value = "WITH RECURSIVE commit_graph AS ( " +

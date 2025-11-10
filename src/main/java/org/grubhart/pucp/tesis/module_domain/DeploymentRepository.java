@@ -20,5 +20,9 @@ public interface DeploymentRepository extends JpaRepository<Deployment, Long> {
 
     Optional<Deployment> findFirstByEnvironmentAndCreatedAtBefore(String environment, LocalDateTime createdAt, Sort sort);
 
+    Optional<Deployment> findFirstByRepositoryIdAndEnvironmentAndCreatedAtBefore(Long repositoryId, String environment, LocalDateTime createdAt, Sort sort);
+
     List<Deployment> findByEnvironmentAndCreatedAtBetween(String environment, LocalDate startDate, LocalDate endDate);
+
+    List<Deployment> findByRepositoryIdAndEnvironmentAndCreatedAtBetween(Long repositoryId, String environment, LocalDate startDate, LocalDate endDate);
 }
