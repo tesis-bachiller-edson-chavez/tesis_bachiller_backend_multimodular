@@ -427,4 +427,178 @@ class DatadogIncidentClientTest {
             assertThat(fields.severity().value()).isEqualTo("SEV-2");
         });
     }
+
+    @Test
+    @DisplayName("GIVEN Datadog returns multiple pages WHEN fetching incidents THEN should fetch all pages and consolidate results")
+    void shouldFetchAllPagesOfIncidents() throws InterruptedException {
+        // Given - First page with 100 incidents
+        StringBuilder firstPageJson = new StringBuilder("{\"data\": [");
+        for (int i = 0; i < 100; i++) {
+            if (i > 0) firstPageJson.append(",");
+            firstPageJson.append(String.format("""
+                {
+                  "id": "incident-%d",
+                  "type": "incidents",
+                  "attributes": {
+                    "title": "Incident %d",
+                    "customer_impact_scope": "none",
+                    "created": "2025-01-01T12:00:00Z",
+                    "modified": "2025-01-01T12:00:00Z",
+                    "resolved": null,
+                    "state": "active",
+                    "severity": "SEV-5"
+                  }
+                }
+                """, i, i));
+        }
+        firstPageJson.append("], \"meta\": {\"pagination\": {\"offset\": 0, \"size\": 100}}}");
+
+        // Second page with 50 incidents (last page)
+        StringBuilder secondPageJson = new StringBuilder("{\"data\": [");
+        for (int i = 100; i < 150; i++) {
+            if (i > 100) secondPageJson.append(",");
+            secondPageJson.append(String.format("""
+                {
+                  "id": "incident-%d",
+                  "type": "incidents",
+                  "attributes": {
+                    "title": "Incident %d",
+                    "customer_impact_scope": "none",
+                    "created": "2025-01-01T12:00:00Z",
+                    "modified": "2025-01-01T12:00:00Z",
+                    "resolved": null,
+                    "state": "active",
+                    "severity": "SEV-5"
+                  }
+                }
+                """, i, i));
+        }
+        secondPageJson.append("], \"meta\": {\"pagination\": {\"offset\": 100, \"size\": 50}}}");
+
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(firstPageJson.toString())
+                .addHeader("Content-Type", "application/json"));
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(secondPageJson.toString())
+                .addHeader("Content-Type", "application/json"));
+
+        Instant since = Instant.parse("2025-01-01T00:00:00Z");
+
+        // When
+        DatadogIncidentResponse response = datadogClient.getIncidents(since);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.data()).hasSize(150); // All incidents from both pages
+
+        // Verify both requests were made
+        RecordedRequest request1 = mockWebServer.takeRequest();
+        assertThat(request1.getPath()).contains("page%5Boffset%5D=0");
+        assertThat(request1.getPath()).contains("page%5Bsize%5D=100");
+
+        RecordedRequest request2 = mockWebServer.takeRequest();
+        assertThat(request2.getPath()).contains("page%5Boffset%5D=100");
+        assertThat(request2.getPath()).contains("page%5Bsize%5D=100");
+    }
+
+    @Test
+    @DisplayName("GIVEN Datadog returns less than page size WHEN fetching incidents THEN should stop pagination")
+    void shouldStopPaginationWhenPageNotFull() throws InterruptedException {
+        // Given - Single page with only 30 incidents (less than page size of 100)
+        StringBuilder jsonResponse = new StringBuilder("{\"data\": [");
+        for (int i = 0; i < 30; i++) {
+            if (i > 0) jsonResponse.append(",");
+            jsonResponse.append(String.format("""
+                {
+                  "id": "incident-%d",
+                  "type": "incidents",
+                  "attributes": {
+                    "title": "Incident %d",
+                    "customer_impact_scope": "none",
+                    "created": "2025-01-01T12:00:00Z",
+                    "modified": "2025-01-01T12:00:00Z",
+                    "resolved": null,
+                    "state": "active",
+                    "severity": "SEV-5"
+                  }
+                }
+                """, i, i));
+        }
+        jsonResponse.append("], \"meta\": {\"pagination\": {\"offset\": 0, \"size\": 30}}}");
+
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(jsonResponse.toString())
+                .addHeader("Content-Type", "application/json"));
+
+        Instant since = Instant.parse("2025-01-01T00:00:00Z");
+
+        // When
+        DatadogIncidentResponse response = datadogClient.getIncidents(since);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.data()).hasSize(30);
+
+        // Verify only one request was made (no second page fetch)
+        assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("GIVEN pagination with service filter WHEN fetching incidents THEN should include service filter in all pages")
+    void shouldIncludeServiceFilterInAllPaginatedRequests() throws InterruptedException {
+        // Given - Two pages
+        String page1Json = """
+            {
+              "data": [
+                {"id": "inc-1", "type": "incidents", "attributes": {"title": "Test 1", "customer_impact_scope": "none", "created": "2025-01-01T12:00:00Z", "modified": "2025-01-01T12:00:00Z", "state": "active", "severity": "SEV-5"}}
+              ],
+              "meta": {"pagination": {"offset": 0, "size": 1}}
+            }
+            """;
+
+        // Make page 1 return exactly 100 items to trigger pagination
+        StringBuilder fullPage1 = new StringBuilder("{\"data\": [");
+        for (int i = 0; i < 100; i++) {
+            if (i > 0) fullPage1.append(",");
+            fullPage1.append(String.format("""
+                {"id": "inc-%d", "type": "incidents", "attributes": {"title": "Test %d", "customer_impact_scope": "none", "created": "2025-01-01T12:00:00Z", "modified": "2025-01-01T12:00:00Z", "state": "active", "severity": "SEV-5"}}
+                """, i, i));
+        }
+        fullPage1.append("], \"meta\": {\"pagination\": {\"offset\": 0, \"size\": 100}}}");
+
+        String page2Json = """
+            {
+              "data": [
+                {"id": "inc-100", "type": "incidents", "attributes": {"title": "Test 100", "customer_impact_scope": "none", "created": "2025-01-01T12:00:00Z", "modified": "2025-01-01T12:00:00Z", "state": "active", "severity": "SEV-5"}}
+              ],
+              "meta": {"pagination": {"offset": 100, "size": 1}}
+            }
+            """;
+
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(fullPage1.toString())
+                .addHeader("Content-Type", "application/json"));
+        mockWebServer.enqueue(new MockResponse()
+                .setBody(page2Json)
+                .addHeader("Content-Type", "application/json"));
+
+        Instant since = Instant.parse("2025-01-01T00:00:00Z");
+        String serviceName = "my-service";
+
+        // When
+        DatadogIncidentResponse response = datadogClient.getIncidents(since, serviceName);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.data()).hasSize(101);
+
+        // Verify both requests included the service filter
+        RecordedRequest request1 = mockWebServer.takeRequest();
+        assertThat(request1.getPath()).contains("filter%5Bquery%5D");
+        assertThat(request1.getPath()).contains("service:my-service");
+
+        RecordedRequest request2 = mockWebServer.takeRequest();
+        assertThat(request2.getPath()).contains("filter%5Bquery%5D");
+        assertThat(request2.getPath()).contains("service:my-service");
+    }
 }

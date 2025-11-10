@@ -88,10 +88,16 @@ public class IncidentSyncService {
                     }
                 }
 
-                updateSyncStatus(jobName);
+                // Only update sync status if incidents were actually processed
+                if (created > 0 || updated > 0) {
+                    updateSyncStatus(jobName);
+                    log.info("Service {} sync completed: {} created, {} updated", serviceName, created, updated);
+                } else {
+                    log.info("Service {} sync completed: no new or updated incidents found", serviceName);
+                }
+
                 totalCreated += created;
                 totalUpdated += updated;
-                log.info("Service {} sync completed: {} created, {} updated", serviceName, created, updated);
 
             } catch (Exception e) {
                 log.error("Error syncing incidents for service {}: {}", serviceName, e.getMessage(), e);

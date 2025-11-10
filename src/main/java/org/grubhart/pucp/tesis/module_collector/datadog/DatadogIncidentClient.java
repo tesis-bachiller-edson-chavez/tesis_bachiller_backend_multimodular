@@ -63,41 +63,82 @@ public class DatadogIncidentClient {
     /**
      * Fetches incidents from Datadog created or modified since the specified timestamp,
      * optionally filtered by service name.
+     * This method handles pagination automatically and returns all available incidents.
      *
      * @param since The timestamp to filter incidents (only incidents created/modified after this time)
      * @param serviceName The Datadog service name to filter by (optional, can be null)
-     * @return DatadogIncidentResponse containing the list of incidents and metadata
+     * @return DatadogIncidentResponse containing the list of all incidents and metadata
      */
     public DatadogIncidentResponse getIncidents(Instant since, String serviceName) {
         logger.debug("Fetching incidents from Datadog since: {} for service: {}", since, serviceName);
 
         String formattedSince = DateTimeFormatter.ISO_INSTANT.format(since);
-        UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/v2/incidents")
-                .queryParam("filter[since]", formattedSince);
 
-        // Add service filter if provided
-        if (serviceName != null && !serviceName.isBlank()) {
-            // Datadog uses query parameter to filter by service tag
-            uriBuilder.queryParam("filter[query]", "service:" + serviceName);
+        // Fetch all pages of incidents
+        return fetchAllIncidentPages(formattedSince, serviceName);
+    }
+
+    /**
+     * Fetches all pages of incidents from Datadog API with pagination support.
+     *
+     * @param formattedSince ISO-formatted timestamp string
+     * @param serviceName The service name filter (optional)
+     * @return Consolidated DatadogIncidentResponse with all incidents from all pages
+     */
+    private DatadogIncidentResponse fetchAllIncidentPages(String formattedSince, String serviceName) {
+        java.util.List<org.grubhart.pucp.tesis.module_collector.datadog.dto.DatadogIncidentData> allIncidents = new java.util.ArrayList<>();
+        int offset = 0;
+        int pageSize = 100; // Datadog default page size
+        boolean hasMorePages = true;
+        int pageCount = 0;
+
+        while (hasMorePages) {
+            pageCount++;
+            logger.debug("Fetching incidents page {} (offset: {})", pageCount, offset);
+
+            UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/v2/incidents")
+                    .queryParam("filter[since]", formattedSince)
+                    .queryParam("page[offset]", offset)
+                    .queryParam("page[size]", pageSize);
+
+            // Add service filter if provided
+            if (serviceName != null && !serviceName.isBlank()) {
+                uriBuilder.queryParam("filter[query]", "service:" + serviceName);
+            }
+
+            String uri = uriBuilder.build().toUriString();
+
+            try {
+                DatadogIncidentResponse response = webClient.get()
+                        .uri(uri)
+                        .retrieve()
+                        .bodyToMono(DatadogIncidentResponse.class)
+                        .doOnError(error -> logger.error("Error fetching incidents page {} from Datadog", pageCount, error))
+                        .block();
+
+                if (response != null && response.data() != null && !response.data().isEmpty()) {
+                    allIncidents.addAll(response.data());
+                    logger.debug("Fetched {} incidents from page {}", response.data().size(), pageCount);
+
+                    // Check if there are more pages
+                    // If the response has fewer items than pageSize, it's the last page
+                    if (response.data().size() < pageSize) {
+                        hasMorePages = false;
+                    } else {
+                        offset += response.data().size();
+                    }
+                } else {
+                    hasMorePages = false;
+                }
+            } catch (Exception e) {
+                logger.error("Failed to fetch incidents page {} from Datadog API", pageCount, e);
+                throw e;
+            }
         }
 
-        String uri = uriBuilder.build().toUriString();
+        logger.info("Successfully fetched {} total incidents from {} pages", allIncidents.size(), pageCount);
 
-        try {
-            DatadogIncidentResponse response = webClient.get()
-                    .uri(uri)
-                    .retrieve()
-                    .bodyToMono(DatadogIncidentResponse.class)
-                    .doOnError(error -> logger.error("Error fetching incidents from Datadog", error))
-                    .block();
-
-            int incidentCount = response != null && response.data() != null ? response.data().size() : 0;
-            logger.info("Successfully fetched {} incidents from Datadog", incidentCount);
-
-            return response;
-        } catch (Exception e) {
-            logger.error("Failed to fetch incidents from Datadog API", e);
-            throw e;
-        }
+        // Return consolidated response
+        return new DatadogIncidentResponse(allIncidents, null);
     }
 }
