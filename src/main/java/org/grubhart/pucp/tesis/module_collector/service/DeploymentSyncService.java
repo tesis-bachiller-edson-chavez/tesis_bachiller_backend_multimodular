@@ -84,7 +84,7 @@ public class DeploymentSyncService implements DeploymentSyncTrigger {
                 continue;
             }
             try {
-                Deployment deployment = convertToDeployment(run, repositoryConfig.getDatadogServiceName());
+                Deployment deployment = convertToDeployment(run, repositoryConfig);
                 if (!deploymentRepository.existsById(deployment.getGithubId())) {
                     newDeployments.add(deployment);
                 }
@@ -105,16 +105,17 @@ public class DeploymentSyncService implements DeploymentSyncTrigger {
         log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
     }
 
-    private Deployment convertToDeployment(GitHubWorkflowRunDto dto, String serviceName) {
+    private Deployment convertToDeployment(GitHubWorkflowRunDto dto, RepositoryConfig repositoryConfig) {
         if (dto.getHeadSha() == null || dto.getHeadSha().isBlank()) {
             throw new IllegalArgumentException("El SHA del commit es nulo o está vacío.");
         }
         Deployment deployment = new Deployment();
         deployment.setGithubId(dto.getId());
+        deployment.setRepository(repositoryConfig);
         deployment.setName(dto.getName());
         deployment.setHeadBranch(dto.getHeadBranch());
         deployment.setSha(dto.getHeadSha());
-        deployment.setServiceName(serviceName);
+        deployment.setServiceName(repositoryConfig.getDatadogServiceName());
         deployment.setStatus(dto.getStatus());
         deployment.setConclusion(dto.getConclusion());
         deployment.setCreatedAt(dto.getCreatedAt());

@@ -15,6 +15,10 @@ public class Deployment {
     @Column(unique = true)
     private Long githubId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "repository_id", nullable = false)
+    private RepositoryConfig repository;
+
     private String name;
     private String sha;
     private String headBranch;
@@ -23,6 +27,7 @@ public class Deployment {
     /**
      * The Datadog service name this deployment is associated with.
      * Used to correlate deployments with incidents for DORA metrics.
+     * Maintained for reference and debugging purposes.
      */
     private String serviceName;
 
@@ -37,8 +42,9 @@ public class Deployment {
         // JPA constructor
     }
 
-    public Deployment(Long githubId, String name, String sha, String headBranch, String environment, String status, String conclusion, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public Deployment(Long githubId, RepositoryConfig repository, String name, String sha, String headBranch, String environment, String status, String conclusion, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.githubId = githubId;
+        this.repository = repository;
         this.name = name;
         this.sha = sha;
         this.headBranch = headBranch;
@@ -49,8 +55,9 @@ public class Deployment {
         this.updatedAt = updatedAt;
     }
 
-    public Deployment(Long githubId, String name, String sha, String headBranch, String environment, String serviceName, String status, String conclusion, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public Deployment(Long githubId, RepositoryConfig repository, String name, String sha, String headBranch, String environment, String serviceName, String status, String conclusion, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.githubId = githubId;
+        this.repository = repository;
         this.name = name;
         this.sha = sha;
         this.headBranch = headBranch;
@@ -158,6 +165,14 @@ public class Deployment {
 
     public void setLeadTimeProcessed(boolean leadTimeProcessed) {
         this.leadTimeProcessed = leadTimeProcessed;
+    }
+
+    public RepositoryConfig getRepository() {
+        return repository;
+    }
+
+    public void setRepository(RepositoryConfig repository) {
+        this.repository = repository;
     }
 
     @Override

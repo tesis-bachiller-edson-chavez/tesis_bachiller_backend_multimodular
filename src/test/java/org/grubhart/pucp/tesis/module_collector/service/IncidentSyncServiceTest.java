@@ -511,6 +511,7 @@ class IncidentSyncServiceTest {
     @DisplayName("GIVEN incident with null modified date WHEN mapping THEN should use created date for updated_at")
     void shouldUseCreatedDateForUpdatedAtWhenModifiedDateIsNull() {
         // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/test/repo", SERVICE_NAME);
         Instant createdTime = Instant.parse("2025-02-01T10:00:00Z");
         DatadogIncidentData incidentData = new DatadogIncidentData(
                 "incident-null-modified",
@@ -521,10 +522,46 @@ class IncidentSyncServiceTest {
         );
 
         // When
-        Incident result = incidentSyncService.mapToIncident(incidentData, SERVICE_NAME);
+        Incident result = incidentSyncService.mapToIncident(incidentData, repoConfig);
 
         // Then
         assertThat(result.getUpdatedAt()).isEqualTo(result.getCreatedAt());
         assertThat(result.getUpdatedAt()).isEqualTo(LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC));
+    }
+
+    @Test
+    @DisplayName("GIVEN a new incident WHEN syncing THEN should assign repository correctly")
+    void shouldAssignRepositoryToNewIncident() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo", SERVICE_NAME);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        Instant createdTime = Instant.parse("2025-02-01T10:00:00Z");
+        DatadogIncidentData incidentData = new DatadogIncidentData(
+                "incident-123",
+                "incidents",
+                new DatadogIncidentAttributes(
+                        "Test Incident", "none", createdTime, null, null, "active", "SEV-1", null
+                )
+        );
+        DatadogIncidentResponse response = new DatadogIncidentResponse(
+                List.of(incidentData),
+                new DatadogMeta(new DatadogPagination(1, 0))
+        );
+
+        when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(response);
+        when(incidentRepository.findByDatadogIncidentId("incident-123")).thenReturn(Optional.empty());
+
+        // When
+        incidentSyncService.syncIncidents();
+
+        // Then
+        verify(incidentRepository).save(incidentCaptor.capture());
+        Incident savedIncident = incidentCaptor.getValue();
+
+        assertThat(savedIncident.getRepository()).isNotNull();
+        assertThat(savedIncident.getRepository()).isEqualTo(repoConfig);
+        assertThat(savedIncident.getServiceName()).isEqualTo(SERVICE_NAME);
+        assertThat(savedIncident.getDatadogIncidentId()).isEqualTo("incident-123");
     }
 }
