@@ -203,6 +203,11 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_ENVIRONMENT"
+    value     = var.environment_name # Para el API de APM Service Dependencies
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
     name      = "DD_SERVICE"
     value     = "tesis-backend"
   }
