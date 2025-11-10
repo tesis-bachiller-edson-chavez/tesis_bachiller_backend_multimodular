@@ -209,4 +209,43 @@ class DeploymentFrequencyServiceTest {
         assertEquals(0, result.size());
         verify(deploymentRepository, never()).findByEnvironmentAndCreatedAtBetween(any(), any(), any());
     }
+
+    @Test
+    void testCalculateByRepository_filtersDeploymentsByRepository() {
+        // GIVEN: Two repositories with different deployments
+        Long repositoryIdA = 1L;
+        Long repositoryIdB = 2L;
+        String environment = "production";
+        LocalDate rangeStart = LocalDate.of(2025, 11, 1);
+        LocalDate rangeEnd = LocalDate.of(2025, 11, 30);
+
+        // Create deployments for repository A (3 deployments)
+        List<Deployment> deploymentsRepoA = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            Deployment dep = new Deployment();
+            dep.setCreatedAt(rangeStart.plusDays(i).atStartOfDay());
+            deploymentsRepoA.add(dep);
+        }
+
+        // Mock: Repository should be called with repository ID filter
+        when(deploymentRepository.findByRepositoryIdAndEnvironmentAndCreatedAtBetween(
+                eq(repositoryIdA), eq(environment), any(LocalDate.class), any(LocalDate.class)))
+                .thenReturn(deploymentsRepoA);
+
+        // WHEN: Calculate frequency for repository A only
+        List<DeploymentFrequency> result = deploymentFrequencyService.calculateByRepository(
+                repositoryIdA, environment, rangeStart, rangeEnd, PeriodType.MONTHLY);
+
+        // THEN: Should use repository-filtered query
+        verify(deploymentRepository).findByRepositoryIdAndEnvironmentAndCreatedAtBetween(
+                eq(repositoryIdA), eq(environment), any(LocalDate.class), any(LocalDate.class));
+
+        // Should NOT query repository B
+        verify(deploymentRepository, never()).findByRepositoryIdAndEnvironmentAndCreatedAtBetween(
+                eq(repositoryIdB), anyString(), any(LocalDate.class), any(LocalDate.class));
+
+        // Should return correct count for repository A only
+        assertEquals(1, result.size());
+        assertEquals(3, result.get(0).getCount());
+    }
 }
