@@ -73,8 +73,22 @@ public class DeploymentSyncService implements DeploymentSyncTrigger {
     }
 
     private void syncDeploymentsForRepository(String owner, String repoName, String workflowFileName, RepositoryConfig repositoryConfig) {
-        Optional<SyncStatus> syncStatus = syncStatusRepository.findById(JOB_NAME + "_" + repoName);
-        LocalDateTime lastRun = syncStatus.map(SyncStatus::getLastSuccessfulRun).orElse(null);
+        // Detect workflow change BEFORE getting sync status
+        boolean workflowChanged = detectAndHandleWorkflowChange(repositoryConfig, workflowFileName);
+
+        // Build sync key with workflow filename (Option 1: include workflow in key)
+        String syncKey = JOB_NAME + "_" + repoName + "_" + workflowFileName;
+        Optional<SyncStatus> syncStatus = syncStatusRepository.findById(syncKey);
+
+        // If workflow changed, ignore existing sync status to force full sync
+        LocalDateTime lastRun = (!workflowChanged && syncStatus.isPresent())
+                ? syncStatus.get().getLastSuccessfulRun()
+                : null;
+
+        if (lastRun == null) {
+            log.info("Starting full sync for {}/{} with workflow '{}' (capturing all historical deployments)",
+                    owner, repoName, workflowFileName);
+        }
 
         List<GitHubWorkflowRunDto> workflowRuns = gitHubClient.getWorkflowRuns(owner, repoName, workflowFileName, lastRun);
 
@@ -101,7 +115,7 @@ public class DeploymentSyncService implements DeploymentSyncTrigger {
             log.info("No se encontraron nuevos deployments para {}/{}.", owner, repoName);
         }
 
-        updateSyncStatus(repoName);
+        updateSyncStatus(repoName, workflowFileName);
         log.info("Sincronización de deployments para {}/{} completada exitosamente.", owner, repoName);
     }
 
@@ -126,8 +140,45 @@ public class DeploymentSyncService implements DeploymentSyncTrigger {
         return deployment;
     }
 
-    private void updateSyncStatus(String repoName) {
-        SyncStatus status = new SyncStatus(JOB_NAME + "_" + repoName, LocalDateTime.now());
+    private void updateSyncStatus(String repoName, String workflowFileName) {
+        String syncKey = JOB_NAME + "_" + repoName + "_" + workflowFileName;
+        SyncStatus status = new SyncStatus(syncKey, LocalDateTime.now());
         syncStatusRepository.save(status);
+        log.debug("Updated sync status: {}", syncKey);
+    }
+
+    /**
+     * Detects if the workflow filename has changed and resets sync status if needed.
+     * This method implements Option 3: tracking the last synced workflow file.
+     *
+     * @param repoConfig The repository configuration
+     * @param currentWorkflow The current workflow filename from configuration
+     * @return true if workflow changed (sync should start from beginning), false otherwise
+     */
+    private boolean detectAndHandleWorkflowChange(RepositoryConfig repoConfig, String currentWorkflow) {
+        String lastWorkflow = repoConfig.getLastSyncedWorkflowFile();
+
+        // First time syncing this repo
+        if (lastWorkflow == null) {
+            log.info("First sync for repository {}. Setting workflow: {}",
+                    repoConfig.getRepositoryUrl(), currentWorkflow);
+            repoConfig.setLastSyncedWorkflowFile(currentWorkflow);
+            repositoryConfigRepository.save(repoConfig);
+            return true; // Treat as change to force full sync
+        }
+
+        // Workflow changed
+        if (!currentWorkflow.equals(lastWorkflow)) {
+            log.warn("Workflow filename changed for repository {} from '{}' to '{}'. " +
+                            "Sync will restart from beginning to capture historical deployments.",
+                    repoConfig.getRepositoryUrl(), lastWorkflow, currentWorkflow);
+
+            repoConfig.setLastSyncedWorkflowFile(currentWorkflow);
+            repositoryConfigRepository.save(repoConfig);
+            return true; // Force full sync
+        }
+
+        // No change
+        return false;
     }
 }

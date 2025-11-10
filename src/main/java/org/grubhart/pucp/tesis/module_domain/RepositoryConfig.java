@@ -29,7 +29,13 @@ public class RepositoryConfig {
      */
     private String deploymentWorkflowFileName;
 
-
+    /**
+     * Tracks the last workflow file name that was successfully synchronized.
+     * Used to detect when the workflow filename changes, triggering a full resync
+     * to capture historical deployments from the new workflow.
+     * Null indicates this repository has never been synced.
+     */
+    private String lastSyncedWorkflowFile;
 
     protected RepositoryConfig() {
     }
@@ -131,5 +137,13 @@ public class RepositoryConfig {
 
     public void setRepositoryUrl(String repositoryUrl) {
         this.repositoryUrl = repositoryUrl;
+    }
+
+    public String getLastSyncedWorkflowFile() {
+        return lastSyncedWorkflowFile;
+    }
+
+    public void setLastSyncedWorkflowFile(String lastSyncedWorkflowFile) {
+        this.lastSyncedWorkflowFile = lastSyncedWorkflowFile;
     }
 }

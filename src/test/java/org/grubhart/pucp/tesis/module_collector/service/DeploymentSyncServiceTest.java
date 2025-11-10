@@ -372,6 +372,134 @@ class DeploymentSyncServiceTest {
         assertThat(savedDeployment.getServiceName()).isEqualTo("test-service");
     }
 
+    @Test
+    @DisplayName("GIVEN workflow filename changes WHEN syncing THEN should reset sync and capture all deployments")
+    void shouldResetSyncWhenWorkflowChanges() {
+        // Given: Initial workflow was "old-deploy.yml"
+        String oldWorkflow = "old-deploy.yml";
+        String newWorkflow = "deploy.yml";
+
+        RepositoryConfig repo = new RepositoryConfig("https://github.com/owner/test-repo");
+        repo.setDeploymentWorkflowFileName(newWorkflow); // Changed to new workflow
+        repo.setLastSyncedWorkflowFile(oldWorkflow); // Was using old workflow
+        repo.setDatadogServiceName("test-service");
+
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo));
+
+        // Create old sync status for old workflow (should be ignored)
+        SyncStatus oldSyncStatus = new SyncStatus(
+                "DEPLOYMENT_SYNC_test-repo_" + oldWorkflow,
+                LocalDateTime.now().minusDays(1)
+        );
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.of(oldSyncStatus));
+
+        // Return deployment when queried with null lastRun (full sync)
+        GitHubWorkflowRunDto deployment = createWorkflowRun(1L, "sha1", "success", "main");
+        when(githubClient.getWorkflowRuns(eq("owner"), eq("test-repo"), eq(newWorkflow), isNull()))
+                .thenReturn(List.of(deployment));
+        when(deploymentRepository.existsById(1L)).thenReturn(false);
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then: Should update lastSyncedWorkflowFile
+        verify(repositoryConfigRepository, atLeastOnce()).save(argThat(r ->
+                newWorkflow.equals(r.getLastSyncedWorkflowFile())
+        ));
+
+        // Then: Should query with null lastRun (full sync)
+        verify(githubClient).getWorkflowRuns(eq("owner"), eq("test-repo"), eq(newWorkflow), isNull());
+
+        // Then: Should save deployment
+        verify(deploymentRepository).saveAll(anyList());
+
+        // Then: Should save sync status with new key format
+        verify(syncStatusRepository).save(argThat(status ->
+                status.getJobName().equals("DEPLOYMENT_SYNC_test-repo_" + newWorkflow)
+        ));
+    }
+
+    @Test
+    @DisplayName("GIVEN first time sync WHEN syncing THEN should set lastSyncedWorkflowFile")
+    void shouldSetLastSyncedWorkflowOnFirstSync() {
+        // Given
+        String workflowFile = "deploy.yml";
+
+        RepositoryConfig repo = new RepositoryConfig("https://github.com/owner/test-repo");
+        repo.setDeploymentWorkflowFileName(workflowFile);
+        repo.setLastSyncedWorkflowFile(null); // First time - never synced
+
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo));
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(Collections.emptyList());
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then: Should set lastSyncedWorkflowFile
+        verify(repositoryConfigRepository, atLeastOnce()).save(argThat(r ->
+                workflowFile.equals(r.getLastSyncedWorkflowFile())
+        ));
+
+        // Then: Should query with null lastRun (full sync on first run)
+        verify(githubClient).getWorkflowRuns(eq("owner"), eq("test-repo"), eq(workflowFile), isNull());
+    }
+
+    @Test
+    @DisplayName("GIVEN same workflow filename WHEN syncing THEN should use existing sync status")
+    void shouldUseExistingSyncStatusWhenWorkflowUnchanged() {
+        // Given
+        String workflowFile = "deploy.yml";
+        LocalDateTime lastSync = LocalDateTime.now().minusHours(1);
+
+        RepositoryConfig repo = new RepositoryConfig("https://github.com/owner/test-repo");
+        repo.setDeploymentWorkflowFileName(workflowFile);
+        repo.setLastSyncedWorkflowFile(workflowFile); // Same workflow - no change
+
+        SyncStatus syncStatus = new SyncStatus(
+                "DEPLOYMENT_SYNC_test-repo_" + workflowFile,
+                lastSync
+        );
+
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo));
+        when(syncStatusRepository.findById("DEPLOYMENT_SYNC_test-repo_" + workflowFile))
+                .thenReturn(Optional.of(syncStatus));
+        when(githubClient.getWorkflowRuns(any(), any(), any(), eq(lastSync)))
+                .thenReturn(Collections.emptyList());
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then: Should use lastSync timestamp (incremental sync)
+        verify(githubClient).getWorkflowRuns(eq("owner"), eq("test-repo"), eq(workflowFile), eq(lastSync));
+
+        // Then: Should NOT update lastSyncedWorkflowFile (no change)
+        verify(repositoryConfigRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("GIVEN new sync key format WHEN updating status THEN should include workflow filename")
+    void shouldIncludeWorkflowInSyncKey() {
+        // Given
+        String workflowFile = "deploy.yml";
+
+        RepositoryConfig repo = new RepositoryConfig("https://github.com/owner/test-repo");
+        repo.setDeploymentWorkflowFileName(workflowFile);
+        repo.setLastSyncedWorkflowFile(workflowFile);
+
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo));
+        when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
+        when(githubClient.getWorkflowRuns(any(), any(), any(), any())).thenReturn(Collections.emptyList());
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then: Should save with new key format including workflow filename
+        verify(syncStatusRepository).save(argThat(status ->
+                status.getJobName().equals("DEPLOYMENT_SYNC_test-repo_" + workflowFile)
+        ));
+    }
+
     private GitHubWorkflowRunDto createWorkflowRun(Long id, String headSha, String conclusion, String branch) {
         GitHubWorkflowRunDto runDto = new GitHubWorkflowRunDto();
         runDto.setId(id);
