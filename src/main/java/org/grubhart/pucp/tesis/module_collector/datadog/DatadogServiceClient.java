@@ -32,14 +32,17 @@ public class DatadogServiceClient {
     }
 
     /**
-     * Fetches all service definitions from Datadog Service Catalog
+     * Fetches all service definitions from Datadog Service Catalog.
+     *
+     * Note: Service Catalog is a separate feature that requires manual service registration.
+     * If you want to list services from APM/traces automatically, you may need to use
+     * a different endpoint or approach.
      *
      * @return DatadogServiceResponse containing the list of services
      */
     public DatadogServiceResponse getServices() {
-        logger.info("Fetching services from Datadog Service Catalog API");
         String endpoint = "/api/v2/services/definitions";
-        logger.info("Using endpoint: {}", endpoint);
+        logger.info("Fetching services from Datadog Service Catalog: {}", endpoint);
 
         try {
             // Log the raw response as String first for debugging
@@ -47,12 +50,15 @@ public class DatadogServiceClient {
                     .uri(endpoint)
                     .retrieve()
                     .bodyToMono(String.class)
-                    .doOnSuccess(body -> logger.info("Raw Datadog API response: {}", body))
                     .doOnError(error -> logger.error("Error fetching services from Datadog", error))
                     .block();
 
+            logger.info("Raw Datadog API response length: {} bytes",
+                    rawResponse != null ? rawResponse.length() : 0);
+            logger.debug("Raw Datadog API response: {}", rawResponse);
+
             if (rawResponse == null || rawResponse.isEmpty()) {
-                logger.warn("Received null or empty response from Datadog");
+                logger.warn("Received null or empty response from Datadog Service Catalog");
                 return new DatadogServiceResponse(null);
             }
 
@@ -64,15 +70,19 @@ public class DatadogServiceClient {
                     .block();
 
             int serviceCount = response != null && response.data() != null ? response.data().size() : 0;
-            logger.info("Successfully fetched {} services from Datadog", serviceCount);
+            logger.info("Successfully fetched {} services from Datadog Service Catalog", serviceCount);
 
             if (serviceCount == 0) {
-                logger.warn("No services found in Datadog. Response data is null: {}", response == null || response.data() == null);
+                logger.warn("No services found in Datadog Service Catalog. " +
+                        "The Service Catalog requires manual service registration. " +
+                        "Services with APM traces are not automatically included here. " +
+                        "Consider registering services manually or entering service names directly.");
             }
 
-            return response;
+            return response != null ? response : new DatadogServiceResponse(null);
         } catch (Exception e) {
-            logger.error("Failed to fetch services from Datadog API", e);
+            logger.error("Failed to fetch services from Datadog API. " +
+                    "Verify your API key and Application key have the correct permissions.", e);
             throw e;
         }
     }
