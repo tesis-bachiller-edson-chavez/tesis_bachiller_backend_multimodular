@@ -107,7 +107,7 @@ public class RepositoryController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Actualizar configuración de un repositorio",
-            description = "Actualiza la configuración de un repositorio, específicamente el nombre del servicio de Datadog asociado. El campo puede ser null para eliminar la asociación. **Requiere rol de ADMIN**.",
+            description = "Actualiza la configuración de un repositorio, específicamente el nombre del servicio de Datadog asociado y el nombre del archivo de workflow de deployment. Ambos campos pueden ser null. **Requiere rol de ADMIN**.",
             parameters = {
                     @Parameter(
                             name = "id",
@@ -139,14 +139,17 @@ public class RepositoryController {
     public ResponseEntity<RepositoryDto> updateRepository(
             @PathVariable Long id,
             @RequestBody UpdateRepositoryRequest request) {
-        logger.debug("Updating repository {} with datadogServiceName: {}", id, request.datadogServiceName());
+        logger.debug("Updating repository {} with datadogServiceName: {}, deploymentWorkflowFileName: {}",
+                id, request.datadogServiceName(), request.deploymentWorkflowFileName());
 
         try {
             return repositoryConfigRepository.findById(id)
                     .map(repo -> {
                         repo.setDatadogServiceName(request.datadogServiceName());
+                        repo.setDeploymentWorkflowFileName(request.deploymentWorkflowFileName());
                         RepositoryConfig updated = repositoryConfigRepository.save(repo);
-                        logger.info("Repository {} updated with datadogServiceName: {}", id, request.datadogServiceName());
+                        logger.info("Repository {} updated with datadogServiceName: {}, deploymentWorkflowFileName: {}",
+                                id, request.datadogServiceName(), request.deploymentWorkflowFileName());
                         return ResponseEntity.ok(mapToDto(updated));
                     })
                     .orElseGet(() -> {
@@ -165,7 +168,8 @@ public class RepositoryController {
                 repo.getRepositoryUrl(),
                 repo.getDatadogServiceName(),
                 repo.getOwner(),
-                repo.getRepoName()
+                repo.getRepoName(),
+                repo.getDeploymentWorkflowFileName()
         );
     }
 }
