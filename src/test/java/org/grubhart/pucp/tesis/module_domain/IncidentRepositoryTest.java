@@ -32,6 +32,7 @@ class IncidentRepositoryTest {
         // Given
         Incident incident = new Incident(
                 "INC-123",
+                null,
                 "Database connection timeout",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -62,6 +63,7 @@ class IncidentRepositoryTest {
         // Given
         Incident incident = new Incident(
                 "INC-456",
+                null,
                 "API rate limit exceeded",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV3,
@@ -99,6 +101,7 @@ class IncidentRepositoryTest {
         // Given
         Incident resolved1 = new Incident(
                 "INC-100",
+                null,
                 "Incident 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -112,6 +115,7 @@ class IncidentRepositoryTest {
 
         Incident resolved2 = new Incident(
                 "INC-101",
+                null,
                 "Incident 2",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV3,
@@ -125,6 +129,7 @@ class IncidentRepositoryTest {
 
         Incident active = new Incident(
                 "INC-102",
+                null,
                 "Incident 3",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
@@ -138,6 +143,7 @@ class IncidentRepositoryTest {
 
         Incident differentService = new Incident(
                 "INC-103",
+                null,
                 "Incident 4",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -151,6 +157,7 @@ class IncidentRepositoryTest {
 
         Incident outsideRange = new Incident(
                 "INC-104",
+                null,
                 "Incident 5",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -190,6 +197,7 @@ class IncidentRepositoryTest {
         // Given
         Incident incident1 = new Incident(
                 "INC-200",
+                null,
                 "Incident 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -203,6 +211,7 @@ class IncidentRepositoryTest {
 
         Incident incident2 = new Incident(
                 "INC-201",
+                null,
                 "Incident 2",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
@@ -216,6 +225,7 @@ class IncidentRepositoryTest {
 
         Incident incident3 = new Incident(
                 "INC-202",
+                null,
                 "Incident 3",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV3,
@@ -229,6 +239,7 @@ class IncidentRepositoryTest {
 
         Incident differentService = new Incident(
                 "INC-203",
+                null,
                 "Incident 4",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
@@ -264,6 +275,7 @@ class IncidentRepositoryTest {
         // Given
         Incident incident1 = new Incident(
                 "INC-DUPLICATE",
+                null,
                 "First incident",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
@@ -278,6 +290,7 @@ class IncidentRepositoryTest {
 
         Incident incident2 = new Incident(
                 "INC-DUPLICATE",
+                null,
                 "Second incident with same ID",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,

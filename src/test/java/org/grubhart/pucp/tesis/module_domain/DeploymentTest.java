@@ -90,7 +90,7 @@ class DeploymentTest {
         String conclusion = "neutral";
 
         // When
-        Deployment deployment = new Deployment(githubId, name, sha, headBranch, environment, serviceName, status, conclusion, now, now);
+        Deployment deployment = new Deployment(githubId, null, name, sha, headBranch, environment, serviceName, status, conclusion, now, now);
 
         // Then
         assertAll("Verify all fields are initialized by the constructor with service name",
@@ -114,19 +114,19 @@ class DeploymentTest {
     void testEqualsAndHashCode() {
         // Given
         LocalDateTime now = LocalDateTime.now();
-        Deployment deployment1 = new Deployment(123L, "name", "sha1", "branch", "production", "status", "conclusion", now, now);
+        Deployment deployment1 = new Deployment(123L, null, "name", "sha1", "branch", "production", "status", "conclusion", now, now);
         deployment1.setId(1L);
 
-        Deployment deployment2 = new Deployment(123L, "name", "sha1", "branch", "production", "status", "conclusion", now, now);
+        Deployment deployment2 = new Deployment(123L, null, "name", "sha1", "branch", "production", "status", "conclusion", now, now);
         deployment2.setId(1L);
 
-        Deployment deployment3 = new Deployment(456L, "another-name", "sha2", "another-branch", "staging", "another-status", "another-conclusion", now, now);
+        Deployment deployment3 = new Deployment(456L, null, "another-name", "sha2", "another-branch", "staging", "another-status", "another-conclusion", now, now);
         deployment3.setId(2L);
 
-        Deployment deployment4 = new Deployment(123L, "name", "sha3", "branch", "production", "status", "conclusion", now, now);
+        Deployment deployment4 = new Deployment(123L, null, "name", "sha3", "branch", "production", "status", "conclusion", now, now);
         deployment4.setId(3L); // Same githubId, but different id
 
-        Deployment deployment5 = new Deployment(456L, "name", "sha4", "branch", "production", "status", "conclusion", now, now);
+        Deployment deployment5 = new Deployment(456L, null, "name", "sha4", "branch", "production", "status", "conclusion", now, now);
         deployment5.setId(1L); // Same id, but different githubId
 
         // Then
@@ -145,7 +145,7 @@ class DeploymentTest {
     void testEquals_sameInstance_returnsTrue() {
         // Given
         LocalDateTime now = LocalDateTime.now();
-        Deployment deployment = new Deployment(123L, "name", "test-sha", "branch", "production", "status", "conclusion", now, now);
+        Deployment deployment = new Deployment(123L, null, "name", "test-sha", "branch", "production", "status", "conclusion", now, now);
         deployment.setId(1L);
 
         // When & Then
