@@ -69,8 +69,8 @@ class LeadTimeCalculationServiceTest {
         currentDeployCommit.setParents(Arrays.asList(mainCommit, featureCommitB)); // Merges main and feature
 
         // --- Set up Mocks ---
-        RepositoryConfig mockRepo = new RepositoryConfig();
-        mockRepo.setId(1L);
+        RepositoryConfig mockRepo = mock(RepositoryConfig.class);
+        when(mockRepo.getId()).thenReturn(1L);
 
         Deployment previousDeployment = new Deployment();
         previousDeployment.setSha("sha-prev-deploy");
@@ -122,8 +122,8 @@ class LeadTimeCalculationServiceTest {
     @Test
     void calculate_whenDeploymentCommitIsNotFound_shouldDoNothingAndMarkAsProcessed() {
         // GIVEN
-        RepositoryConfig mockRepo = new RepositoryConfig();
-        mockRepo.setId(1L);
+        RepositoryConfig mockRepo = mock(RepositoryConfig.class);
+        when(mockRepo.getId()).thenReturn(1L);
 
         // 1. A deployment to process
         Deployment currentDeployment = new Deployment();
@@ -170,8 +170,8 @@ class LeadTimeCalculationServiceTest {
         currentDeployCommit.setParents(Collections.singletonList(commitB));
 
         // --- Set up Mocks ---
-        RepositoryConfig mockRepo = new RepositoryConfig();
-        mockRepo.setId(1L);
+        RepositoryConfig mockRepo = mock(RepositoryConfig.class);
+        when(mockRepo.getId()).thenReturn(1L);
 
         Deployment currentDeployment = new Deployment();
         currentDeployment.setSha("sha-current-deploy");
@@ -246,8 +246,8 @@ class LeadTimeCalculationServiceTest {
         commitC.setParents(Collections.singletonList(new Commit("sha-B", "author", "feat: B", now.minusDays(2), null)));
 
         // --- Set up Mocks ---
-        RepositoryConfig mockRepo = new RepositoryConfig();
-        mockRepo.setId(1L);
+        RepositoryConfig mockRepo = mock(RepositoryConfig.class);
+        when(mockRepo.getId()).thenReturn(1L);
 
         Deployment currentDeployment = new Deployment();
         currentDeployment.setSha("sha-C");
@@ -290,10 +290,10 @@ class LeadTimeCalculationServiceTest {
         // GIVEN: Two different repositories with deployments
         LocalDateTime now = LocalDateTime.now();
 
-        RepositoryConfig repoA = new RepositoryConfig("https://github.com/owner/repo-a");
-        repoA.setId(1L);
-        RepositoryConfig repoB = new RepositoryConfig("https://github.com/owner/repo-b");
-        repoB.setId(2L);
+        RepositoryConfig repoA = mock(RepositoryConfig.class);
+        when(repoA.getId()).thenReturn(1L);
+        RepositoryConfig repoB = mock(RepositoryConfig.class);
+        when(repoB.getId()).thenReturn(2L);
 
         // Repository A commits
         Commit commitA1 = new Commit("sha-a1", "author", "commit A1", now.minusDays(3), repoA);
