@@ -251,7 +251,7 @@ class CommitSyncServiceTest {
         // Configuración completa del mock del repositorio para el flujo lógico.
         when(commitRepository.existsById(newCommitSha)).thenReturn(false); // El commit es nuevo.
         when(commitRepository.findById(existingParentSha)).thenReturn(Optional.of(new Commit())); // El padre ya existe.
-        when(commitRepository.findById(newCommitSha)).thenReturn(Optional.of(new Commit(newCommitDto))); // El commit hijo se encuentra después de ser guardado.
+        when(commitRepository.findById(newCommitSha)).thenReturn(Optional.of(new Commit(newCommitDto, validConfig))); // El commit hijo se encuentra después de ser guardado.
 
         // WHEN
         commitSyncService.syncCommits();
@@ -290,7 +290,7 @@ class CommitSyncServiceTest {
         // El commit hijo es nuevo y se guarda.
         when(commitRepository.existsById(childSha)).thenReturn(false);
         // El commit hijo se encuentra después de ser guardado.
-        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto)));
+        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto, validConfig)));
         // El commit padre NO se encuentra en la BD.
         when(commitRepository.findById(nonExistentParentSha)).thenReturn(Optional.empty());
 
@@ -334,8 +334,8 @@ class CommitSyncServiceTest {
         when(commitRepository.existsById(childSha)).thenReturn(true);
 
         // Simulamos que tanto el hijo como el padre existen en la BD y pueden ser recuperados.
-        Commit childCommit = new Commit(childDto);
-        Commit parentCommit = new Commit(parentSha, null, null, null);
+        Commit childCommit = new Commit(childDto, validConfig);
+        Commit parentCommit = new Commit(parentSha, null, null, null, validConfig);
         when(commitRepository.findById(childSha)).thenReturn(Optional.of(childCommit));
         when(commitRepository.findById(parentSha)).thenReturn(Optional.of(parentCommit));
 
@@ -385,8 +385,8 @@ class CommitSyncServiceTest {
         when(commitRepository.existsById(childSha)).thenReturn(true);
 
         // Simulamos que tanto el hijo como el padre existen en la BD.
-        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto)));
-        when(commitRepository.findById(parentSha)).thenReturn(Optional.of(new Commit(parentSha, null, null, null)));
+        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto, validConfig)));
+        when(commitRepository.findById(parentSha)).thenReturn(Optional.of(new Commit(parentSha, null, null, null, validConfig)));
 
         // Punto Clave: La relación de parentesco YA EXISTE.
         when(commitParentRepository.existsByCommitShaAndParentSha(childSha, parentSha)).thenReturn(true);
@@ -416,5 +416,34 @@ class CommitSyncServiceTest {
         verify(githubCommitCollector, times(1)).getCommits(eq("owner1"), eq("repo1"), any());
         verify(githubCommitCollector, times(1)).getCommits(eq("owner2"), eq("repo2"), any());
         verify(syncStatusRepository, times(2)).save(any());
+    }
+
+    @Test
+    @DisplayName("Dado un nuevo commit, debe asignar el repositorio correctamente")
+    void syncCommits_whenNewCommitIsFound_shouldAssignRepositoryCorrectly() {
+        // GIVEN
+        RepositoryConfig validConfig = new RepositoryConfig(VALID_URL);
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(validConfig));
+
+        GithubCommitDto newCommitDto = new GithubCommitDto();
+        newCommitDto.setSha("new-commit-sha");
+
+        when(githubCommitCollector.getCommits(eq(OWNER), eq(REPO), any())).thenReturn(List.of(newCommitDto));
+        when(commitRepository.existsById("new-commit-sha")).thenReturn(false);
+
+        // WHEN
+        commitSyncService.syncCommits();
+
+        // THEN
+        ArgumentCaptor<List<Commit>> captor = ArgumentCaptor.forClass(List.class);
+        verify(commitRepository, times(1)).saveAll(captor.capture());
+
+        List<Commit> savedCommits = captor.getValue();
+        assertThat(savedCommits).hasSize(1);
+
+        Commit savedCommit = savedCommits.get(0);
+        assertThat(savedCommit.getSha()).isEqualTo("new-commit-sha");
+        assertThat(savedCommit.getRepository()).isNotNull();
+        assertThat(savedCommit.getRepository()).isEqualTo(validConfig);
     }
 }

@@ -73,7 +73,7 @@ public class IncidentSyncService {
 
                 for (DatadogIncidentData incidentData : response.data()) {
                     try {
-                        Incident incident = mapToIncident(incidentData, serviceName);
+                        Incident incident = mapToIncident(incidentData, repository);
                         Optional<Incident> existing = incidentRepository.findByDatadogIncidentId(incident.getDatadogIncidentId());
 
                         if (existing.isPresent()) {
@@ -113,7 +113,7 @@ public class IncidentSyncService {
         }
     }
 
-    Incident mapToIncident(DatadogIncidentData data, String serviceName) {
+    Incident mapToIncident(DatadogIncidentData data, RepositoryConfig repositoryConfig) {
         LocalDateTime createdAt = LocalDateTime.ofInstant(data.attributes().created(), ZoneOffset.UTC);
         LocalDateTime updatedAt = LocalDateTime.ofInstant(
                 data.attributes().modified() != null ? data.attributes().modified() : data.attributes().created(),
@@ -134,13 +134,14 @@ public class IncidentSyncService {
 
         return new Incident(
                 data.id(),
+                repositoryConfig,
                 data.attributes().title(),
                 state,
                 severity,
                 createdAt,
                 resolvedTime,
                 durationSeconds,
-                serviceName,
+                repositoryConfig.getDatadogServiceName(),
                 createdAt,
                 updatedAt
         );

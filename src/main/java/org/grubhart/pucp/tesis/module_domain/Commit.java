@@ -18,6 +18,10 @@ public class Commit {
     private String message;
     private LocalDateTime date;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "repository_id", nullable = false)
+    private RepositoryConfig repository;
+
     @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinTable(
             name = "commit_parent",
@@ -28,20 +32,23 @@ public class Commit {
 
 
 
-    public Commit(String sha, String author, String message, LocalDateTime date) {
+    public Commit(String sha, String author, String message, LocalDateTime date, RepositoryConfig repository) {
         this.sha = sha;
         this.author = author;
         this.message = message;
         this.date = date;
+        this.repository = repository;
     }
 
     /**
      * Constructor de conveniencia para crear una entidad Commit a partir de un GithubCommitDto.
      * Esto centraliza la lógica de mapeo y la elimina de los servicios.
      * @param dto El objeto de transferencia de datos de la API de GitHub.
+     * @param repository El repositorio al que pertenece este commit.
      */
-    public Commit(GithubCommitDto dto) {
+    public Commit(GithubCommitDto dto, RepositoryConfig repository) {
         this.sha = dto.getSha();
+        this.repository = repository;
         // Priorizamos el 'login' del usuario de GitHub, que es más consistente.
         // Si no está, usamos el nombre del autor del commit como respaldo.
         this.author = Optional.ofNullable(dto.getAuthor())
@@ -104,5 +111,13 @@ public class Commit {
 
     public void setParents(List<Commit> parents) {
         this.parents = parents;
+    }
+
+    public RepositoryConfig getRepository() {
+        return repository;
+    }
+
+    public void setRepository(RepositoryConfig repository) {
+        this.repository = repository;
     }
 }

@@ -88,7 +88,7 @@ public class CommitSyncService {
             // First pass: Save all commits that don't exist yet
             List<Commit> newCommitsToSave = commitDtos.stream()
                     .filter(dto -> !commitRepository.existsById(dto.getSha()))
-                    .map(Commit::new)
+                    .map(dto -> new Commit(dto, config))
                     .collect(Collectors.toList());
 
             if (!newCommitsToSave.isEmpty()) {

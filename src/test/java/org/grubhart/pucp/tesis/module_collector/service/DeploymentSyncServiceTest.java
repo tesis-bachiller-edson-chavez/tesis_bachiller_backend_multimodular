@@ -343,6 +343,35 @@ class DeploymentSyncServiceTest {
         verify(syncStatusRepository, times(2)).save(any());
     }
 
+    @Test
+    @DisplayName("GIVEN a new deployment WHEN syncing THEN should assign repository correctly")
+    void shouldAssignRepositoryToNewDeployment() {
+        // Given
+        RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
+        repoConfig.setDatadogServiceName("test-service");
+        repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
+
+        List<GitHubWorkflowRunDto> workflowRuns = List.of(
+                createWorkflowRun(1L, "sha1", "success", "main")
+        );
+        when(githubClient.getWorkflowRuns(eq("owner"), eq("repo"), eq("deploy.yml"), any())).thenReturn(workflowRuns);
+        when(deploymentRepository.existsById(1L)).thenReturn(false);
+
+        // When
+        deploymentSyncService.syncDeployments();
+
+        // Then
+        verify(deploymentRepository).saveAll(deploymentCaptor.capture());
+        List<Deployment> savedDeployments = deploymentCaptor.getValue();
+        assertThat(savedDeployments).hasSize(1);
+
+        Deployment savedDeployment = savedDeployments.get(0);
+        assertThat(savedDeployment.getRepository()).isNotNull();
+        assertThat(savedDeployment.getRepository()).isEqualTo(repoConfig);
+        assertThat(savedDeployment.getServiceName()).isEqualTo("test-service");
+    }
+
     private GitHubWorkflowRunDto createWorkflowRun(Long id, String headSha, String conclusion, String branch) {
         GitHubWorkflowRunDto runDto = new GitHubWorkflowRunDto();
         runDto.setId(id);

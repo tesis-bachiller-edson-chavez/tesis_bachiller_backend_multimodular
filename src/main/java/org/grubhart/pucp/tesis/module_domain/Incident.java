@@ -15,6 +15,10 @@ public class Incident {
     @Column(nullable = false, unique = true)
     private String datadogIncidentId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "repository_id", nullable = false)
+    private RepositoryConfig repository;
+
     @Column(nullable = false)
     private String title;
 
@@ -35,6 +39,7 @@ public class Incident {
     /**
      * The Datadog service name this incident is associated with.
      * This should match the DD_SERVICE tag in Datadog.
+     * Maintained for reference and debugging purposes.
      */
     private String serviceName;
 
@@ -48,10 +53,11 @@ public class Incident {
         // JPA constructor
     }
 
-    public Incident(String datadogIncidentId, String title, IncidentState state,
+    public Incident(String datadogIncidentId, RepositoryConfig repository, String title, IncidentState state,
                    IncidentSeverity severity, LocalDateTime startTime, LocalDateTime resolvedTime,
                    Long durationSeconds, String serviceName, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.datadogIncidentId = datadogIncidentId;
+        this.repository = repository;
         this.title = title;
         this.state = state;
         this.severity = severity;
@@ -151,6 +157,14 @@ public class Incident {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public RepositoryConfig getRepository() {
+        return repository;
+    }
+
+    public void setRepository(RepositoryConfig repository) {
+        this.repository = repository;
     }
 
     @Override
