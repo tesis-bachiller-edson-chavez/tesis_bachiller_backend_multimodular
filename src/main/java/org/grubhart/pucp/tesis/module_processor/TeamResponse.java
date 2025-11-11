@@ -1,4 +1,4 @@
-package org.grubhart.pucp.tesis.module_api.dto;
+package org.grubhart.pucp.tesis.module_processor;
 
 import org.grubhart.pucp.tesis.module_domain.Team;
 

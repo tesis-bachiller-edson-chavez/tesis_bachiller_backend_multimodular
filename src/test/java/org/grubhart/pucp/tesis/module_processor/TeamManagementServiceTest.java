@@ -1,6 +1,5 @@
 package org.grubhart.pucp.tesis.module_processor;
 
-import org.grubhart.pucp.tesis.module_api.dto.*;
 import org.grubhart.pucp.tesis.module_domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1,4 +1,4 @@
-package org.grubhart.pucp.tesis.module_api.dto;
+package org.grubhart.pucp.tesis.module_processor;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -6,9 +6,9 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 /**
- * Request DTO for creating a new team
+ * Request DTO for updating an existing team
  */
-public class CreateTeamRequest {
+public class UpdateTeamRequest {
 
     @NotBlank(message = "Team name is required")
     @Size(min = 2, max = 100, message = "Team name must be between 2 and 100 characters")
@@ -16,10 +16,10 @@ public class CreateTeamRequest {
 
     private List<Long> techLeadIds;
 
-    public CreateTeamRequest() {
+    public UpdateTeamRequest() {
     }
 
-    public CreateTeamRequest(String name, List<Long> techLeadIds) {
+    public UpdateTeamRequest(String name, List<Long> techLeadIds) {
         this.name = name;
         this.techLeadIds = techLeadIds;
     }
