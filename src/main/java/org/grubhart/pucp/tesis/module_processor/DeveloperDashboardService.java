@@ -1,6 +1,5 @@
 package org.grubhart.pucp.tesis.module_processor;
 
-import org.grubhart.pucp.tesis.module_api.dto.*;
 import org.grubhart.pucp.tesis.module_domain.Commit;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
