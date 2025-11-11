@@ -7,6 +7,8 @@ import org.grubhart.pucp.tesis.module_domain.CommitRepository;
 import org.grubhart.pucp.tesis.module_domain.Deployment;
 import org.grubhart.pucp.tesis.module_domain.Incident;
 import org.grubhart.pucp.tesis.module_domain.IncidentRepository;
+import org.grubhart.pucp.tesis.module_domain.PullRequest;
+import org.grubhart.pucp.tesis.module_domain.PullRequestRepository;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,13 +33,16 @@ public class DeveloperDashboardService {
     private final CommitRepository commitRepository;
     private final ChangeLeadTimeRepository changeLeadTimeRepository;
     private final IncidentRepository incidentRepository;
+    private final PullRequestRepository pullRequestRepository;
 
     public DeveloperDashboardService(CommitRepository commitRepository,
                                      ChangeLeadTimeRepository changeLeadTimeRepository,
-                                     IncidentRepository incidentRepository) {
+                                     IncidentRepository incidentRepository,
+                                     PullRequestRepository pullRequestRepository) {
         this.commitRepository = commitRepository;
         this.changeLeadTimeRepository = changeLeadTimeRepository;
         this.incidentRepository = incidentRepository;
+        this.pullRequestRepository = pullRequestRepository;
     }
 
     /**
@@ -84,15 +89,16 @@ public class DeveloperDashboardService {
         // Calcular estadísticas agregadas de commits
         CommitStatsDto commitStats = calculateCommitStats(developerCommits, commitsByRepository.size());
 
-        // TODO: Implementar estadísticas de Pull Requests cuando se agregue el campo 'author' a PullRequest
-        PullRequestStatsDto pullRequestStats = new PullRequestStatsDto(0L, 0L, 0L);
+        // Calcular estadísticas de Pull Requests
+        PullRequestStatsDto pullRequestStats = calculatePullRequestStats(developerCommits);
 
         // Calcular métricas DORA
         DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(developerCommits);
 
         logger.info("Métricas calculadas exitosamente para el developer: {}. Total commits: {}, Repositorios: {}, " +
-                        "Lead Time promedio: {} horas, Deployments: {}, CFR: {}%, Failed Deployments: {}, Daily Metrics: {}",
+                        "PRs: {} (Merged: {}, Open: {}), Lead Time promedio: {} horas, Deployments: {}, CFR: {}%, Failed Deployments: {}, Daily Metrics: {}",
                 githubUsername, commitStats.totalCommits(), repositoryStats.size(),
+                pullRequestStats.totalPullRequests(), pullRequestStats.mergedPullRequests(), pullRequestStats.openPullRequests(),
                 doraMetrics.averageLeadTimeHours(), doraMetrics.totalDeploymentCount(),
                 doraMetrics.changeFailureRate(), doraMetrics.failedDeploymentCount(),
                 doraMetrics.dailyMetrics().size());
@@ -129,6 +135,44 @@ public class DeveloperDashboardService {
                 (long) repositoryCount,
                 lastCommitDate,
                 firstCommitDate
+        );
+    }
+
+    /**
+     * Calcula estadísticas de Pull Requests del developer.
+     * Utiliza el campo firstCommitSha para correlacionar PRs con commits del developer.
+     */
+    private PullRequestStatsDto calculatePullRequestStats(List<Commit> developerCommits) {
+        if (developerCommits.isEmpty()) {
+            return new PullRequestStatsDto(0L, 0L, 0L);
+        }
+
+        // Obtener todos los SHAs de commits del developer
+        Set<String> commitShas = developerCommits.stream()
+                .map(Commit::getSha)
+                .collect(Collectors.toSet());
+
+        // Obtener todos los PRs y filtrar por firstCommitSha
+        List<PullRequest> developerPullRequests = pullRequestRepository.findAll().stream()
+                .filter(pr -> pr.getFirstCommitSha() != null && commitShas.contains(pr.getFirstCommitSha()))
+                .collect(Collectors.toList());
+
+        long totalPullRequests = developerPullRequests.size();
+
+        // Contar PRs mergeados: state = "closed" y mergedAt != null
+        long mergedPullRequests = developerPullRequests.stream()
+                .filter(pr -> "closed".equalsIgnoreCase(pr.getState()) && pr.getMergedAt() != null)
+                .count();
+
+        // Contar PRs abiertos: state = "open"
+        long openPullRequests = developerPullRequests.stream()
+                .filter(pr -> "open".equalsIgnoreCase(pr.getState()))
+                .count();
+
+        return new PullRequestStatsDto(
+                totalPullRequests,
+                mergedPullRequests,
+                openPullRequests
         );
     }
 

@@ -4,6 +4,7 @@ import org.grubhart.pucp.tesis.module_domain.ChangeLeadTimeRepository;
 import org.grubhart.pucp.tesis.module_domain.Commit;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
 import org.grubhart.pucp.tesis.module_domain.IncidentRepository;
+import org.grubhart.pucp.tesis.module_domain.PullRequestRepository;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,9 @@ class DeveloperDashboardServiceTest {
     @Mock
     private IncidentRepository incidentRepository;
 
+    @Mock
+    private PullRequestRepository pullRequestRepository;
+
     @InjectMocks
     private DeveloperDashboardService developerDashboardService;
 
@@ -53,6 +57,7 @@ class DeveloperDashboardServiceTest {
 
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
+        when(pullRequestRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
@@ -67,6 +72,12 @@ class DeveloperDashboardServiceTest {
         // Verificar que el repositorio con más commits esté primero
         assertEquals(2L, response.repositories().get(0).commitCount());
         assertEquals(1L, response.repositories().get(1).commitCount());
+
+        // Verificar estadísticas de Pull Requests (sin PRs)
+        assertNotNull(response.pullRequestStats());
+        assertEquals(0L, response.pullRequestStats().totalPullRequests());
+        assertEquals(0L, response.pullRequestStats().mergedPullRequests());
+        assertEquals(0L, response.pullRequestStats().openPullRequests());
 
         // Verificar métricas DORA (sin deployments aún)
         assertNotNull(response.doraMetrics());
@@ -123,6 +134,7 @@ class DeveloperDashboardServiceTest {
 
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
+        when(pullRequestRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
