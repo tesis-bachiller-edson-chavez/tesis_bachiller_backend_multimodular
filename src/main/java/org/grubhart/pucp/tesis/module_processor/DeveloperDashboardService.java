@@ -90,8 +90,12 @@ public class DeveloperDashboardService {
         // Calcular métricas DORA
         DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(developerCommits);
 
-        logger.info("Métricas calculadas exitosamente para el developer: {}. Total commits: {}, Repositorios: {}, Lead Time promedio: {} horas",
-                githubUsername, commitStats.totalCommits(), repositoryStats.size(), doraMetrics.averageLeadTimeHours());
+        logger.info("Métricas calculadas exitosamente para el developer: {}. Total commits: {}, Repositorios: {}, " +
+                        "Lead Time promedio: {} horas, Deployments: {}, CFR: {}%, Failed Deployments: {}, Daily Metrics: {}",
+                githubUsername, commitStats.totalCommits(), repositoryStats.size(),
+                doraMetrics.averageLeadTimeHours(), doraMetrics.totalDeploymentCount(),
+                doraMetrics.changeFailureRate(), doraMetrics.failedDeploymentCount(),
+                doraMetrics.dailyMetrics().size());
 
         return new DeveloperMetricsResponse(
                 githubUsername,
