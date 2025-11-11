@@ -100,8 +100,11 @@ public class UserController {
     @PutMapping("/{userId}/roles")
     @Transactional
     @Operation(
-            summary = "Asignar roles a un usuario",
-            description = "Asigna uno o más roles a un usuario específico. Esta operación reemplaza todos los roles existentes del usuario con los roles proporcionados. " +
+            summary = "Asignar roles a un usuario (reemplaza roles existentes)",
+            description = "Asigna uno o más roles a un usuario específico. **IMPORTANTE: Esta operación REEMPLAZA todos los roles existentes del usuario.** " +
+                    "Los roles anteriores se eliminan por completo y se asignan únicamente los roles proporcionados en la request. " +
+                    "Por ejemplo, si un usuario tiene [ADMIN, DEVELOPER] y se envía [TECH_LEAD], el usuario quedará únicamente con [TECH_LEAD]. " +
+                    "Para mantener roles existentes, debe incluirlos todos en la request. " +
                     "Roles válidos: ADMIN, ENGINEERING_MANAGER, TECH_LEAD, DEVELOPER. " +
                     "Solo usuarios con rol ADMIN pueden ejecutar esta operación.",
             responses = {
