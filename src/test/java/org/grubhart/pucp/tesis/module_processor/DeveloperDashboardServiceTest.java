@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.module_processor;
 import org.grubhart.pucp.tesis.module_domain.ChangeLeadTimeRepository;
 import org.grubhart.pucp.tesis.module_domain.Commit;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
+import org.grubhart.pucp.tesis.module_domain.IncidentRepository;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,9 @@ class DeveloperDashboardServiceTest {
 
     @Mock
     private ChangeLeadTimeRepository changeLeadTimeRepository;
+
+    @Mock
+    private IncidentRepository incidentRepository;
 
     @InjectMocks
     private DeveloperDashboardService developerDashboardService;
@@ -49,6 +53,7 @@ class DeveloperDashboardServiceTest {
 
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
+        when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
@@ -67,7 +72,11 @@ class DeveloperDashboardServiceTest {
         // Verificar métricas DORA (sin deployments aún)
         assertNotNull(response.doraMetrics());
         assertNull(response.doraMetrics().averageLeadTimeHours());
-        assertEquals(0L, response.doraMetrics().deploymentCount());
+        assertEquals(0L, response.doraMetrics().totalDeploymentCount());
+        assertEquals(0L, response.doraMetrics().deployedCommitCount());
+        assertNull(response.doraMetrics().changeFailureRate());
+        assertEquals(0L, response.doraMetrics().failedDeploymentCount());
+        assertTrue(response.doraMetrics().dailyMetrics().isEmpty());
     }
 
     @Test
@@ -76,6 +85,7 @@ class DeveloperDashboardServiceTest {
         String githubUsername = "new_developer";
 
         when(commitRepository.findAll()).thenReturn(Collections.emptyList());
+        when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
@@ -92,7 +102,11 @@ class DeveloperDashboardServiceTest {
         // Verificar métricas DORA vacías
         assertNotNull(response.doraMetrics());
         assertNull(response.doraMetrics().averageLeadTimeHours());
-        assertEquals(0L, response.doraMetrics().deploymentCount());
+        assertEquals(0L, response.doraMetrics().totalDeploymentCount());
+        assertEquals(0L, response.doraMetrics().deployedCommitCount());
+        assertNull(response.doraMetrics().changeFailureRate());
+        assertEquals(0L, response.doraMetrics().failedDeploymentCount());
+        assertTrue(response.doraMetrics().dailyMetrics().isEmpty());
     }
 
     @Test
@@ -111,6 +125,7 @@ class DeveloperDashboardServiceTest {
 
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
+        when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
