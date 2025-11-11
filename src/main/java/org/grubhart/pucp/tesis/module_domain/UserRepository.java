@@ -14,4 +14,24 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findAllByActiveTrue();
 
+    /**
+     * Find all users that belong to a specific team
+     */
+    List<User> findByTeamId(Long teamId);
+
+    /**
+     * Count users in a specific team
+     */
+    long countByTeamId(Long teamId);
+
+    /**
+     * Find all users that belong to a specific team and have a specific role
+     */
+    List<User> findByTeamIdAndRoles_Name(Long teamId, RoleName roleName);
+
+    /**
+     * Count users in a specific team with a specific role
+     */
+    long countByTeamIdAndRoles_Name(Long teamId, RoleName roleName);
+
 }
