@@ -4,11 +4,15 @@ import org.grubhart.pucp.tesis.module_domain.ChangeLeadTime;
 import org.grubhart.pucp.tesis.module_domain.ChangeLeadTimeRepository;
 import org.grubhart.pucp.tesis.module_domain.Commit;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
+import org.grubhart.pucp.tesis.module_domain.Deployment;
+import org.grubhart.pucp.tesis.module_domain.Incident;
+import org.grubhart.pucp.tesis.module_domain.IncidentRepository;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -22,14 +26,18 @@ import java.util.stream.Collectors;
 public class DeveloperDashboardService {
 
     private static final Logger logger = LoggerFactory.getLogger(DeveloperDashboardService.class);
+    private static final long INCIDENT_CORRELATION_WINDOW_HOURS = 48;
 
     private final CommitRepository commitRepository;
     private final ChangeLeadTimeRepository changeLeadTimeRepository;
+    private final IncidentRepository incidentRepository;
 
     public DeveloperDashboardService(CommitRepository commitRepository,
-                                     ChangeLeadTimeRepository changeLeadTimeRepository) {
+                                     ChangeLeadTimeRepository changeLeadTimeRepository,
+                                     IncidentRepository incidentRepository) {
         this.commitRepository = commitRepository;
         this.changeLeadTimeRepository = changeLeadTimeRepository;
+        this.incidentRepository = incidentRepository;
     }
 
     /**
@@ -122,11 +130,16 @@ public class DeveloperDashboardService {
 
     /**
      * Calcula métricas DORA para el developer.
-     * Solo incluye Lead Time y Deployment Frequency ya que MTTR y CFR son métricas de servicio/equipo.
+     * Incluye Lead Time, Deployment Frequency, Change Failure Rate y series de tiempo diarias.
      */
     private DeveloperDoraMetricsDto calculateDoraMetrics(List<Commit> developerCommits) {
         if (developerCommits.isEmpty()) {
-            return new DeveloperDoraMetricsDto(null, 0L, 0L, null, null);
+            return new DeveloperDoraMetricsDto(
+                    null, null, null,
+                    0L, 0L,
+                    null, 0L,
+                    Collections.emptyList()
+            );
         }
 
         // Obtener todos los ChangeLeadTime para los commits del developer
@@ -140,7 +153,12 @@ public class DeveloperDashboardService {
 
         if (leadTimes.isEmpty()) {
             // No hay deployments con lead time calculado aún
-            return new DeveloperDoraMetricsDto(null, 0L, 0L, null, null);
+            return new DeveloperDoraMetricsDto(
+                    null, null, null,
+                    0L, 0L,
+                    null, 0L,
+                    Collections.emptyList()
+            );
         }
 
         // Calcular estadísticas de lead time (convertir de segundos a horas)
@@ -154,18 +172,122 @@ public class DeveloperDashboardService {
         long deploymentCommitCount = leadTimes.size();
 
         // Contar deployments únicos
-        long uniqueDeployments = leadTimes.stream()
+        Set<Long> uniqueDeploymentIds = leadTimes.stream()
                 .map(lt -> lt.getDeployment().getId())
+                .collect(Collectors.toSet());
+        long totalDeploymentCount = uniqueDeploymentIds.size();
+
+        // Obtener todos los deployments del developer
+        List<Deployment> deployments = leadTimes.stream()
+                .map(ChangeLeadTime::getDeployment)
                 .distinct()
-                .count();
+                .collect(Collectors.toList());
+
+        // Calcular CFR: identificar deployments que causaron incidentes
+        List<Incident> allIncidents = incidentRepository.findAll();
+        Set<Long> failedDeploymentIds = identifyFailedDeployments(deployments, allIncidents);
+        long failedDeploymentCount = failedDeploymentIds.size();
+
+        Double changeFailureRate = totalDeploymentCount > 0
+                ? (failedDeploymentCount * 100.0) / totalDeploymentCount
+                : null;
+
+        // Calcular series de tiempo diarias
+        List<DailyMetricDto> dailyMetrics = calculateDailyTimeSeries(leadTimes, failedDeploymentIds);
 
         return new DeveloperDoraMetricsDto(
                 averageLeadTimeHours,
-                uniqueDeployments,
-                deploymentCommitCount,
                 minLeadTimeHours,
-                maxLeadTimeHours
+                maxLeadTimeHours,
+                totalDeploymentCount,
+                deploymentCommitCount,
+                changeFailureRate,
+                failedDeploymentCount,
+                dailyMetrics
         );
+    }
+
+    /**
+     * Identifica deployments que causaron incidentes dentro de una ventana de 48 horas.
+     */
+    private Set<Long> identifyFailedDeployments(List<Deployment> deployments, List<Incident> allIncidents) {
+        Set<Long> failedDeploymentIds = new HashSet<>();
+
+        for (Deployment deployment : deployments) {
+            LocalDateTime deploymentTime = deployment.getCreatedAt();
+            LocalDateTime windowEnd = deploymentTime.plusHours(INCIDENT_CORRELATION_WINDOW_HOURS);
+
+            // Buscar incidentes que comenzaron dentro de la ventana de 48 horas
+            boolean hasIncident = allIncidents.stream()
+                    .anyMatch(incident -> {
+                        boolean withinTimeWindow = !incident.getStartTime().isBefore(deploymentTime)
+                                && incident.getStartTime().isBefore(windowEnd);
+
+                        // Correlacionar por serviceName si está disponible
+                        if (deployment.getServiceName() != null && incident.getServiceName() != null) {
+                            return withinTimeWindow
+                                    && deployment.getServiceName().equals(incident.getServiceName());
+                        }
+
+                        // Fallback: correlacionar por repositorio
+                        return withinTimeWindow
+                                && deployment.getRepository().getId().equals(incident.getRepository().getId());
+                    });
+
+            if (hasIncident) {
+                failedDeploymentIds.add(deployment.getId());
+            }
+        }
+
+        return failedDeploymentIds;
+    }
+
+    /**
+     * Calcula series de tiempo diarias agrupando métricas por fecha.
+     */
+    private List<DailyMetricDto> calculateDailyTimeSeries(List<ChangeLeadTime> leadTimes,
+                                                           Set<Long> failedDeploymentIds) {
+        // Agrupar por fecha (LocalDate del deployment)
+        Map<LocalDate, List<ChangeLeadTime>> leadTimesByDate = leadTimes.stream()
+                .collect(Collectors.groupingBy(lt ->
+                        lt.getDeployment().getCreatedAt().toLocalDate()));
+
+        // Calcular métricas para cada día
+        return leadTimesByDate.entrySet().stream()
+                .map(entry -> {
+                    LocalDate date = entry.getKey();
+                    List<ChangeLeadTime> dailyLeadTimes = entry.getValue();
+
+                    // Calcular promedio de lead time para el día
+                    double avgLeadTimeHours = dailyLeadTimes.stream()
+                            .mapToDouble(lt -> lt.getLeadTimeInSeconds() / 3600.0)
+                            .average()
+                            .orElse(0.0);
+
+                    // Contar deployments únicos del día
+                    Set<Long> dailyDeploymentIds = dailyLeadTimes.stream()
+                            .map(lt -> lt.getDeployment().getId())
+                            .collect(Collectors.toSet());
+                    long deploymentCount = dailyDeploymentIds.size();
+
+                    // Contar commits del día
+                    long commitCount = dailyLeadTimes.size();
+
+                    // Contar deployments fallidos del día
+                    long failedCount = dailyDeploymentIds.stream()
+                            .filter(failedDeploymentIds::contains)
+                            .count();
+
+                    return new DailyMetricDto(
+                            date,
+                            avgLeadTimeHours,
+                            deploymentCount,
+                            commitCount,
+                            failedCount
+                    );
+                })
+                .sorted(Comparator.comparing(DailyMetricDto::date))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -177,7 +299,12 @@ public class DeveloperDashboardService {
                 Collections.emptyList(),
                 new CommitStatsDto(0L, 0L, null, null),
                 new PullRequestStatsDto(0L, 0L, 0L),
-                new DeveloperDoraMetricsDto(null, 0L, 0L, null, null)
+                new DeveloperDoraMetricsDto(
+                        null, null, null,
+                        0L, 0L,
+                        null, 0L,
+                        Collections.emptyList()
+                )
         );
     }
 }
