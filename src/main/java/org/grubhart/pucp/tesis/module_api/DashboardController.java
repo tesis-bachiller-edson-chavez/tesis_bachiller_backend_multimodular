@@ -1,11 +1,25 @@
 package org.grubhart.pucp.tesis.module_api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.grubhart.pucp.tesis.module_api.dto.DeveloperMetricsResponse;
+import org.grubhart.pucp.tesis.module_processor.DeveloperDashboardService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @Controller
 public class DashboardController {
@@ -54,5 +68,74 @@ public class DashboardController {
             <body><h1>Página de Configuración del Administrador</h1><p>Aquí se configurará el sistema.</p></body></html>
             """;
         return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(htmlContent);
+    }
+}
+
+/**
+ * Controlador REST para endpoints de API del dashboard.
+ * Endpoints separados por nivel de acceso (Developer, Manager, etc.)
+ */
+@RestController
+@RequestMapping("/api/v1/dashboard")
+@Tag(name = "Dashboard", description = "API para métricas del dashboard según rol del usuario")
+@SecurityRequirement(name = "oauth2")
+class DashboardApiController {
+
+    private static final Logger logger = LoggerFactory.getLogger(DashboardApiController.class);
+
+    private final DeveloperDashboardService developerDashboardService;
+
+    public DashboardApiController(DeveloperDashboardService developerDashboardService) {
+        this.developerDashboardService = developerDashboardService;
+    }
+
+    @GetMapping("/developer/metrics")
+    @PreAuthorize("hasAnyRole('DEVELOPER', 'TECH_LEAD', 'ENGINEERING_MANAGER', 'ADMIN')")
+    @Operation(
+            summary = "Obtener métricas del dashboard para Developer",
+            description = "Retorna métricas personalizadas para el rol Developer. " +
+                    "Los datos incluyen únicamente repositorios donde el developer ha realizado commits, " +
+                    "estadísticas de commits y pull requests. " +
+                    "**Accesible para usuarios con rol DEVELOPER o superior**.",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Métricas obtenidas exitosamente",
+                            content = @Content(schema = @Schema(implementation = DeveloperMetricsResponse.class))
+                    ),
+                    @ApiResponse(
+                            responseCode = "403",
+                            description = "Acceso denegado - requiere rol DEVELOPER o superior"
+                    ),
+                    @ApiResponse(
+                            responseCode = "500",
+                            description = "Error interno al calcular métricas"
+                    )
+            }
+    )
+    public ResponseEntity<DeveloperMetricsResponse> getDeveloperMetrics(Authentication authentication) {
+        try {
+            if (!(authentication.getPrincipal() instanceof OAuth2User)) {
+                logger.error("El principal de la autenticación no es de tipo OAuth2User");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+
+            OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
+            String githubUsername = oauthUser.getAttribute("login");
+
+            if (githubUsername == null || githubUsername.isBlank()) {
+                logger.error("No se pudo obtener el nombre de usuario de GitHub del usuario autenticado");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            }
+
+            logger.info("Solicitando métricas de developer para el usuario: {}", githubUsername);
+
+            DeveloperMetricsResponse metrics = developerDashboardService.getDeveloperMetrics(githubUsername);
+            return ResponseEntity.ok(metrics);
+
+        } catch (Exception e) {
+            logger.error("Error al obtener métricas del developer", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 }
