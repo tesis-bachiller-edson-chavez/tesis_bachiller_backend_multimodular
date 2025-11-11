@@ -25,4 +25,6 @@ public interface DeploymentRepository extends JpaRepository<Deployment, Long> {
     List<Deployment> findByEnvironmentAndCreatedAtBetween(String environment, LocalDate startDate, LocalDate endDate);
 
     List<Deployment> findByRepositoryIdAndEnvironmentAndCreatedAtBetween(Long repositoryId, String environment, LocalDate startDate, LocalDate endDate);
+
+    long countByEnvironmentAndCreatedAtBetween(String environment, LocalDate startDate, LocalDate endDate);
 }
