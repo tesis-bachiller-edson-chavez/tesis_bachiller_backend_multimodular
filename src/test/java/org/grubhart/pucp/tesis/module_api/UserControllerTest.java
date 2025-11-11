@@ -48,6 +48,7 @@ class UserControllerTest {
 
         User userMock = mock(User.class);
         when(userMock.getId()).thenReturn(1L);
+        when(userMock.getGithubId()).thenReturn(123456L);
         when(userMock.getGithubUsername()).thenReturn(username);
         when(userMock.getEmail()).thenReturn(email);
 
@@ -65,6 +66,7 @@ class UserControllerTest {
         UserDto userDto = response.getBody();
         assertNotNull(userDto);
         assertEquals(1L, userDto.id());
+        assertEquals(123456L, userDto.githubId());
         assertEquals(username, userDto.githubUsername());
         assertEquals(email, userDto.email());
         assertTrue(userDto.roles().contains("DEVELOPER"));
@@ -104,10 +106,12 @@ class UserControllerTest {
         // Given
         Role developerRole = new Role(RoleName.DEVELOPER);
 
-        User user1 = new User(1L, "activeuser", "active@test.com", "Active User", "url1");
+        User user1 = new User(100L, "activeuser", "active@test.com", "Active User", "url1");
+        user1.setId(1L);
         user1.getRoles().add(developerRole);
 
-        User user2 = new User(2L, "anotheractive", "another@test.com", "Another User", "url2");
+        User user2 = new User(200L, "anotheractive", "another@test.com", "Another User", "url2");
+        user2.setId(2L);
         user2.getRoles().add(developerRole);
 
         List<User> activeUsersFromRepo = List.of(user1, user2);
@@ -120,12 +124,16 @@ class UserControllerTest {
         // Then
         assertEquals(2, response.size());
 
+        assertEquals(1L, response.get(0).id());
+        assertEquals(100L, response.get(0).githubId());
         assertEquals("activeuser", response.get(0).githubUsername());
         assertEquals("Active User", response.get(0).name());
         assertEquals("url1", response.get(0).avatarUrl());
         assertNotNull(response.get(0).roles(), "Roles should not be null");
         assertTrue(response.get(0).roles().contains("DEVELOPER"), "Should contain DEVELOPER role");
 
+        assertEquals(2L, response.get(1).id());
+        assertEquals(200L, response.get(1).githubId());
         assertEquals("anotheractive", response.get(1).githubUsername());
         assertEquals("Another User", response.get(1).name());
         assertEquals("url2", response.get(1).avatarUrl());

@@ -6,6 +6,12 @@ import java.util.Set;
 
 @Schema(description = "Información resumida de un usuario activo de la organización")
 public record UserSummaryDto(
+        @Schema(description = "ID interno del usuario en el sistema", example = "1")
+        Long id,
+
+        @Schema(description = "ID del usuario en GitHub", example = "123456")
+        Long githubId,
+
         @Schema(description = "Nombre de usuario de GitHub", example = "john_doe")
         String githubUsername,
 

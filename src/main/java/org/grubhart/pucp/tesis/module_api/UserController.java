@@ -95,7 +95,7 @@ public class UserController {
         Set<String> roleNames = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .collect(Collectors.toSet());
-        return new UserDto(user.getId(), user.getGithubUsername(), user.getEmail(), roleNames);
+        return new UserDto(user.getId(), user.getGithubId(), user.getGithubUsername(), user.getEmail(), roleNames);
     }
 
     private UserSummaryDto mapToUserSummaryDto(User user) {
@@ -103,6 +103,8 @@ public class UserController {
                 .map(role -> role.getName().name())
                 .collect(Collectors.toSet());
         return new UserSummaryDto(
+                user.getId(),
+                user.getGithubId(),
                 user.getGithubUsername(),
                 user.getName(),
                 user.getAvatarUrl(),
