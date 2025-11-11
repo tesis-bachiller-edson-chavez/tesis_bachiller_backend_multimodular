@@ -23,14 +23,14 @@ This document serves as an index to the comprehensive analysis of the DORA Metri
 **Best For:** Detailed technical understanding
 **Contains:**
 - Detailed breakdown of 8 key architectural areas:
-  1. Pages/Routes structure
-  2. Data fetching & API client pattern (NO TanStack Query!)
-  3. UI Component Library confirmation (Shadcn/UI)
-  4. Authentication & RBAC implementation
-  5. API Client & Services
-  6. Complete project file structure
-  7. Testing patterns
-  8. Environment configuration
+    1. Pages/Routes structure
+    2. Data fetching & API client pattern (NO TanStack Query!)
+    3. UI Component Library confirmation (Shadcn/UI)
+    4. Authentication & RBAC implementation
+    5. API Client & Services
+    6. Complete project file structure
+    7. Testing patterns
+    8. Environment configuration
 - Key observations for repositories feature
 - Reference files for implementation
 
@@ -60,11 +60,11 @@ This document serves as an index to the comprehensive analysis of the DORA Metri
 **Contains:**
 - Quick reference for type definitions (RepositoryDto, etc.)
 - Full code templates for:
-  - Page component (RepositoriesPage)
-  - Table component (RepositoriesTable)
-  - Routing setup
-  - Navigation setup
-  - Test file template
+    - Page component (RepositoriesPage)
+    - Table component (RepositoriesTable)
+    - Routing setup
+    - Navigation setup
+    - Test file template
 - Implementation checklist
 - Common patterns with code examples
 - Files to create/modify summary
@@ -347,17 +347,367 @@ npm run preview      # Preview production build locally
 
 ---
 
+## Design Decisions & Patterns
+
+### Component Design Patterns
+
+#### 1. Generic Reusable Modals - SelectionModal Component
+**File:** `/src/components/SelectionModal.tsx`
+
+**Key Design Decisions:**
+- **Generic TypeScript Component:** Uses `<T>` type parameter for flexibility
+- **Search + Multi-Select Pattern:** Combines search input with checkbox-based multi-select
+- **Render Props Pattern:** Uses column render functions for flexible table content
+- **Client-Side Filtering:** Real-time filtering as user types (no search button needed)
+
+**Usage Pattern:**
+```tsx
+<SelectionModal<UserDto>
+  title="Agregar Usuarios"
+  isOpen={showModal}
+  onClose={() => setShowModal(false)}
+  items={filteredUsers}
+  selectedIds={selectedUserIds}
+  onToggleSelection={(id) => handleToggle(id)}
+  onConfirm={handleConfirmSelection}
+  searchValue={searchTerm}
+  onSearchChange={setSearchTerm}
+  searchPlaceholder="Buscar por username..."
+  columns={[
+    { header: "GitHub Username", render: (user) => user.githubUsername },
+    { header: "Email", render: (user) => user.email }
+  ]}
+  getItemId={(user) => user.id}
+/>
+```
+
+**Best Practices:**
+- Use for any list selection with search requirements
+- Search criteria should match user expectations (username, name, etc.)
+- Multi-select state managed with `Set<number>` for O(1) lookup
+- Always fetch data **before** showing modal to avoid empty state bug
+
+---
+
+#### 2. Asynchronous State Management Pattern
+
+**Problem Solved:** Dialog showing empty on first invocation due to async state updates
+
+**Root Cause:**
+```tsx
+// ❌ INCORRECT - State not ready when modal opens
+const handleOpen = () => {
+  fetchAvailableUsers();  // Async - doesn't wait
+  setShowModal(true);     // Modal opens immediately with empty state
+};
+```
+
+**Correct Pattern:**
+```tsx
+// ✅ CORRECT - Fetch BEFORE showing modal
+const handleOpenModal = async () => {
+  setSelectedUserIds(new Set());
+  setSearchTerm('');
+  await fetchAllUsers();  // Wait for data to load
+  setShowModal(true);     // Now modal has data
+};
+```
+
+**Applied In:**
+- `/src/components/TeamMembersTab.tsx`
+- `/src/components/TeamRepositoriesTab.tsx`
+
+**Key Rule:** Always `await` data fetching before showing modals that display that data.
+
+---
+
+#### 3. User Identification in Messages
+
+**Standard:** Use `@githubUsername` for all user-facing messages
+
+**Rationale:**
+- GitHub username is the primary identifier in the system
+- More recognizable than email or display name
+- Consistent with GitHub's @mention pattern
+- Unique and user-controlled
+
+**Examples:**
+```tsx
+// ✅ CORRECT
+window.confirm(`¿Desea asignar como Tech Lead a @${member.githubUsername}?`);
+window.alert(`⚠️ @${user.githubUsername} ya pertenece a otro equipo. Se omitió.`);
+throw new Error(`Error al asignar a @${user.githubUsername}`);
+
+// ❌ INCORRECT
+window.confirm(`¿Desea asignar como Tech Lead a ${member.name}?`);
+window.alert(`⚠️ ${user.email} ya pertenece a otro equipo. Se omitió.`);
+```
+
+**Applied In:**
+- All messages in TeamMembersTab
+- All error messages involving users
+- Confirmation dialogs
+
+---
+
+#### 4. Badge Color System & Consistency
+
+**Standard:** Unified color scheme across all UI components
+
+**Role Badge Colors:**
+```tsx
+ADMIN              → bg-red-500      (Critical role)
+ENGINEERING_MANAGER → bg-purple-500  (Management)
+TECH_LEAD          → bg-blue-500     (Technical leadership)
+DEVELOPER          → bg-gray-500     (Base role)
+```
+
+**Implementation Locations:**
+- `/src/components/RoleBadge.tsx` - Primary role badges (UserManagementPage)
+- `/src/components/TeamMembersTab.tsx` - Tech Lead badge in teams view
+
+**Design Decision:**
+- **Single source of truth:** RoleBadge component defines canonical colors
+- **Consistency requirement:** All badge displays must use same colors
+- **No dark mode variants needed:** Use solid colors with white text for simplicity
+
+**Badge Structure:**
+```tsx
+// Standard badge pattern
+<span className="inline-flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded text-xs font-semibold">
+  <Crown className="h-3 w-3" />
+  Tech Lead
+</span>
+```
+
+---
+
+### API Integration Patterns
+
+#### 1. Role Assignment Endpoint
+
+**Endpoint:** `PUT /api/v1/users/{userId}/roles`
+
+**Request Schema:**
+```tsx
+interface AssignRolesRequest {
+  roles: string[];  // Array of role names
+}
+```
+
+**Critical Behavior:** This endpoint **REPLACES** all existing roles (not additive)
+
+**Correct Usage Pattern:**
+```tsx
+// ✅ CORRECT - Preserve existing roles when adding new one
+const handleMakeTechLead = async (user: UserDto) => {
+  const newRoles = user.roles.includes('TECH_LEAD')
+    ? user.roles  // Already has role, no change
+    : [...user.roles, 'TECH_LEAD'];  // Add to existing roles
+
+  const request: AssignRolesRequest = { roles: newRoles };
+  await fetch(`${apiUrl}/api/v1/users/${user.id}/roles`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+};
+
+// ❌ INCORRECT - Overwrites all existing roles
+const request: AssignRolesRequest = { roles: ['TECH_LEAD'] };
+```
+
+**Applied In:**
+- TeamMembersTab role assignment
+- Tech Lead toggle functionality
+
+---
+
+#### 2. Multi-Step API Operations
+
+**Pattern:** Sequential operations with proper error handling
+
+**Example from TeamMembersTab:**
+```tsx
+const handleConfirmSelection = async () => {
+  for (const user of selectedUsers) {
+    // Step 1: Add user to team
+    const response = await fetch(`${apiUrl}/api/v1/teams/${teamId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ userId: user.id }),
+    });
+
+    // Handle conflicts gracefully
+    if (response.status === 409) {
+      window.alert(`⚠️ @${user.githubUsername} ya pertenece a otro equipo. Se omitió.`);
+      continue;  // Skip this user, continue with others
+    }
+
+    // Step 2: Assign Tech Lead role if requested
+    if (makeTechLeads) {
+      const newRoles = [...user.roles, 'TECH_LEAD'];
+      const rolesRequest: AssignRolesRequest = { roles: newRoles };
+      await fetch(`${apiUrl}/api/v1/users/${user.id}/roles`, {
+        method: 'PUT',
+        body: JSON.stringify(rolesRequest),
+      });
+    }
+  }
+};
+```
+
+**Key Principles:**
+- Handle each item individually in loop
+- Use appropriate HTTP status codes (409 for conflicts)
+- Provide specific error messages per item
+- Don't fail entire operation if one item fails
+- Continue processing remaining items after non-critical errors
+
+---
+
+### UX Patterns & User Feedback
+
+#### 1. Confirmation Dialog Messages
+
+**Standard Format:**
+```tsx
+// Action confirmation
+const confirmed = window.confirm(
+  `¿Está seguro que desea [action] a @${user.githubUsername}?`
+);
+
+// Batch operations
+const makeTechLeads = window.confirm(
+  `¿Desea asignar a los ${count} usuario(s) seleccionado(s) como Tech Lead?\n\n` +
+  `Si selecciona "Cancelar", se asignarán solo como Developer.`
+);
+```
+
+**Success Messages:**
+```tsx
+window.alert('✅ Usuarios asignados exitosamente');
+window.alert('✅ Rol actualizado exitosamente');
+window.alert('✅ Miembro removido exitosamente');
+```
+
+**Error Messages:**
+```tsx
+// Specific user errors
+window.alert(`⚠️ @${user.githubUsername} ya pertenece a otro equipo. Se omitió.`);
+window.alert(`⚠️ @${user.githubUsername} fue asignado al equipo pero no se pudo asignar rol TECH_LEAD`);
+
+// Generic errors
+window.alert(`❌ Error: ${errorMessage}`);
+```
+
+**Message Icon Guide:**
+- ✅ Success operations
+- ⚠️ Warnings, partial failures, skipped items
+- ❌ Errors, critical failures
+
+---
+
+#### 2. Search & Filter UX
+
+**Client-Side Filtering Pattern:**
+```tsx
+const [searchTerm, setSearchTerm] = useState('');
+
+// Filter items by search term
+const filteredItems = allItems.filter((item) => {
+  if (!searchTerm) return true;  // Show all if no search term
+  return item.searchField
+    .toLowerCase()
+    .includes(searchTerm.toLowerCase());
+});
+
+// Search criteria by entity type
+Users       → githubUsername
+Repositories → repoName (last part of URL)
+Teams       → teamName
+```
+
+**Search Input Pattern:**
+```tsx
+<input
+  type="text"
+  value={searchTerm}
+  onChange={(e) => setSearchTerm(e.target.value)}
+  placeholder="Buscar por username..."
+  className="..."
+/>
+```
+
+**No search button needed** - filtering happens on every keystroke for instant feedback.
+
+---
+
+### File Organization & Component Structure
+
+#### Team Management Components
+
+**Related Files:**
+```
+src/components/
+├── SelectionModal.tsx          # Generic reusable selection modal
+├── TeamMembersTab.tsx          # Team members management
+├── TeamRepositoriesTab.tsx     # Team repositories management
+└── RoleBadge.tsx               # Role display badges
+
+src/types/
+└── user.types.ts
+    ├── AssignRolesRequest      # Role assignment API request
+    └── UpdateTechLeadRequest   # Deprecated - use AssignRolesRequest
+```
+
+**Component Responsibilities:**
+- **SelectionModal:** Generic UI for search + multi-select
+- **TeamMembersTab:** Business logic for team member operations
+- **TeamRepositoriesTab:** Business logic for team repository operations
+- **RoleBadge:** Consistent role display across application
+
+---
+
+### Migration Notes
+
+#### Deprecated Patterns
+
+**Tech Lead Toggle Endpoint (Deprecated):**
+```tsx
+// ❌ OLD - Don't use
+PUT /api/v1/teams/{teamId}/members/{userId}/tech-lead
+
+// ✅ NEW - Use instead
+PUT /api/v1/users/{userId}/roles
+Body: { roles: ['TECH_LEAD', 'DEVELOPER', ...] }
+```
+
+**Reason for Change:** New endpoint allows full role management, not just boolean toggle.
+
+---
+
 ## Conclusion
 
 This is a **clean, minimal, and well-structured** React application perfectly positioned for adding the repositories management feature.
 
 The existing UserManagementPage and associated components provide an excellent template that can be adapted for repositories with minimal changes.
 
+**Design Principles Established:**
+1. **Generic Components:** Favor reusable components with TypeScript generics
+2. **Async State Management:** Always fetch before showing modals
+3. **Consistent Identification:** Use @githubUsername in all user messages
+4. **Color Consistency:** Maintain unified badge color system
+5. **API Integration:** Understand replace vs additive semantics
+6. **User Feedback:** Clear, emoji-enhanced messages with appropriate icons
+7. **Client-Side Filtering:** Real-time search without backend calls
+
 **Next Steps:**
 1. Read the Executive Summary (5 min)
 2. Read the Implementation Reference (10 min)
-3. Use the code templates to implement (30-60 min)
-4. Follow the testing pattern for verification
-5. Integrate into the routing and navigation system
+3. Review Design Decisions section for patterns (15 min)
+4. Use the code templates to implement (30-60 min)
+5. Follow the testing pattern for verification
+6. Integrate into the routing and navigation system
 
 All tools and infrastructure are already in place. The implementation is straightforward following the established patterns.
