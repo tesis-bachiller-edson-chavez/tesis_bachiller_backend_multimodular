@@ -1,23 +1,26 @@
 package org.grubhart.pucp.tesis.module_api;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.grubhart.pucp.tesis.module_api.dto.AssignRolesRequest;
 import org.grubhart.pucp.tesis.module_api.dto.UserSummaryDto;
-import org.grubhart.pucp.tesis.module_domain.User;
-import org.grubhart.pucp.tesis.module_domain.UserRepository;
+import org.grubhart.pucp.tesis.module_domain.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -25,13 +28,16 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1/users")
 @Tag(name = "Users", description = "API para gestión de usuarios de la organización")
+@SecurityRequirement(name = "oauth2")
 public class UserController {
 
     private static final Logger logger = LoggerFactory.getLogger(UserController.class);
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
 
-    public UserController(UserRepository userRepository) {
+    public UserController(UserRepository userRepository, RoleRepository roleRepository) {
         this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
     }
 
     @GetMapping("/me")
@@ -89,6 +95,73 @@ public class UserController {
         return userRepository.findAllByActiveTrue().stream()
                 .map(this::mapToUserSummaryDto)
                 .collect(Collectors.toList());
+    }
+
+    @PutMapping("/{userId}/roles")
+    @Transactional
+    @Operation(
+            summary = "Asignar roles a un usuario",
+            description = "Asigna uno o más roles a un usuario específico. Esta operación reemplaza todos los roles existentes del usuario con los roles proporcionados. " +
+                    "Roles válidos: ADMIN, ENGINEERING_MANAGER, TECH_LEAD, DEVELOPER. " +
+                    "Solo usuarios con rol ADMIN pueden ejecutar esta operación.",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Roles asignados exitosamente",
+                            content = @Content(schema = @Schema(implementation = UserSummaryDto.class))
+                    ),
+                    @ApiResponse(
+                            responseCode = "400",
+                            description = "Solicitud inválida: lista de roles vacía o rol no válido"
+                    ),
+                    @ApiResponse(
+                            responseCode = "404",
+                            description = "Usuario no encontrado"
+                    ),
+                    @ApiResponse(
+                            responseCode = "403",
+                            description = "No tiene permisos para realizar esta operación (requiere rol ADMIN)"
+                    )
+            }
+    )
+    public ResponseEntity<UserSummaryDto> assignRoles(
+            @Parameter(description = "ID del usuario al que se asignarán los roles", required = true, example = "1")
+            @PathVariable Long userId,
+            @Valid @RequestBody AssignRolesRequest request) {
+
+        logger.info("Asignando roles {} al usuario ID: {}", request.roles(), userId);
+
+        // Buscar el usuario
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    logger.warn("Usuario con ID {} no encontrado", userId);
+                    return new IllegalArgumentException("Usuario no encontrado");
+                });
+
+        // Validar y obtener los roles
+        Set<Role> newRoles = new HashSet<>();
+        for (String roleName : request.roles()) {
+            try {
+                RoleName roleEnum = RoleName.valueOf(roleName.toUpperCase());
+                Role role = roleRepository.findByName(roleEnum)
+                        .orElseThrow(() -> {
+                            logger.error("Rol {} no encontrado en la base de datos", roleName);
+                            return new IllegalArgumentException("Rol no encontrado: " + roleName);
+                        });
+                newRoles.add(role);
+            } catch (IllegalArgumentException e) {
+                logger.warn("Rol inválido proporcionado: {}", roleName);
+                throw new IllegalArgumentException("Rol inválido: " + roleName + ". Roles válidos: ADMIN, ENGINEERING_MANAGER, TECH_LEAD, DEVELOPER");
+            }
+        }
+
+        // Reemplazar roles del usuario
+        user.getRoles().clear();
+        user.getRoles().addAll(newRoles);
+        userRepository.save(user);
+
+        logger.info("Roles asignados exitosamente al usuario ID {}: {}", userId, request.roles());
+        return ResponseEntity.ok(mapToUserSummaryDto(user));
     }
 
     private UserDto mapToUserDto(User user) {
