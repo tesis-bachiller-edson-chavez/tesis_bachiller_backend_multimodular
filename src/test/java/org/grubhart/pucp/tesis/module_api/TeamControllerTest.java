@@ -1,8 +1,7 @@
 package org.grubhart.pucp.tesis.module_api;
 
-import org.grubhart.pucp.tesis.module_api.dto.*;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
-import org.grubhart.pucp.tesis.module_processor.TeamManagementService;
+import org.grubhart.pucp.tesis.module_processor.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
