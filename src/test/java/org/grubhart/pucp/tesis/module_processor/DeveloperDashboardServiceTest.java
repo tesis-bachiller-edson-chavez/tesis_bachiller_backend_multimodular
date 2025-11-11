@@ -53,7 +53,6 @@ class DeveloperDashboardServiceTest {
 
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
-        when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
@@ -85,7 +84,6 @@ class DeveloperDashboardServiceTest {
         String githubUsername = "new_developer";
 
         when(commitRepository.findAll()).thenReturn(Collections.emptyList());
-        when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
@@ -125,7 +123,6 @@ class DeveloperDashboardServiceTest {
 
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
-        when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername);
