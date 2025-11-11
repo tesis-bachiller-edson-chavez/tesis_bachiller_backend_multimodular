@@ -2728,6 +2728,464 @@ sequenceDiagram
 
 3. **Actualización Condicional (5-9):** Si el repositorio existe, actualiza el campo y lo persiste. Si no existe, retorna 404.
 
+#### HU-22: Gestión de Equipos
+
+##### Diagrama de Clases
+```mermaid
+classDiagram
+    direction LR
+
+    subgraph module_api
+        class TeamController {
+            <<RestController>>
+            +createTeam(CreateTeamRequest): ResponseEntity<TeamResponse>
+            +getAllTeams(): ResponseEntity<List<TeamResponse>>
+            +getTeam(Long): ResponseEntity<TeamDetailResponse>
+            +updateTeam(Long, UpdateTeamRequest): ResponseEntity<TeamResponse>
+            +deleteTeam(Long): ResponseEntity<Void>
+            +getTeamMembers(Long): ResponseEntity<List<TeamMemberResponse>>
+            +assignMember(Long, AssignMemberRequest): ResponseEntity<Void>
+            +removeMember(Long, Long): ResponseEntity<Void>
+            +getTeamRepositories(Long): ResponseEntity<List<RepositoryConfig>>
+            +assignRepository(Long, AssignRepositoryRequest): ResponseEntity<Void>
+            +removeRepository(Long, Long): ResponseEntity<Void>
+        }
+    end
+
+    subgraph module_processor
+        class TeamManagementService {
+            <<Service>>
+            +createTeam(CreateTeamRequest): TeamResponse
+            +updateTeam(Long, UpdateTeamRequest): TeamResponse
+            +deleteTeam(Long): void
+            +getTeam(Long): TeamDetailResponse
+            +getAllTeams(): List<TeamResponse>
+            +assignMember(Long, Long): void
+            +removeMember(Long, Long): void
+            +assignRepository(Long, Long): void
+            +removeRepository(Long, Long): void
+            +getTeamMembers(Long): List<TeamMemberResponse>
+            +getTeamRepositories(Long): List<RepositoryConfig>
+            -assignTechLead(Long, Long): void
+            -buildTeamResponse(Team): TeamResponse
+        }
+        class CreateTeamRequest {
+            <<DTO>>
+            +name: String
+            +techLeadIds: List<Long>
+        }
+        class UpdateTeamRequest {
+            <<DTO>>
+            +name: String
+            +techLeadIds: List<Long>
+        }
+        class TeamResponse {
+            <<DTO>>
+            +id: Long
+            +name: String
+            +memberCount: int
+            +techLeadCount: int
+            +repositoryCount: int
+            +techLeadIds: List<Long>
+        }
+        class TeamDetailResponse {
+            <<DTO>>
+            +id: Long
+            +name: String
+            +members: List<TeamMemberResponse>
+            +techLeads: List<TeamMemberResponse>
+            +repositories: List<RepositoryInfo>
+        }
+        class TeamMemberResponse {
+            <<DTO>>
+            +userId: Long
+            +githubUsername: String
+            +email: String
+            +name: String
+            +roles: Set<String>
+            +isTechLead: boolean
+        }
+        class AssignMemberRequest {
+            <<DTO>>
+            +userId: Long
+        }
+        class AssignRepositoryRequest {
+            <<DTO>>
+            +repositoryConfigId: Long
+        }
+    end
+
+    subgraph module_domain
+        class Team {
+            <<Entity>>
+            -id: Long
+            -name: String
+            -repositories: Set<RepositoryConfig>
+            +addRepository(RepositoryConfig): void
+            +removeRepository(RepositoryConfig): void
+        }
+        class User {
+            <<Entity>>
+            -id: Long
+            -githubUsername: String
+            -email: String
+            -teamId: Long
+            -roles: Set<Role>
+        }
+        class RepositoryConfig {
+            <<Entity>>
+            -id: Long
+            -repositoryUrl: String
+            -datadogServiceName: String
+        }
+        class TeamRepository {
+            <<Repository>>
+            +findById(Long): Optional<Team>
+            +findAll(): List<Team>
+            +save(Team): Team
+            +delete(Team): void
+            +existsByName(String): boolean
+            +findByName(String): Optional<Team>
+        }
+        class UserRepository {
+            <<Repository>>
+            +findById(Long): Optional<User>
+            +findByTeamId(Long): List<User>
+            +countByTeamId(Long): long
+            +findByTeamIdAndRoles_Name(Long, RoleName): List<User>
+            +countByTeamIdAndRoles_Name(Long, RoleName): long
+        }
+        class RepositoryConfigRepository {
+            <<Repository>>
+            +findById(Long): Optional<RepositoryConfig>
+        }
+    end
+
+    %% --- Relaciones ---
+    TeamController --> TeamManagementService : uses
+    TeamController ..> CreateTeamRequest : receives
+    TeamController ..> UpdateTeamRequest : receives
+    TeamController ..> AssignMemberRequest : receives
+    TeamController ..> AssignRepositoryRequest : receives
+    TeamController ..> TeamResponse : returns
+    TeamController ..> TeamDetailResponse : returns
+    TeamController ..> TeamMemberResponse : returns
+
+    TeamManagementService --> TeamRepository : uses
+    TeamManagementService --> UserRepository : uses
+    TeamManagementService --> RepositoryConfigRepository : uses
+    TeamManagementService ..> CreateTeamRequest : receives
+    TeamManagementService ..> UpdateTeamRequest : receives
+    TeamManagementService ..> TeamResponse : returns
+    TeamManagementService ..> TeamDetailResponse : returns
+    TeamManagementService ..> TeamMemberResponse : returns
+
+    TeamRepository ..> Team : manages
+    UserRepository ..> User : manages
+    RepositoryConfigRepository ..> RepositoryConfig : manages
+
+    Team "1" *-- "many" RepositoryConfig : works on
+    User "many" --> "1" Team : belongs to
+```
+
+**Explicación del Diagrama:**
+
+1. **API REST (`TeamController`):** Punto de entrada para la gestión de equipos. Expone endpoints para:
+   - **CRUD de equipos**: Crear, listar, obtener detalles, actualizar y eliminar equipos.
+   - **Gestión de miembros**: Listar, asignar y remover miembros (developers y tech leads).
+   - **Gestión de repositorios**: Listar, asignar y remover repositorios del equipo.
+
+2. **Capa de Lógica de Negocio (`TeamManagementService`):** Implementa las reglas de negocio:
+   - Un developer/tech lead solo puede pertenecer a **un equipo a la vez**.
+   - Un equipo puede tener **múltiples tech leads**.
+   - Tech leads deben tener el rol `TECH_LEAD`.
+   - No se puede eliminar un equipo con miembros activos.
+   - Sincronización automática de tech leads basada en roles.
+
+3. **DTOs (`module_processor`):** Los DTOs están co-localizados con la lógica de negocio para evitar dependencias circulares (Spring Modulith compliance). Incluyen:
+   - Request DTOs con validaciones Jakarta Bean Validation.
+   - Response DTOs con métodos factory (`fromTeam`, `fromUser`).
+
+4. **Capa de Dominio (`module_domain`):**
+   - **`Team`**: Entidad central que representa un equipo con relación ManyToMany a repositorios.
+   - **`User`**: Actualizada con campo `teamId` (ManyToOne a Team).
+   - **Repositorios**: Implementan queries específicos para gestión de equipos.
+
+##### Notas de Arquitectura
+
+1. **Arquitectura Modular Limpia**: Los DTOs se encuentran en `module_processor` junto con la lógica de negocio, evitando ciclos de dependencia detectados por Spring Modulith. Esto sigue el patrón establecido en otras métricas DORA (`CFRMetric`, `MTTRMetric`).
+
+2. **Reglas de Negocio Centralizadas**: Todas las validaciones y reglas de negocio están encapsuladas en `TeamManagementService`:
+   - Validación de nombre único de equipo.
+   - Validación de que usuarios no pertenezcan a múltiples equipos.
+   - Validación de roles para tech leads.
+   - Validación de eliminación segura (sin miembros activos).
+
+3. **Relaciones Bidireccionales Simples**: Se optó por una relación simple `User.teamId` en lugar de ManyToMany para simplificar las consultas y mantener la consistencia ("un usuario, un equipo").
+
+4. **Sincronización Automática de Tech Leads**: El método `assignMember` detecta automáticamente si un usuario tiene rol `TECH_LEAD` y lo trata diferentemente, validando que no pertenezca a otro equipo.
+
+##### Diagrama de Base de Datos (ERD)
+```mermaid
+erDiagram
+    TEAMS {
+        bigint id PK "ID autogenerado"
+        varchar name UK "Nombre único del equipo"
+    }
+
+    USERS {
+        bigint id PK "ID autogenerado"
+        bigint github_id UK "ID de GitHub"
+        varchar github_username UK "Username de GitHub"
+        varchar email "Email del usuario"
+        bigint team_id FK "FK a teams.id (nullable)"
+    }
+
+    TEAM_REPOSITORIES {
+        bigint team_id PK,FK "FK a teams.id"
+        bigint repository_config_id PK,FK "FK a repository_config.id"
+    }
+
+    REPOSITORY_CONFIG {
+        bigint id PK "ID autogenerado"
+        varchar repository_url UK "URL del repositorio"
+        varchar datadog_service_name "Nombre del servicio en Datadog"
+    }
+
+    USER_ROLES {
+        bigint user_id PK,FK "FK a users.id"
+        bigint role_id PK,FK "FK a roles.id"
+    }
+
+    ROLES {
+        bigint id PK "ID autogenerado"
+        varchar name UK "ADMIN, ENGINEERING_MANAGER, TECH_LEAD, DEVELOPER"
+    }
+
+    TEAMS ||--o{ USERS : "tiene miembros"
+    TEAMS ||--o{ TEAM_REPOSITORIES : "trabaja en"
+    REPOSITORY_CONFIG ||--o{ TEAM_REPOSITORIES : "es trabajado por"
+    USERS ||--o{ USER_ROLES : "tiene"
+    ROLES ||--o{ USER_ROLES : "asignado a"
+```
+
+**Explicación del Diagrama:**
+
+* **`TEAMS`**: Tabla que almacena los equipos. El campo `name` tiene restricción `UNIQUE` para evitar duplicados.
+
+* **`USERS`**: Actualizada con el campo `team_id` (nullable, FK a `teams.id`). Un usuario puede pertenecer a un solo equipo, pero un equipo tiene múltiples usuarios. La relación es opcional (nullable) para soportar usuarios sin equipo.
+
+* **`TEAM_REPOSITORIES`**: Tabla de unión (ManyToMany) que resuelve la relación entre equipos y repositorios. Un equipo puede trabajar en múltiples repositorios y un repositorio puede ser trabajado por múltiples equipos.
+
+* **`USER_ROLES`**: Tabla existente que vincula usuarios con roles. Los tech leads se identifican por tener el rol `TECH_LEAD` en esta tabla.
+
+* **Reglas de Integridad**:
+  - `team_id` en `USERS` es nullable (permite usuarios sin equipo).
+  - `team_id` tiene restricción `ON DELETE SET NULL` (si se elimina un equipo, los usuarios quedan sin equipo).
+  - `TEAM_REPOSITORIES` tiene `ON DELETE CASCADE` (si se elimina un equipo o repositorio, se eliminan las relaciones).
+
+##### Diagrama de Secuencia
+
+**Caso 1: Crear Equipo con Tech Leads**
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin/Manager
+    participant Controller as TeamController
+    participant Service as TeamManagementService
+    participant TeamRepo as TeamRepository
+    participant UserRepo as UserRepository
+    participant DB as Database
+
+    Admin->>+Controller: POST /api/v1/teams<br/>{name: "Backend Team", techLeadIds: [10, 20]}
+
+    Controller->>+Service: createTeam(CreateTeamRequest)
+
+    Service->>+TeamRepo: existsByName("Backend Team")
+    TeamRepo->>DB: SELECT COUNT(*) FROM teams WHERE name = 'Backend Team'
+    DB-->>TeamRepo: 0 (no existe)
+    TeamRepo-->>-Service: false
+
+    Service->>Service: team = new Team("Backend Team")
+    Service->>+TeamRepo: save(team)
+    TeamRepo->>DB: INSERT INTO teams (name) VALUES ('Backend Team')
+    DB-->>TeamRepo: Team creado con id=1
+    TeamRepo-->>-Service: Team(id=1)
+
+    loop Para cada techLeadId en [10, 20]
+        Service->>+UserRepo: findById(10)
+        UserRepo->>DB: SELECT * FROM users WHERE id = 10
+        DB-->>UserRepo: User encontrado
+        UserRepo-->>-Service: User(id=10, roles=[TECH_LEAD])
+
+        Service->>Service: Validar que user tiene rol TECH_LEAD
+        Service->>Service: Validar que user.teamId == null
+
+        Service->>Service: user.setTeamId(1)
+        Service->>+UserRepo: save(user)
+        UserRepo->>DB: UPDATE users SET team_id = 1 WHERE id = 10
+        DB-->>UserRepo: Usuario actualizado
+        UserRepo-->>-Service: User actualizado
+    end
+
+    Service->>+UserRepo: countByTeamId(1)
+    UserRepo->>DB: SELECT COUNT(*) FROM users WHERE team_id = 1
+    DB-->>UserRepo: 2
+    UserRepo-->>-Service: 2
+
+    Service->>+UserRepo: countByTeamIdAndRoles_Name(1, TECH_LEAD)
+    UserRepo->>DB: SELECT COUNT(*) FROM users u<br/>JOIN user_roles ur ON u.id = ur.user_id<br/>WHERE u.team_id = 1 AND ur.role_id = ...
+    DB-->>UserRepo: 2
+    UserRepo-->>-Service: 2
+
+    Service-->>-Controller: TeamResponse(id=1, name="Backend Team",<br/>memberCount=2, techLeadCount=2, ...)
+    Controller-->>-Admin: 201 CREATED + TeamResponse
+```
+
+**Caso 2: Asignar Miembro a Equipo**
+
+```mermaid
+sequenceDiagram
+    participant TechLead as Tech Lead
+    participant Controller as TeamController
+    participant Service as TeamManagementService
+    participant TeamRepo as TeamRepository
+    participant UserRepo as UserRepository
+    participant DB as Database
+
+    TechLead->>+Controller: POST /api/v1/teams/1/members<br/>{userId: 15}
+
+    Controller->>+Service: assignMember(teamId=1, userId=15)
+
+    Service->>+TeamRepo: findById(1)
+    TeamRepo->>DB: SELECT * FROM teams WHERE id = 1
+    DB-->>TeamRepo: Team encontrado
+    TeamRepo-->>-Service: Team(id=1, name="Backend Team")
+
+    Service->>+UserRepo: findById(15)
+    UserRepo->>DB: SELECT * FROM users WHERE id = 15
+    DB-->>UserRepo: User encontrado
+    UserRepo-->>-Service: User(id=15, roles=[DEVELOPER], teamId=null)
+
+    Service->>Service: Detectar que user NO tiene rol TECH_LEAD
+
+    Service->>Service: Validar que user.teamId == null
+
+    Service->>Service: user.setTeamId(1)
+    Service->>+UserRepo: save(user)
+    UserRepo->>DB: UPDATE users SET team_id = 1 WHERE id = 15
+    DB-->>UserRepo: Usuario actualizado
+    UserRepo-->>-Service: User actualizado
+
+    Service-->>-Controller: void (éxito)
+    Controller-->>-TechLead: 200 OK
+```
+
+**Caso 3: Asignar Repositorio a Equipo**
+
+```mermaid
+sequenceDiagram
+    participant Manager as Engineering Manager
+    participant Controller as TeamController
+    participant Service as TeamManagementService
+    participant TeamRepo as TeamRepository
+    participant RepoConfigRepo as RepositoryConfigRepository
+    participant DB as Database
+
+    Manager->>+Controller: POST /api/v1/teams/1/repositories<br/>{repositoryConfigId: 5}
+
+    Controller->>+Service: assignRepository(teamId=1, repositoryConfigId=5)
+
+    Service->>+TeamRepo: findById(1)
+    TeamRepo->>DB: SELECT * FROM teams t<br/>LEFT JOIN team_repositories tr ON t.id = tr.team_id<br/>WHERE t.id = 1
+    DB-->>TeamRepo: Team con repositorios actuales
+    TeamRepo-->>-Service: Team(id=1, repositories=[...])
+
+    Service->>+RepoConfigRepo: findById(5)
+    RepoConfigRepo->>DB: SELECT * FROM repository_config WHERE id = 5
+    DB-->>RepoConfigRepo: RepositoryConfig encontrado
+    RepoConfigRepo-->>-Service: RepositoryConfig(id=5, url="...")
+
+    Service->>Service: team.addRepository(repository)
+    Service->>+TeamRepo: save(team)
+    TeamRepo->>DB: INSERT INTO team_repositories<br/>(team_id, repository_config_id)<br/>VALUES (1, 5)
+    DB-->>TeamRepo: Relación creada
+    TeamRepo-->>-Service: Team actualizado
+
+    Service-->>-Controller: void (éxito)
+    Controller-->>-Manager: 200 OK
+```
+
+**Caso 4: Eliminar Equipo con Validación**
+
+```mermaid
+sequenceDiagram
+    participant Manager as Engineering Manager
+    participant Controller as TeamController
+    participant Service as TeamManagementService
+    participant TeamRepo as TeamRepository
+    participant UserRepo as UserRepository
+    participant DB as Database
+
+    Manager->>+Controller: DELETE /api/v1/teams/1
+
+    Controller->>+Service: deleteTeam(1)
+
+    Service->>+TeamRepo: findById(1)
+    TeamRepo->>DB: SELECT * FROM teams WHERE id = 1
+    DB-->>TeamRepo: Team encontrado
+    TeamRepo-->>-Service: Team(id=1)
+
+    Service->>+UserRepo: countByTeamId(1)
+    UserRepo->>DB: SELECT COUNT(*) FROM users WHERE team_id = 1
+    DB-->>UserRepo: 3 (tiene miembros)
+    UserRepo-->>-Service: 3
+
+    Service->>Service: Validar: memberCount > 0
+    Service-->>-Controller: throw IllegalStateException<br/>("Cannot delete team with active members")
+
+    Controller-->>-Manager: 400 BAD REQUEST<br/>"Cannot delete team with active members"
+```
+
+**Explicación de los Flujos:**
+
+**Flujo de Creación de Equipo:**
+
+1. **Validación de nombre único (3-5):** Verifica que no exista otro equipo con el mismo nombre.
+
+2. **Creación del equipo (6-9):** Se crea la entidad `Team` y se persiste en la base de datos.
+
+3. **Asignación de Tech Leads (10-18):** Para cada tech lead ID proporcionado:
+   - Se valida que el usuario exista y tenga rol `TECH_LEAD`.
+   - Se valida que no pertenezca a otro equipo (`teamId == null`).
+   - Se actualiza el campo `teamId` del usuario.
+
+4. **Construcción de respuesta (19-26):** Se calculan las estadísticas del equipo (miembros totales, tech leads) y se retorna el DTO.
+
+**Flujo de Asignación de Miembro:**
+
+1. **Validación de existencia (3-9):** Verifica que tanto el equipo como el usuario existan.
+
+2. **Detección de rol (11):** El servicio detecta automáticamente si el usuario es tech lead o developer basándose en sus roles.
+
+3. **Validación de unicidad (13):** Asegura que el usuario no pertenezca a otro equipo.
+
+4. **Asignación (15-18):** Actualiza el `teamId` del usuario.
+
+**Flujo de Asignación de Repositorio:**
+
+1. **Validación de entidades (3-11):** Verifica que tanto el equipo como el repositorio existan.
+
+2. **Creación de relación (12-17):** Inserta un registro en la tabla `team_repositories` estableciendo la relación ManyToMany.
+
+**Flujo de Eliminación con Validación:**
+
+1. **Verificación de miembros (9-12):** Cuenta cuántos usuarios pertenecen al equipo.
+
+2. **Validación de eliminación segura (14):** Si el equipo tiene miembros, lanza una excepción impidiendo la eliminación.
+
+3. **Respuesta de error (16-17):** El controlador traduce la excepción a un 400 BAD REQUEST con mensaje descriptivo.
+
 ---
 
 ## Apéndice B: Estrategia de Integración y Despliegue Continuo (CI/CD)
