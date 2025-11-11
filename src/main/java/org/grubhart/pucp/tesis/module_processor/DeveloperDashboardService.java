@@ -1,5 +1,7 @@
 package org.grubhart.pucp.tesis.module_processor;
 
+import org.grubhart.pucp.tesis.module_domain.ChangeLeadTime;
+import org.grubhart.pucp.tesis.module_domain.ChangeLeadTimeRepository;
 import org.grubhart.pucp.tesis.module_domain.Commit;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
@@ -22,9 +24,12 @@ public class DeveloperDashboardService {
     private static final Logger logger = LoggerFactory.getLogger(DeveloperDashboardService.class);
 
     private final CommitRepository commitRepository;
+    private final ChangeLeadTimeRepository changeLeadTimeRepository;
 
-    public DeveloperDashboardService(CommitRepository commitRepository) {
+    public DeveloperDashboardService(CommitRepository commitRepository,
+                                     ChangeLeadTimeRepository changeLeadTimeRepository) {
         this.commitRepository = commitRepository;
+        this.changeLeadTimeRepository = changeLeadTimeRepository;
     }
 
     /**
@@ -74,14 +79,18 @@ public class DeveloperDashboardService {
         // TODO: Implementar estadísticas de Pull Requests cuando se agregue el campo 'author' a PullRequest
         PullRequestStatsDto pullRequestStats = new PullRequestStatsDto(0L, 0L, 0L);
 
-        logger.info("Métricas calculadas exitosamente para el developer: {}. Total commits: {}, Repositorios: {}",
-                githubUsername, commitStats.totalCommits(), repositoryStats.size());
+        // Calcular métricas DORA
+        DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(developerCommits);
+
+        logger.info("Métricas calculadas exitosamente para el developer: {}. Total commits: {}, Repositorios: {}, Lead Time promedio: {} horas",
+                githubUsername, commitStats.totalCommits(), repositoryStats.size(), doraMetrics.averageLeadTimeHours());
 
         return new DeveloperMetricsResponse(
                 githubUsername,
                 repositoryStats,
                 commitStats,
-                pullRequestStats
+                pullRequestStats,
+                doraMetrics
         );
     }
 
@@ -112,6 +121,54 @@ public class DeveloperDashboardService {
     }
 
     /**
+     * Calcula métricas DORA para el developer.
+     * Solo incluye Lead Time y Deployment Frequency ya que MTTR y CFR son métricas de servicio/equipo.
+     */
+    private DeveloperDoraMetricsDto calculateDoraMetrics(List<Commit> developerCommits) {
+        if (developerCommits.isEmpty()) {
+            return new DeveloperDoraMetricsDto(null, 0L, 0L, null, null);
+        }
+
+        // Obtener todos los ChangeLeadTime para los commits del developer
+        Set<String> commitShas = developerCommits.stream()
+                .map(Commit::getSha)
+                .collect(Collectors.toSet());
+
+        List<ChangeLeadTime> leadTimes = changeLeadTimeRepository.findAll().stream()
+                .filter(lt -> commitShas.contains(lt.getCommit().getSha()))
+                .collect(Collectors.toList());
+
+        if (leadTimes.isEmpty()) {
+            // No hay deployments con lead time calculado aún
+            return new DeveloperDoraMetricsDto(null, 0L, 0L, null, null);
+        }
+
+        // Calcular estadísticas de lead time (convertir de segundos a horas)
+        DoubleSummaryStatistics leadTimeStats = leadTimes.stream()
+                .mapToDouble(lt -> lt.getLeadTimeInSeconds() / 3600.0) // Convertir a horas
+                .summaryStatistics();
+
+        double averageLeadTimeHours = leadTimeStats.getAverage();
+        double minLeadTimeHours = leadTimeStats.getMin();
+        double maxLeadTimeHours = leadTimeStats.getMax();
+        long deploymentCommitCount = leadTimes.size();
+
+        // Contar deployments únicos
+        long uniqueDeployments = leadTimes.stream()
+                .map(lt -> lt.getDeployment().getId())
+                .distinct()
+                .count();
+
+        return new DeveloperDoraMetricsDto(
+                averageLeadTimeHours,
+                uniqueDeployments,
+                deploymentCommitCount,
+                minLeadTimeHours,
+                maxLeadTimeHours
+        );
+    }
+
+    /**
      * Crea una respuesta vacía cuando no hay datos para el developer.
      */
     private DeveloperMetricsResponse createEmptyMetricsResponse(String githubUsername) {
@@ -119,7 +176,8 @@ public class DeveloperDashboardService {
                 githubUsername,
                 Collections.emptyList(),
                 new CommitStatsDto(0L, 0L, null, null),
-                new PullRequestStatsDto(0L, 0L, 0L)
+                new PullRequestStatsDto(0L, 0L, 0L),
+                new DeveloperDoraMetricsDto(null, 0L, 0L, null, null)
         );
     }
 }

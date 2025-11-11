@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * DTO que contiene todas las métricas del dashboard para el rol Developer.
- * Incluye información de repositorios, commits y pull requests.
+ * Incluye información de repositorios, commits, pull requests y métricas DORA.
  */
 @Schema(description = "Métricas completas del dashboard para un Developer")
 public record DeveloperMetricsResponse(
@@ -20,6 +20,9 @@ public record DeveloperMetricsResponse(
         CommitStatsDto commitStats,
 
         @Schema(description = "Estadísticas agregadas de pull requests del developer")
-        PullRequestStatsDto pullRequestStats
+        PullRequestStatsDto pullRequestStats,
+
+        @Schema(description = "Métricas DORA del developer (Lead Time, Deployment Frequency)")
+        DeveloperDoraMetricsDto doraMetrics
 ) {
 }
