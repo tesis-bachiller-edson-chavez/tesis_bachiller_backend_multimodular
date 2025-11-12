@@ -1,6 +1,7 @@
 package org.grubhart.pucp.tesis.module_api;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -10,6 +11,7 @@ import org.grubhart.pucp.tesis.module_processor.DeveloperDashboardService;
 import org.grubhart.pucp.tesis.module_processor.DeveloperMetricsResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +21,11 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
+import java.util.List;
 
 @Controller
 public class DashboardController {
@@ -96,6 +102,7 @@ class DashboardApiController {
             description = "Retorna métricas personalizadas para el rol Developer. " +
                     "Los datos incluyen únicamente repositorios donde el developer ha realizado commits, " +
                     "estadísticas de commits y pull requests. " +
+                    "**Filtros opcionales:** startDate, endDate (basados en fecha de deployment), repositoryIds. " +
                     "**Accesible para usuarios con rol DEVELOPER o superior**.",
             responses = {
                     @ApiResponse(
@@ -113,7 +120,14 @@ class DashboardApiController {
                     )
             }
     )
-    public ResponseEntity<DeveloperMetricsResponse> getDeveloperMetrics(Authentication authentication) {
+    public ResponseEntity<DeveloperMetricsResponse> getDeveloperMetrics(
+            Authentication authentication,
+            @Parameter(description = "Fecha de inicio del rango (formato: YYYY-MM-DD, basado en fecha de deployment)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "Fecha de fin del rango (formato: YYYY-MM-DD, basado en fecha de deployment)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "Lista de IDs de repositorios para filtrar")
+            @RequestParam(required = false) List<Long> repositoryIds) {
         try {
             if (!(authentication.getPrincipal() instanceof OAuth2User)) {
                 logger.error("El principal de la autenticación no es de tipo OAuth2User");
@@ -128,9 +142,11 @@ class DashboardApiController {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
             }
 
-            logger.info("Solicitando métricas de developer para el usuario: {}", githubUsername);
+            logger.info("Solicitando métricas de developer para el usuario: {} (startDate: {}, endDate: {}, repositoryIds: {})",
+                    githubUsername, startDate, endDate, repositoryIds);
 
-            DeveloperMetricsResponse metrics = developerDashboardService.getDeveloperMetrics(githubUsername);
+            DeveloperMetricsResponse metrics = developerDashboardService.getDeveloperMetrics(
+                    githubUsername, startDate, endDate, repositoryIds);
             return ResponseEntity.ok(metrics);
 
         } catch (Exception e) {
