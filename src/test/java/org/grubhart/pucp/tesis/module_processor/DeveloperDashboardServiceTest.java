@@ -149,7 +149,7 @@ class DeveloperDashboardServiceTest {
 
     @Test
     void testGetDeveloperMetrics_withRepositoryFilter_filtersCorrectly() throws Exception {
-        // GIVEN: Un developer con commits en dos repositorios
+        // GIVEN: Un developer con commits en dos repositorios con deployments
         String githubUsername = "john_doe";
 
         RepositoryConfig repo1 = new RepositoryConfig("https://github.com/org/repo1");
@@ -163,25 +163,41 @@ class DeveloperDashboardServiceTest {
 
         LocalDateTime now = LocalDateTime.now();
 
-        List<Commit> mockCommits = List.of(
-                new Commit("sha1", "john_doe", "Commit 1", now, repo1),
-                new Commit("sha2", "john_doe", "Commit 2", now, repo1),
-                new Commit("sha3", "john_doe", "Commit 3", now, repo2)
-        );
+        Commit commit1 = new Commit("sha1", "john_doe", "Commit 1", now, repo1);
+        Commit commit2 = new Commit("sha2", "john_doe", "Commit 2", now, repo1);
+        Commit commit3 = new Commit("sha3", "john_doe", "Commit 3", now, repo2);
+
+        List<Commit> mockCommits = List.of(commit1, commit2, commit3);
+
+        // Crear deployments para simular que los commits fueron deployados
+        Deployment deployment1 = new Deployment("sha1", "service1", now, repo1);
+        deployment1.setId(1L);
+        Deployment deployment2 = new Deployment("sha2", "service1", now, repo1);
+        deployment2.setId(2L);
+        Deployment deployment3 = new Deployment("sha3", "service2", now, repo2);
+        deployment3.setId(3L);
+
+        ChangeLeadTime lt1 = new ChangeLeadTime(commit1, deployment1, 3600L);
+        ChangeLeadTime lt2 = new ChangeLeadTime(commit2, deployment2, 3600L);
+        ChangeLeadTime lt3 = new ChangeLeadTime(commit3, deployment3, 3600L);
 
         when(commitRepository.findAll()).thenReturn(mockCommits);
-        when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
+        when(changeLeadTimeRepository.findAll()).thenReturn(List.of(lt1, lt2, lt3));
+        when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
         when(pullRequestRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas filtrando por repo1
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(
                 githubUsername, null, null, List.of(1L));
 
-        // THEN: Solo se retorna el repositorio filtrado
+        // THEN: Solo se retornan commits del repositorio filtrado
         assertNotNull(response);
         assertEquals(1, response.repositories().size());
         assertEquals(1L, response.repositories().get(0).repositoryId());
         assertEquals(2L, response.repositories().get(0).commitCount());
+        // Verificar que commitStats también está filtrado
+        assertEquals(2L, response.commitStats().totalCommits());
+        assertEquals(1L, response.commitStats().repositoryCount());
     }
 
     @Test
@@ -233,5 +249,8 @@ class DeveloperDashboardServiceTest {
         assertEquals(1L, response.doraMetrics().totalDeploymentCount());
         assertEquals(1, response.doraMetrics().dailyMetrics().size());
         assertEquals(LocalDate.of(2025, 11, 2), response.doraMetrics().dailyMetrics().get(0).date());
+        // Verificar que commitStats también está filtrado
+        assertEquals(1L, response.commitStats().totalCommits());
+        assertEquals(1L, response.commitStats().repositoryCount());
     }
 }

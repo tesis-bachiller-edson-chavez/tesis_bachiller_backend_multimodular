@@ -72,13 +72,18 @@ public class DeveloperDashboardService {
             return createEmptyMetricsResponse(githubUsername);
         }
 
-        // Agrupar commits por repositorio
-        Map<RepositoryConfig, List<Commit>> commitsByRepository = developerCommits.stream()
+        // Filtrar commits basándose en deployments (fecha y repositorio)
+        List<Commit> filteredCommits = filterCommitsByDeployments(developerCommits, startDate, endDate, repositoryIds);
+
+        logger.debug("Después de aplicar filtros: {} commits (de {} totales)",
+                filteredCommits.size(), developerCommits.size());
+
+        // Agrupar commits filtrados por repositorio
+        Map<RepositoryConfig, List<Commit>> commitsByRepository = filteredCommits.stream()
                 .collect(Collectors.groupingBy(Commit::getRepository));
 
-        // Crear estadísticas por repositorio (aplicar filtro de repositoryIds si existe)
+        // Crear estadísticas por repositorio
         List<RepositoryStatsDto> repositoryStats = commitsByRepository.entrySet().stream()
-                .filter(entry -> repositoryIds == null || repositoryIds.isEmpty() || repositoryIds.contains(entry.getKey().getId()))
                 .map(entry -> {
                     RepositoryConfig repo = entry.getKey();
                     long commitCount = entry.getValue().size();
@@ -92,14 +97,14 @@ public class DeveloperDashboardService {
                 .sorted(Comparator.comparing(RepositoryStatsDto::commitCount).reversed())
                 .collect(Collectors.toList());
 
-        // Calcular estadísticas agregadas de commits
-        CommitStatsDto commitStats = calculateCommitStats(developerCommits, commitsByRepository.size());
+        // Calcular estadísticas agregadas de commits (usando commits filtrados)
+        CommitStatsDto commitStats = calculateCommitStats(filteredCommits, commitsByRepository.size());
 
-        // Calcular estadísticas de Pull Requests
-        PullRequestStatsDto pullRequestStats = calculatePullRequestStats(developerCommits);
+        // Calcular estadísticas de Pull Requests (usando commits filtrados)
+        PullRequestStatsDto pullRequestStats = calculatePullRequestStats(filteredCommits);
 
-        // Calcular métricas DORA (aplicando filtros de fecha y repositorio)
-        DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(developerCommits, startDate, endDate, repositoryIds);
+        // Calcular métricas DORA (usando commits filtrados)
+        DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(filteredCommits, startDate, endDate, repositoryIds);
 
         logger.info("Métricas calculadas exitosamente para el developer: {}. Total commits: {}, Repositorios: {}, " +
                         "PRs: {} (Merged: {}, Open: {}), Lead Time promedio: {} horas, Deployments: {}, CFR: {}%, Failed Deployments: {}, Daily Metrics: {}",
@@ -363,6 +368,42 @@ public class DeveloperDashboardService {
                     );
                 })
                 .sorted(Comparator.comparing(DailyMetricDto::date))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Filtra commits basándose en si tienen deployments que cumplen con los criterios de fecha y repositorio.
+     * Si no hay filtros, retorna todos los commits.
+     *
+     * @param commits Lista de commits a filtrar
+     * @param startDate Fecha de inicio para filtrar por deployment.createdAt, opcional
+     * @param endDate Fecha de fin para filtrar por deployment.createdAt, opcional
+     * @param repositoryIds Lista de IDs de repositorios para filtrar, opcional
+     * @return Lista de commits que tienen deployments que cumplen los criterios
+     */
+    private List<Commit> filterCommitsByDeployments(List<Commit> commits, LocalDate startDate,
+                                                     LocalDate endDate, List<Long> repositoryIds) {
+        // Si no hay filtros, retornar todos los commits
+        if (startDate == null && endDate == null && (repositoryIds == null || repositoryIds.isEmpty())) {
+            return commits;
+        }
+
+        // Obtener todos los SHAs de commits
+        Set<String> commitShas = commits.stream()
+                .map(Commit::getSha)
+                .collect(Collectors.toSet());
+
+        // Obtener los ChangeLeadTime filtrados por fecha y repositorio
+        Set<String> filteredCommitShas = changeLeadTimeRepository.findAll().stream()
+                .filter(lt -> commitShas.contains(lt.getCommit().getSha()))
+                .filter(lt -> applyDeploymentDateFilter(lt.getDeployment(), startDate, endDate))
+                .filter(lt -> applyRepositoryFilter(lt.getDeployment(), repositoryIds))
+                .map(lt -> lt.getCommit().getSha())
+                .collect(Collectors.toSet());
+
+        // Retornar solo los commits que tienen deployments que cumplen los criterios
+        return commits.stream()
+                .filter(commit -> filteredCommitShas.contains(commit.getSha()))
                 .collect(Collectors.toList());
     }
 
