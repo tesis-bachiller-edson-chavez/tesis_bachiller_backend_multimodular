@@ -300,11 +300,25 @@ public class DeveloperDashboardService {
                 .collect(Collectors.groupingBy(lt ->
                         lt.getDeployment().getCreatedAt().toLocalDate()));
 
+        logger.debug("Agrupando {} ChangeLeadTime records en {} días distintos",
+                leadTimes.size(), leadTimesByDate.size());
+
         // Calcular métricas para cada día
         return leadTimesByDate.entrySet().stream()
                 .map(entry -> {
                     LocalDate date = entry.getKey();
                     List<ChangeLeadTime> dailyLeadTimes = entry.getValue();
+
+                    // Log detallado para debugging
+                    if (!dailyLeadTimes.isEmpty()) {
+                        ChangeLeadTime firstLt = dailyLeadTimes.get(0);
+                        logger.debug("Fecha: {}, Commits: {}, Deployment ID: {}, Deployment createdAt: {}, Commit SHA: {}, Commit date: {}",
+                                date, dailyLeadTimes.size(),
+                                firstLt.getDeployment().getId(),
+                                firstLt.getDeployment().getCreatedAt(),
+                                firstLt.getCommit().getSha(),
+                                firstLt.getCommit().getDate());
+                    }
 
                     // Calcular promedio de lead time para el día
                     double avgLeadTimeHours = dailyLeadTimes.stream()
