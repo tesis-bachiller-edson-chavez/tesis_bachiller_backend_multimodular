@@ -3,6 +3,8 @@ package org.grubhart.pucp.tesis.module_processor;
 import org.grubhart.pucp.tesis.module_domain.ChangeLeadTime;
 import org.grubhart.pucp.tesis.module_domain.ChangeLeadTimeRepository;
 import org.grubhart.pucp.tesis.module_domain.Commit;
+import org.grubhart.pucp.tesis.module_domain.CommitParent;
+import org.grubhart.pucp.tesis.module_domain.CommitParentRepository;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
 import org.grubhart.pucp.tesis.module_domain.Deployment;
 import org.grubhart.pucp.tesis.module_domain.Incident;
@@ -34,15 +36,18 @@ public class DeveloperDashboardService {
     private final ChangeLeadTimeRepository changeLeadTimeRepository;
     private final IncidentRepository incidentRepository;
     private final PullRequestRepository pullRequestRepository;
+    private final CommitParentRepository commitParentRepository;
 
     public DeveloperDashboardService(CommitRepository commitRepository,
                                      ChangeLeadTimeRepository changeLeadTimeRepository,
                                      IncidentRepository incidentRepository,
-                                     PullRequestRepository pullRequestRepository) {
+                                     PullRequestRepository pullRequestRepository,
+                                     CommitParentRepository commitParentRepository) {
         this.commitRepository = commitRepository;
         this.changeLeadTimeRepository = changeLeadTimeRepository;
         this.incidentRepository = incidentRepository;
         this.pullRequestRepository = pullRequestRepository;
+        this.commitParentRepository = commitParentRepository;
     }
 
     /**
@@ -151,21 +156,38 @@ public class DeveloperDashboardService {
 
     /**
      * Calcula estadísticas de Pull Requests del developer.
-     * Utiliza el campo firstCommitSha para correlacionar PRs con commits del developer.
+     * Utiliza el campo firstCommitSha y la cadena de commit parents para determinar
+     * todos los commits de cada PR.
      */
     private PullRequestStatsDto calculatePullRequestStats(List<Commit> developerCommits) {
         if (developerCommits.isEmpty()) {
             return new PullRequestStatsDto(0L, 0L, 0L);
         }
 
-        // Obtener todos los SHAs de commits del developer
-        Set<String> commitShas = developerCommits.stream()
+        // Obtener todos los SHAs de commits del developer (filtrados)
+        Set<String> developerCommitShas = developerCommits.stream()
                 .map(Commit::getSha)
                 .collect(Collectors.toSet());
 
-        // Obtener todos los PRs y filtrar por firstCommitSha
-        List<PullRequest> developerPullRequests = pullRequestRepository.findAll().stream()
-                .filter(pr -> pr.getFirstCommitSha() != null && commitShas.contains(pr.getFirstCommitSha()))
+        // Construir mapa de parent -> children para traversal eficiente
+        Map<String, List<String>> parentToChildren = buildParentToChildrenMap();
+
+        // Obtener todos los PRs
+        List<PullRequest> allPullRequests = pullRequestRepository.findAll();
+
+        // Filtrar PRs que incluyen alguno de los commits del developer
+        List<PullRequest> developerPullRequests = allPullRequests.stream()
+                .filter(pr -> {
+                    if (pr.getFirstCommitSha() == null) {
+                        return false;
+                    }
+                    // Encontrar todos los commits descendientes del firstCommitSha
+                    Set<String> prCommits = findAllDescendants(pr.getFirstCommitSha(), parentToChildren);
+                    // Incluir también el firstCommitSha
+                    prCommits.add(pr.getFirstCommitSha());
+                    // Ver si alguno de los commits del PR está en los commits del developer
+                    return prCommits.stream().anyMatch(developerCommitShas::contains);
+                })
                 .collect(Collectors.toList());
 
         long totalPullRequests = developerPullRequests.size();
@@ -185,6 +207,49 @@ public class DeveloperDashboardService {
                 mergedPullRequests,
                 openPullRequests
         );
+    }
+
+    /**
+     * Construye un mapa de parent SHA -> lista de children SHAs.
+     */
+    private Map<String, List<String>> buildParentToChildrenMap() {
+        List<CommitParent> allCommitParents = commitParentRepository.findAll();
+
+        Map<String, List<String>> parentToChildren = new HashMap<>();
+        for (CommitParent cp : allCommitParents) {
+            String parentSha = cp.getParent().getSha();
+            String childSha = cp.getCommit().getSha();
+
+            parentToChildren.computeIfAbsent(parentSha, k -> new ArrayList<>()).add(childSha);
+        }
+
+        return parentToChildren;
+    }
+
+    /**
+     * Encuentra todos los commits descendientes de un commit dado, siguiendo la cadena de parents.
+     * Usa BFS (Breadth-First Search) para evitar ciclos y ser eficiente.
+     */
+    private Set<String> findAllDescendants(String startSha, Map<String, List<String>> parentToChildren) {
+        Set<String> descendants = new HashSet<>();
+        Queue<String> queue = new LinkedList<>();
+        queue.add(startSha);
+
+        while (!queue.isEmpty()) {
+            String currentSha = queue.poll();
+            List<String> children = parentToChildren.get(currentSha);
+
+            if (children != null) {
+                for (String childSha : children) {
+                    if (!descendants.contains(childSha)) {
+                        descendants.add(childSha);
+                        queue.add(childSha);
+                    }
+                }
+            }
+        }
+
+        return descendants;
     }
 
     /**

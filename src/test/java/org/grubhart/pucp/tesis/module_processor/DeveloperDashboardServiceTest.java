@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.module_processor;
 import org.grubhart.pucp.tesis.module_domain.ChangeLeadTime;
 import org.grubhart.pucp.tesis.module_domain.ChangeLeadTimeRepository;
 import org.grubhart.pucp.tesis.module_domain.Commit;
+import org.grubhart.pucp.tesis.module_domain.CommitParentRepository;
 import org.grubhart.pucp.tesis.module_domain.CommitRepository;
 import org.grubhart.pucp.tesis.module_domain.Deployment;
 import org.grubhart.pucp.tesis.module_domain.IncidentRepository;
@@ -37,6 +38,9 @@ class DeveloperDashboardServiceTest {
     @Mock
     private PullRequestRepository pullRequestRepository;
 
+    @Mock
+    private CommitParentRepository commitParentRepository;
+
     @InjectMocks
     private DeveloperDashboardService developerDashboardService;
 
@@ -61,6 +65,7 @@ class DeveloperDashboardServiceTest {
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
         when(pullRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(commitParentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas sin filtros
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername, null, null, null);
@@ -138,6 +143,7 @@ class DeveloperDashboardServiceTest {
         when(commitRepository.findAll()).thenReturn(mockCommits);
         when(changeLeadTimeRepository.findAll()).thenReturn(Collections.emptyList());
         when(pullRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(commitParentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas sin filtros
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(githubUsername, null, null, null);
@@ -185,6 +191,7 @@ class DeveloperDashboardServiceTest {
         when(changeLeadTimeRepository.findAll()).thenReturn(List.of(lt1, lt2, lt3));
         when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
         when(pullRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(commitParentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas filtrando por repo1
         DeveloperMetricsResponse response = developerDashboardService.getDeveloperMetrics(
@@ -237,6 +244,7 @@ class DeveloperDashboardServiceTest {
         when(changeLeadTimeRepository.findAll()).thenReturn(List.of(lt1, lt2, lt3));
         when(incidentRepository.findAll()).thenReturn(Collections.emptyList());
         when(pullRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(commitParentRepository.findAll()).thenReturn(Collections.emptyList());
 
         // WHEN: Se solicitan las métricas filtrando por rango de fechas (solo Nov 2)
         LocalDate startDate = LocalDate.of(2025, 11, 2);
