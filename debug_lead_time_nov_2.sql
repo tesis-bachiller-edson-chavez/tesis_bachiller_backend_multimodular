@@ -1,6 +1,8 @@
 -- ================================================
 -- DEBUG: Investigar Lead Time del 2 de Noviembre (MySQL)
 -- ================================================
+-- NOTA: Basado en las entidades JPA del proyecto
+-- ChangeLeadTime usa commit_sha (FK a commit.sha, NO commit.id)
 
 -- 1. Ver todos los deployments del 2 de noviembre de 2025
 SELECT
@@ -9,7 +11,8 @@ SELECT
     DATE(d.created_at) AS deployment_date,
     d.service_name,
     d.sha,
-    r.repo_name
+    r.repository_url,
+    SUBSTRING_INDEX(SUBSTRING_INDEX(r.repository_url, '/', -1), '.', 1) AS repo_name
 FROM deployment d
 JOIN repository_config r ON d.repository_id = r.id
 WHERE DATE(d.created_at) = '2025-11-02'
@@ -29,7 +32,7 @@ SELECT
     c.author AS commit_author
 FROM change_lead_time clt
 JOIN deployment d ON clt.deployment_id = d.id
-JOIN commit c ON clt.commit_id = c.id
+JOIN commit c ON clt.commit_sha = c.sha  -- ¡IMPORTANTE: usa commit_sha, no commit_id!
 WHERE DATE(d.created_at) = '2025-11-02'
 ORDER BY d.created_at;
 
@@ -45,10 +48,11 @@ SELECT
     c.sha AS commit_sha,
     c.date AS commit_date,
     c.author AS commit_author,
-    r.repo_name
+    r.repository_url,
+    SUBSTRING_INDEX(SUBSTRING_INDEX(r.repository_url, '/', -1), '.', 1) AS repo_name
 FROM change_lead_time clt
 JOIN deployment d ON clt.deployment_id = d.id
-JOIN commit c ON clt.commit_id = c.id
+JOIN commit c ON clt.commit_sha = c.sha  -- ¡IMPORTANTE: usa commit_sha, no commit_id!
 JOIN repository_config r ON d.repository_id = r.id
 WHERE clt.lead_time_in_seconds BETWEEN 867120 AND 1062480  -- 268h ± 10%
 ORDER BY clt.lead_time_in_seconds DESC;
@@ -80,9 +84,10 @@ SELECT
     d.created_at AS deployment_date,
     DATE(d.created_at) AS deployment_date_only,
     clt.lead_time_in_seconds / 3600.0 AS lead_time_hours,
-    r.repo_name
+    r.repository_url,
+    SUBSTRING_INDEX(SUBSTRING_INDEX(r.repository_url, '/', -1), '.', 1) AS repo_name
 FROM change_lead_time clt
-JOIN commit c ON clt.commit_id = c.id
+JOIN commit c ON clt.commit_sha = c.sha  -- ¡IMPORTANTE: usa commit_sha, no commit_id!
 JOIN deployment d ON clt.deployment_id = d.id
 JOIN repository_config r ON d.repository_id = r.id
 WHERE LOWER(c.author) = LOWER('Grubhart')  -- Reemplaza con tu username
