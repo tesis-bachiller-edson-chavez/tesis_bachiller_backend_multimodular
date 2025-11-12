@@ -50,10 +50,15 @@ public class DeveloperDashboardService {
      * Solo incluye datos de repositorios donde el developer ha realizado commits.
      *
      * @param githubUsername El nombre de usuario de GitHub del developer
+     * @param startDate Fecha de inicio del rango (basado en deployment.createdAt), opcional
+     * @param endDate Fecha de fin del rango (basado en deployment.createdAt), opcional
+     * @param repositoryIds Lista de IDs de repositorios para filtrar, opcional
      * @return DeveloperMetricsResponse con todas las métricas agregadas
      */
-    public DeveloperMetricsResponse getDeveloperMetrics(String githubUsername) {
-        logger.info("Obteniendo métricas para el developer: {}", githubUsername);
+    public DeveloperMetricsResponse getDeveloperMetrics(String githubUsername, LocalDate startDate,
+                                                        LocalDate endDate, List<Long> repositoryIds) {
+        logger.info("Obteniendo métricas para el developer: {} (startDate: {}, endDate: {}, repositoryIds: {})",
+                githubUsername, startDate, endDate, repositoryIds);
 
         // Obtener todos los commits del developer
         List<Commit> developerCommits = commitRepository.findAll().stream()
@@ -71,8 +76,9 @@ public class DeveloperDashboardService {
         Map<RepositoryConfig, List<Commit>> commitsByRepository = developerCommits.stream()
                 .collect(Collectors.groupingBy(Commit::getRepository));
 
-        // Crear estadísticas por repositorio
+        // Crear estadísticas por repositorio (aplicar filtro de repositoryIds si existe)
         List<RepositoryStatsDto> repositoryStats = commitsByRepository.entrySet().stream()
+                .filter(entry -> repositoryIds == null || repositoryIds.isEmpty() || repositoryIds.contains(entry.getKey().getId()))
                 .map(entry -> {
                     RepositoryConfig repo = entry.getKey();
                     long commitCount = entry.getValue().size();
@@ -92,8 +98,8 @@ public class DeveloperDashboardService {
         // Calcular estadísticas de Pull Requests
         PullRequestStatsDto pullRequestStats = calculatePullRequestStats(developerCommits);
 
-        // Calcular métricas DORA
-        DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(developerCommits);
+        // Calcular métricas DORA (aplicando filtros de fecha y repositorio)
+        DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(developerCommits, startDate, endDate, repositoryIds);
 
         logger.info("Métricas calculadas exitosamente para el developer: {}. Total commits: {}, Repositorios: {}, " +
                         "PRs: {} (Merged: {}, Open: {}), Lead Time promedio: {} horas, Deployments: {}, CFR: {}%, Failed Deployments: {}, Daily Metrics: {}",
@@ -179,8 +185,14 @@ public class DeveloperDashboardService {
     /**
      * Calcula métricas DORA para el developer.
      * Incluye Lead Time, Deployment Frequency, Change Failure Rate y series de tiempo diarias.
+     *
+     * @param developerCommits Los commits del developer
+     * @param startDate Fecha de inicio para filtrar por deployment.createdAt, opcional
+     * @param endDate Fecha de fin para filtrar por deployment.createdAt, opcional
+     * @param repositoryIds Lista de IDs de repositorios para filtrar, opcional
      */
-    private DeveloperDoraMetricsDto calculateDoraMetrics(List<Commit> developerCommits) {
+    private DeveloperDoraMetricsDto calculateDoraMetrics(List<Commit> developerCommits, LocalDate startDate,
+                                                         LocalDate endDate, List<Long> repositoryIds) {
         if (developerCommits.isEmpty()) {
             return new DeveloperDoraMetricsDto(
                     null, null, null,
@@ -197,6 +209,8 @@ public class DeveloperDashboardService {
 
         List<ChangeLeadTime> leadTimes = changeLeadTimeRepository.findAll().stream()
                 .filter(lt -> commitShas.contains(lt.getCommit().getSha()))
+                .filter(lt -> applyDeploymentDateFilter(lt.getDeployment(), startDate, endDate))
+                .filter(lt -> applyRepositoryFilter(lt.getDeployment(), repositoryIds))
                 .collect(Collectors.toList());
 
         if (leadTimes.isEmpty()) {
@@ -350,6 +364,40 @@ public class DeveloperDashboardService {
                 })
                 .sorted(Comparator.comparing(DailyMetricDto::date))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Aplica filtro de fecha sobre el deployment.
+     * Retorna true si el deployment está dentro del rango de fechas o si no hay filtro de fecha.
+     */
+    private boolean applyDeploymentDateFilter(Deployment deployment, LocalDate startDate, LocalDate endDate) {
+        if (startDate == null && endDate == null) {
+            return true; // Sin filtro de fecha
+        }
+
+        LocalDate deploymentDate = deployment.getCreatedAt().toLocalDate();
+
+        if (startDate != null && deploymentDate.isBefore(startDate)) {
+            return false;
+        }
+
+        if (endDate != null && deploymentDate.isAfter(endDate)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Aplica filtro de repositorios sobre el deployment.
+     * Retorna true si el deployment pertenece a alguno de los repositorios especificados o si no hay filtro.
+     */
+    private boolean applyRepositoryFilter(Deployment deployment, List<Long> repositoryIds) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) {
+            return true; // Sin filtro de repositorio
+        }
+
+        return repositoryIds.contains(deployment.getRepository().getId());
     }
 
     /**
