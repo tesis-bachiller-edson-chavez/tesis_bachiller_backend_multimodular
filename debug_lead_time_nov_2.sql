@@ -36,8 +36,8 @@ JOIN commit c ON clt.commit_sha = c.sha  -- ¡IMPORTANTE: usa commit_sha, no com
 WHERE DATE(d.created_at) = '2025-11-02'
 ORDER BY d.created_at;
 
--- 3. Ver ChangeLeadTime con lead time de aproximadamente 268 horas
--- (268 horas = 964800 segundos, buscar en rango ±10%)
+-- 3. Ver ChangeLeadTime con lead time de aproximadamente 281.7974 horas
+-- (281.7974 horas = 1014471 segundos, buscar en rango ±10%)
 SELECT
     clt.id AS change_lead_time_id,
     clt.lead_time_in_seconds,
@@ -54,7 +54,7 @@ FROM change_lead_time clt
 JOIN deployment d ON clt.deployment_id = d.id
 JOIN commit c ON clt.commit_sha = c.sha  -- ¡IMPORTANTE: usa commit_sha, no commit_id!
 JOIN repository_config r ON d.repository_id = r.id
-WHERE clt.lead_time_in_seconds BETWEEN 867120 AND 1062480  -- 268h ± 10%
+WHERE clt.lead_time_in_seconds BETWEEN 913024 AND 1115918  -- 281.7974h ± 10%
 ORDER BY clt.lead_time_in_seconds DESC;
 
 -- 4. Ver deployments en rango de fechas alrededor del 2 de noviembre
