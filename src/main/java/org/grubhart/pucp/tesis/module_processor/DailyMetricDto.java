@@ -23,6 +23,12 @@ public record DailyMetricDto(
         Long commitCount,
 
         @Schema(description = "Número de deployments con fallos en el día", example = "0")
-        Long failedDeploymentCount
+        Long failedDeploymentCount,
+
+        @Schema(description = "MTTR promedio del día en horas (null si no hay incidentes resueltos)", example = "2.5")
+        Double averageMTTRHours,
+
+        @Schema(description = "Número de incidentes resueltos en el día", example = "2")
+        Long resolvedIncidentCount
 ) {
 }
