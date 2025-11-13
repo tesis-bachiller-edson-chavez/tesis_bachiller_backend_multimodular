@@ -5,17 +5,17 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
- * DTO que contiene las métricas DORA completas para un developer individual.
+ * DTO que contiene las métricas DORA completas para un equipo.
  * Incluye valores agregados y series de tiempo diarias.
  *
  * DORA metrics:
  * - Lead Time for Changes: Tiempo desde commit hasta producción
  * - Deployment Frequency: Frecuencia de deployments
  * - Change Failure Rate (CFR): Tasa de fallos en deployments
- * - MTTR no se incluye (métrica de equipo, no individual)
+ * - Mean Time To Recovery (MTTR): Tiempo promedio de recuperación de incidentes
  */
-@Schema(description = "Métricas DORA completas del developer con series de tiempo")
-public record DeveloperDoraMetricsDto(
+@Schema(description = "Métricas DORA completas del equipo con series de tiempo")
+public record TeamDoraMetricsDto(
         // === Valores Agregados ===
 
         @Schema(description = "Tiempo promedio desde commit hasta deployment en producción (en horas)",
@@ -30,11 +30,11 @@ public record DeveloperDoraMetricsDto(
                 example = "168.0")
         Double maxLeadTimeHours,
 
-        @Schema(description = "Número total de deployments que incluyen commits del developer",
+        @Schema(description = "Número total de deployments del equipo",
                 example = "45")
         Long totalDeploymentCount,
 
-        @Schema(description = "Número de commits del developer que han sido desplegados a producción",
+        @Schema(description = "Número de commits del equipo que han sido desplegados a producción",
                 example = "120")
         Long deployedCommitCount,
 
@@ -42,13 +42,29 @@ public record DeveloperDoraMetricsDto(
                 example = "15.5")
         Double changeFailureRate,
 
-        @Schema(description = "Número de deployments del developer que causaron incidentes",
+        @Schema(description = "Número de deployments del equipo que causaron incidentes",
                 example = "7")
         Long failedDeploymentCount,
 
+        @Schema(description = "MTTR: Tiempo promedio de recuperación de incidentes en horas (null si no hay incidentes resueltos)",
+                example = "2.5")
+        Double averageMTTRHours,
+
+        @Schema(description = "Tiempo mínimo de recuperación de incidentes registrado (en horas)",
+                example = "0.5")
+        Double minMTTRHours,
+
+        @Schema(description = "Tiempo máximo de recuperación de incidentes registrado (en horas)",
+                example = "8.0")
+        Double maxMTTRHours,
+
+        @Schema(description = "Número total de incidentes resueltos",
+                example = "5")
+        Long totalResolvedIncidents,
+
         // === Series de Tiempo Diarias ===
 
-        @Schema(description = "Serie de tiempo con métricas DORA por día")
-        List<DailyMetricDto> dailyMetrics
+        @Schema(description = "Serie de tiempo con métricas DORA del equipo por día")
+        List<TeamDailyMetricDto> dailyMetrics
 ) {
 }

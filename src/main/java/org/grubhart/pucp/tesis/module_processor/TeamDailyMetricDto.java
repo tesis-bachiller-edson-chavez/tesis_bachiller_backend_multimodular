@@ -5,11 +5,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 
 /**
- * DTO que representa una métrica DORA en un día específico.
- * Usado para construir series de tiempo diarias.
+ * DTO que representa las métricas DORA de un equipo en un día específico.
+ * Incluye MTTR además de las métricas estándar de developer.
+ * Usado para construir series de tiempo diarias del equipo.
  */
-@Schema(description = "Métrica DORA de un día específico")
-public record DailyMetricDto(
+@Schema(description = "Métrica DORA del equipo de un día específico")
+public record TeamDailyMetricDto(
         @Schema(description = "Fecha del día", example = "2025-11-11")
         LocalDate date,
 
@@ -23,6 +24,12 @@ public record DailyMetricDto(
         Long commitCount,
 
         @Schema(description = "Número de deployments con fallos en el día", example = "0")
-        Long failedDeploymentCount
+        Long failedDeploymentCount,
+
+        @Schema(description = "MTTR promedio del día en horas (null si no hay incidentes resueltos)", example = "2.5")
+        Double averageMTTRHours,
+
+        @Schema(description = "Número de incidentes resueltos en el día", example = "2")
+        Long resolvedIncidentCount
 ) {
 }
