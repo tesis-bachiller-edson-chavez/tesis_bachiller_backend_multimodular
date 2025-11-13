@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.grubhart.pucp.tesis.module_processor.DeveloperDashboardService;
 import org.grubhart.pucp.tesis.module_processor.DeveloperMetricsResponse;
+import org.grubhart.pucp.tesis.module_processor.TechLeadDashboardService;
+import org.grubhart.pucp.tesis.module_processor.TechLeadMetricsResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -90,9 +92,12 @@ class DashboardApiController {
     private static final Logger logger = LoggerFactory.getLogger(DashboardApiController.class);
 
     private final DeveloperDashboardService developerDashboardService;
+    private final TechLeadDashboardService techLeadDashboardService;
 
-    public DashboardApiController(DeveloperDashboardService developerDashboardService) {
+    public DashboardApiController(DeveloperDashboardService developerDashboardService,
+                                  TechLeadDashboardService techLeadDashboardService) {
         this.developerDashboardService = developerDashboardService;
+        this.techLeadDashboardService = techLeadDashboardService;
     }
 
     @GetMapping("/developer/metrics")
@@ -151,6 +156,77 @@ class DashboardApiController {
 
         } catch (Exception e) {
             logger.error("Error al obtener métricas del developer", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/tech-lead/metrics")
+    @PreAuthorize("hasAnyRole('TECH_LEAD', 'ENGINEERING_MANAGER', 'ADMIN')")
+    @Operation(
+            summary = "Obtener métricas del dashboard para Tech Lead",
+            description = "Retorna métricas agregadas del equipo del tech lead. " +
+                    "Los datos incluyen estadísticas individuales de cada miembro del equipo, " +
+                    "métricas agregadas de commits, pull requests y métricas DORA del equipo completo. " +
+                    "**Filtros opcionales:** startDate, endDate (basados en fecha de deployment), " +
+                    "repositoryIds (filtrar por repositorios), memberIds (filtrar por miembros del equipo). " +
+                    "**Permisos:** El tech lead solo puede ver métricas de su propio equipo. " +
+                    "**Accesible para usuarios con rol TECH_LEAD o superior**.",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Métricas obtenidas exitosamente",
+                            content = @Content(schema = @Schema(implementation = TechLeadMetricsResponse.class))
+                    ),
+                    @ApiResponse(
+                            responseCode = "400",
+                            description = "Solicitud inválida (ej: tech lead sin equipo asignado)"
+                    ),
+                    @ApiResponse(
+                            responseCode = "403",
+                            description = "Acceso denegado - requiere rol TECH_LEAD o superior"
+                    ),
+                    @ApiResponse(
+                            responseCode = "500",
+                            description = "Error interno al calcular métricas"
+                    )
+            }
+    )
+    public ResponseEntity<TechLeadMetricsResponse> getTechLeadMetrics(
+            Authentication authentication,
+            @Parameter(description = "Fecha de inicio del rango (formato: YYYY-MM-DD, basado en fecha de deployment)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "Fecha de fin del rango (formato: YYYY-MM-DD, basado en fecha de deployment)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "Lista de IDs de repositorios para filtrar")
+            @RequestParam(required = false) List<Long> repositoryIds,
+            @Parameter(description = "Lista de IDs de miembros del equipo para filtrar (vacío = todos los miembros)")
+            @RequestParam(required = false) List<Long> memberIds) {
+        try {
+            if (!(authentication.getPrincipal() instanceof OAuth2User)) {
+                logger.error("El principal de la autenticación no es de tipo OAuth2User");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+
+            OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
+            String githubUsername = oauthUser.getAttribute("login");
+
+            if (githubUsername == null || githubUsername.isBlank()) {
+                logger.error("No se pudo obtener el nombre de usuario de GitHub del usuario autenticado");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            }
+
+            logger.info("Solicitando métricas de tech lead para el usuario: {} (startDate: {}, endDate: {}, repositoryIds: {}, memberIds: {})",
+                    githubUsername, startDate, endDate, repositoryIds, memberIds);
+
+            TechLeadMetricsResponse metrics = techLeadDashboardService.getTechLeadMetrics(
+                    githubUsername, startDate, endDate, repositoryIds, memberIds);
+            return ResponseEntity.ok(metrics);
+
+        } catch (IllegalArgumentException e) {
+            logger.error("Error de validación al obtener métricas del tech lead: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        } catch (Exception e) {
+            logger.error("Error al obtener métricas del tech lead", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
