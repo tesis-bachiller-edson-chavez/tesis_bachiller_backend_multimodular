@@ -45,7 +45,8 @@ public class TeamDetailResponse {
                         repo.getRepositoryUrl(),
                         repo.getDatadogServiceName(),
                         repo.getOwner(),
-                        repo.getRepoName()
+                        repo.getRepoName(),
+                        repo.getDeploymentWorkflowFileName()
                 ))
                 .collect(Collectors.toList());
 
@@ -104,17 +105,19 @@ public class TeamDetailResponse {
         private String datadogServiceName;
         private String owner;
         private String repoName;
+        private String deploymentWorkflowFileName;
 
         public RepositoryInfo() {
         }
 
         public RepositoryInfo(Long id, String repositoryUrl, String datadogServiceName,
-                            String owner, String repoName) {
+                            String owner, String repoName, String deploymentWorkflowFileName) {
             this.id = id;
             this.repositoryUrl = repositoryUrl;
             this.datadogServiceName = datadogServiceName;
             this.owner = owner;
             this.repoName = repoName;
+            this.deploymentWorkflowFileName = deploymentWorkflowFileName;
         }
 
         public Long getId() {
@@ -155,6 +158,14 @@ public class TeamDetailResponse {
 
         public void setRepoName(String repoName) {
             this.repoName = repoName;
+        }
+
+        public String getDeploymentWorkflowFileName() {
+            return deploymentWorkflowFileName;
+        }
+
+        public void setDeploymentWorkflowFileName(String deploymentWorkflowFileName) {
+            this.deploymentWorkflowFileName = deploymentWorkflowFileName;
         }
     }
 }
