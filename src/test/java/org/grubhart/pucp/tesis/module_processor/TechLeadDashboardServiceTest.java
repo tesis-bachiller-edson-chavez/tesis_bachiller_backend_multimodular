@@ -205,10 +205,6 @@ class TechLeadDashboardServiceTest {
                 .thenReturn(commits);
         when(changeLeadTimeRepository.findAll())
                 .thenReturn(Collections.emptyList());
-        when(pullRequestRepository.findAll())
-                .thenReturn(Collections.emptyList());
-        when(commitParentRepository.findAll())
-                .thenReturn(Collections.emptyList());
 
         // When
         TechLeadMetricsResponse response = techLeadDashboardService.getTechLeadMetrics(
@@ -233,10 +229,6 @@ class TechLeadDashboardServiceTest {
         when(commitRepository.findAll())
                 .thenReturn(commits);
         when(changeLeadTimeRepository.findAll())
-                .thenReturn(Collections.emptyList());
-        when(pullRequestRepository.findAll())
-                .thenReturn(Collections.emptyList());
-        when(commitParentRepository.findAll())
                 .thenReturn(Collections.emptyList());
 
         // When
