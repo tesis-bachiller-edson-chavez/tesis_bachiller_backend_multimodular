@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.OptionalDouble;
 
 /**
  * Servicio para obtener métricas del dashboard específicas para el rol Tech Lead.
@@ -404,6 +405,7 @@ public class TechLeadDashboardService {
                     null, null, null,
                     0L, 0L,
                     null, 0L,
+                    null, null, null, 0L,
                     Collections.emptyList()
             );
         }
@@ -423,6 +425,7 @@ public class TechLeadDashboardService {
                     null, null, null,
                     0L, 0L,
                     null, 0L,
+                    null, null, null, 0L,
                     Collections.emptyList()
             );
         }
@@ -454,7 +457,27 @@ public class TechLeadDashboardService {
                 ? (failedDeploymentCount * 100.0) / totalDeploymentCount
                 : null;
 
-        List<DailyMetricDto> dailyMetrics = calculateDailyTimeSeries(leadTimes, failedDeploymentIds);
+        // Calculate MTTR metrics
+        List<Incident> resolvedIncidents = filterResolvedIncidents(allIncidents, deployments, startDate, endDate, repositoryIds);
+        Double averageMTTRHours = null;
+        Double minMTTRHours = null;
+        Double maxMTTRHours = null;
+        long totalResolvedIncidents = resolvedIncidents.size();
+
+        if (!resolvedIncidents.isEmpty()) {
+            DoubleSummaryStatistics mttrStats = resolvedIncidents.stream()
+                    .filter(incident -> incident.getDurationSeconds() != null)
+                    .mapToDouble(incident -> incident.getDurationSeconds() / 3600.0)
+                    .summaryStatistics();
+
+            if (mttrStats.getCount() > 0) {
+                averageMTTRHours = mttrStats.getAverage();
+                minMTTRHours = mttrStats.getMin();
+                maxMTTRHours = mttrStats.getMax();
+            }
+        }
+
+        List<DailyMetricDto> dailyMetrics = calculateDailyTimeSeries(leadTimes, failedDeploymentIds, resolvedIncidents);
 
         return new DeveloperDoraMetricsDto(
                 averageLeadTimeHours,
@@ -464,8 +487,53 @@ public class TechLeadDashboardService {
                 deploymentCommitCount,
                 changeFailureRate,
                 failedDeploymentCount,
+                averageMTTRHours,
+                minMTTRHours,
+                maxMTTRHours,
+                totalResolvedIncidents,
                 dailyMetrics
         );
+    }
+
+    /**
+     * Filtra incidentes resueltos relacionados con los deployments del equipo,
+     * aplicando los mismos filtros que las otras métricas DORA.
+     */
+    private List<Incident> filterResolvedIncidents(List<Incident> allIncidents,
+                                                    List<Deployment> deployments,
+                                                    LocalDate startDate,
+                                                    LocalDate endDate,
+                                                    List<Long> repositoryIds) {
+        // Obtener los IDs de repositorios relevantes
+        Set<Long> relevantRepoIds = deployments.stream()
+                .map(d -> d.getRepository().getId())
+                .collect(Collectors.toSet());
+
+        return allIncidents.stream()
+                .filter(incident -> incident.getState() == IncidentState.RESOLVED)
+                .filter(incident -> incident.getDurationSeconds() != null)
+                .filter(incident -> {
+                    // Aplicar filtro de fecha basado en startTime del incidente
+                    LocalDate incidentDate = incident.getStartTime().toLocalDate();
+                    if (startDate != null && incidentDate.isBefore(startDate)) {
+                        return false;
+                    }
+                    if (endDate != null && incidentDate.isAfter(endDate)) {
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(incident -> {
+                    // Aplicar filtro de repositorio
+                    if (repositoryIds != null && !repositoryIds.isEmpty()) {
+                        return incident.getRepository() != null
+                                && repositoryIds.contains(incident.getRepository().getId());
+                    }
+                    // Si no hay filtro de repositorio, usar solo incidentes de repos relevantes
+                    return incident.getRepository() != null
+                            && relevantRepoIds.contains(incident.getRepository().getId());
+                })
+                .collect(Collectors.toList());
     }
 
     /**
@@ -504,36 +572,66 @@ public class TechLeadDashboardService {
      * Calcula series de tiempo diarias.
      */
     private List<DailyMetricDto> calculateDailyTimeSeries(List<ChangeLeadTime> leadTimes,
-                                                           Set<Long> failedDeploymentIds) {
+                                                           Set<Long> failedDeploymentIds,
+                                                           List<Incident> resolvedIncidents) {
         Map<LocalDate, List<ChangeLeadTime>> leadTimesByDate = leadTimes.stream()
                 .collect(Collectors.groupingBy(lt ->
                         lt.getDeployment().getCreatedAt().toLocalDate()));
 
-        return leadTimesByDate.entrySet().stream()
-                .map(entry -> {
-                    LocalDate date = entry.getKey();
-                    List<ChangeLeadTime> dailyLeadTimes = entry.getValue();
+        Map<LocalDate, List<Incident>> incidentsByDate = resolvedIncidents.stream()
+                .collect(Collectors.groupingBy(incident ->
+                        incident.getStartTime().toLocalDate()));
 
-                    double avgLeadTimeHours = dailyLeadTimes.stream()
-                            .mapToDouble(lt -> lt.getLeadTimeInSeconds() / 3600.0)
-                            .average()
-                            .orElse(0.0);
+        // Combinar todas las fechas únicas de lead times e incidentes
+        Set<LocalDate> allDates = new HashSet<>();
+        allDates.addAll(leadTimesByDate.keySet());
+        allDates.addAll(incidentsByDate.keySet());
 
-                    Set<Long> dailyDeploymentIds = dailyLeadTimes.stream()
-                            .map(lt -> lt.getDeployment().getId())
-                            .collect(Collectors.toSet());
-                    long deploymentCount = dailyDeploymentIds.size();
-                    long commitCount = dailyLeadTimes.size();
-                    long failedCount = dailyDeploymentIds.stream()
-                            .filter(failedDeploymentIds::contains)
-                            .count();
+        return allDates.stream()
+                .map(date -> {
+                    List<ChangeLeadTime> dailyLeadTimes = leadTimesByDate.getOrDefault(date, Collections.emptyList());
+                    List<Incident> dailyIncidents = incidentsByDate.getOrDefault(date, Collections.emptyList());
+
+                    Double avgLeadTimeHours = null;
+                    long deploymentCount = 0L;
+                    long commitCount = 0L;
+                    long failedCount = 0L;
+
+                    if (!dailyLeadTimes.isEmpty()) {
+                        avgLeadTimeHours = dailyLeadTimes.stream()
+                                .mapToDouble(lt -> lt.getLeadTimeInSeconds() / 3600.0)
+                                .average()
+                                .orElse(0.0);
+
+                        Set<Long> dailyDeploymentIds = dailyLeadTimes.stream()
+                                .map(lt -> lt.getDeployment().getId())
+                                .collect(Collectors.toSet());
+                        deploymentCount = dailyDeploymentIds.size();
+                        commitCount = dailyLeadTimes.size();
+                        failedCount = dailyDeploymentIds.stream()
+                                .filter(failedDeploymentIds::contains)
+                                .count();
+                    }
+
+                    Double avgMTTRHours = null;
+                    long resolvedIncidentCount = dailyIncidents.size();
+
+                    if (!dailyIncidents.isEmpty()) {
+                        OptionalDouble mttrAvg = dailyIncidents.stream()
+                                .filter(incident -> incident.getDurationSeconds() != null)
+                                .mapToDouble(incident -> incident.getDurationSeconds() / 3600.0)
+                                .average();
+                        avgMTTRHours = mttrAvg.isPresent() ? mttrAvg.getAsDouble() : null;
+                    }
 
                     return new DailyMetricDto(
                             date,
                             avgLeadTimeHours,
                             deploymentCount,
                             commitCount,
-                            failedCount
+                            failedCount,
+                            avgMTTRHours,
+                            resolvedIncidentCount
                     );
                 })
                 .sorted(Comparator.comparing(DailyMetricDto::date))
@@ -615,6 +713,7 @@ public class TechLeadDashboardService {
                         null, null, null,
                         0L, 0L,
                         null, 0L,
+                        null, null, null, 0L,
                         Collections.emptyList()
                 )
         );

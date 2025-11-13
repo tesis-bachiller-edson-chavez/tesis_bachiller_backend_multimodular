@@ -268,6 +268,7 @@ public class DeveloperDashboardService {
                     null, null, null,
                     0L, 0L,
                     null, 0L,
+                    null, null, null, 0L,
                     Collections.emptyList()
             );
         }
@@ -289,6 +290,7 @@ public class DeveloperDashboardService {
                     null, null, null,
                     0L, 0L,
                     null, 0L,
+                    null, null, null, 0L,
                     Collections.emptyList()
             );
         }
@@ -335,6 +337,7 @@ public class DeveloperDashboardService {
                 deploymentCommitCount,
                 changeFailureRate,
                 failedDeploymentCount,
+                null, null, null, 0L, // MTTR metrics (not applicable for individual developer)
                 dailyMetrics
         );
     }
@@ -429,7 +432,9 @@ public class DeveloperDashboardService {
                             avgLeadTimeHours,
                             deploymentCount,
                             commitCount,
-                            failedCount
+                            failedCount,
+                            null, // MTTR not applicable for individual developer
+                            0L    // resolvedIncidentCount not applicable for individual developer
                     );
                 })
                 .sorted(Comparator.comparing(DailyMetricDto::date))
@@ -519,6 +524,7 @@ public class DeveloperDashboardService {
                         null, null, null,
                         0L, 0L,
                         null, 0L,
+                        null, null, null, 0L,
                         Collections.emptyList()
                 )
         );

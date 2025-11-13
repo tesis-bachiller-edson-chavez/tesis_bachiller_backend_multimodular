@@ -12,7 +12,7 @@ import java.util.List;
  * - Lead Time for Changes: Tiempo desde commit hasta producción
  * - Deployment Frequency: Frecuencia de deployments
  * - Change Failure Rate (CFR): Tasa de fallos en deployments
- * - MTTR no se incluye (métrica de servicio, no individual)
+ * - Mean Time To Recovery (MTTR): Tiempo promedio de recuperación de incidentes
  */
 @Schema(description = "Métricas DORA completas del developer con series de tiempo")
 public record DeveloperDoraMetricsDto(
@@ -45,6 +45,22 @@ public record DeveloperDoraMetricsDto(
         @Schema(description = "Número de deployments del developer que causaron incidentes",
                 example = "7")
         Long failedDeploymentCount,
+
+        @Schema(description = "MTTR: Tiempo promedio de recuperación de incidentes en horas (null si no hay incidentes resueltos)",
+                example = "2.5")
+        Double averageMTTRHours,
+
+        @Schema(description = "Tiempo mínimo de recuperación de incidentes registrado (en horas)",
+                example = "0.5")
+        Double minMTTRHours,
+
+        @Schema(description = "Tiempo máximo de recuperación de incidentes registrado (en horas)",
+                example = "8.0")
+        Double maxMTTRHours,
+
+        @Schema(description = "Número total de incidentes resueltos",
+                example = "5")
+        Long totalResolvedIncidents,
 
         // === Series de Tiempo Diarias ===
 
