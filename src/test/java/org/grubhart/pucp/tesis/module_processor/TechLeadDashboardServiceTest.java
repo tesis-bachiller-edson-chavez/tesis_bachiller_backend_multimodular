@@ -75,8 +75,8 @@ class TechLeadDashboardServiceTest {
         repository = new RepositoryConfig("https://github.com/test/repo");
 
         // Setup commits
-        Commit commit1 = new Commit("sha1", "developer1", LocalDateTime.now().minusDays(5), repository);
-        Commit commit2 = new Commit("sha2", "developer2", LocalDateTime.now().minusDays(3), repository);
+        Commit commit1 = new Commit("sha1", "developer1", "Test commit 1", LocalDateTime.now().minusDays(5), repository);
+        Commit commit2 = new Commit("sha2", "developer2", "Test commit 2", LocalDateTime.now().minusDays(3), repository);
         commits = Arrays.asList(commit1, commit2);
     }
 
@@ -96,8 +96,6 @@ class TechLeadDashboardServiceTest {
         when(pullRequestRepository.findAll())
                 .thenReturn(Collections.emptyList());
         when(commitParentRepository.findAll())
-                .thenReturn(Collections.emptyList());
-        when(incidentRepository.findAll())
                 .thenReturn(Collections.emptyList());
 
         // When
@@ -157,8 +155,6 @@ class TechLeadDashboardServiceTest {
                 .thenReturn(Collections.emptyList());
         when(commitParentRepository.findAll())
                 .thenReturn(Collections.emptyList());
-        when(incidentRepository.findAll())
-                .thenReturn(Collections.emptyList());
 
         List<Long> memberFilter = Arrays.asList(2L, 3L); // Solo developers, sin tech lead
 
@@ -213,8 +209,6 @@ class TechLeadDashboardServiceTest {
                 .thenReturn(Collections.emptyList());
         when(commitParentRepository.findAll())
                 .thenReturn(Collections.emptyList());
-        when(incidentRepository.findAll())
-                .thenReturn(Collections.emptyList());
 
         // When
         TechLeadMetricsResponse response = techLeadDashboardService.getTechLeadMetrics(
@@ -243,8 +237,6 @@ class TechLeadDashboardServiceTest {
         when(pullRequestRepository.findAll())
                 .thenReturn(Collections.emptyList());
         when(commitParentRepository.findAll())
-                .thenReturn(Collections.emptyList());
-        when(incidentRepository.findAll())
                 .thenReturn(Collections.emptyList());
 
         // When
