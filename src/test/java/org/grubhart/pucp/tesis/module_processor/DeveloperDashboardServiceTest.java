@@ -176,11 +176,11 @@ class DeveloperDashboardServiceTest {
         List<Commit> mockCommits = List.of(commit1, commit2, commit3);
 
         // Crear deployments para simular que los commits fueron deployados
-        Deployment deployment1 = new Deployment("sha1", "service1", now, repo1);
+        Deployment deployment1 = new Deployment(null, repo1, "test-deployment", "sha1", "main", "production", "service1", "completed", "success", now, now);
         deployment1.setId(1L);
-        Deployment deployment2 = new Deployment("sha2", "service1", now, repo1);
+        Deployment deployment2 = new Deployment(null, repo1, "test-deployment", "sha2", "main", "production", "service1", "completed", "success", now, now);
         deployment2.setId(2L);
-        Deployment deployment3 = new Deployment("sha3", "service2", now, repo2);
+        Deployment deployment3 = new Deployment(null, repo2, "test-deployment", "sha3", "main", "production", "service2", "completed", "success", now, now);
         deployment3.setId(3L);
 
         ChangeLeadTime lt1 = new ChangeLeadTime(commit1, deployment1, 3600L);
@@ -229,11 +229,11 @@ class DeveloperDashboardServiceTest {
 
         List<Commit> mockCommits = List.of(commit1, commit2, commit3);
 
-        Deployment deployment1 = new Deployment("sha1", "service1", nov1, repo);
+        Deployment deployment1 = new Deployment(null, repo, "test-deployment", "sha1", "main", "production", "service1", "completed", "success", nov1, nov1);
         deployment1.setId(1L);
-        Deployment deployment2 = new Deployment("sha2", "service1", nov2, repo);
+        Deployment deployment2 = new Deployment(null, repo, "test-deployment", "sha2", "main", "production", "service1", "completed", "success", nov2, nov2);
         deployment2.setId(2L);
-        Deployment deployment3 = new Deployment("sha3", "service1", nov3, repo);
+        Deployment deployment3 = new Deployment(null, repo, "test-deployment", "sha3", "main", "production", "service1", "completed", "success", nov3, nov3);
         deployment3.setId(3L);
 
         ChangeLeadTime lt1 = new ChangeLeadTime(commit1, deployment1, 3600L); // 1 hora
