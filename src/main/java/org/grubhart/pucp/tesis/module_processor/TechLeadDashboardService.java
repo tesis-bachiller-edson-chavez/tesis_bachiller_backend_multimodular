@@ -140,7 +140,7 @@ public class TechLeadDashboardService {
         PullRequestStatsDto pullRequestStats = calculatePullRequestStats(filteredCommits);
 
         // Calcular métricas DORA
-        DeveloperDoraMetricsDto doraMetrics = calculateDoraMetrics(filteredCommits, startDate, endDate, repositoryIds);
+        TeamDoraMetricsDto doraMetrics = calculateDoraMetrics(filteredCommits, startDate, endDate, repositoryIds);
 
         logger.info("Métricas calculadas exitosamente para el tech lead: {}. Equipo: {}, Miembros: {}, " +
                         "Total commits: {}, Repositorios: {}, PRs: {}, Lead Time promedio: {} horas",
@@ -396,12 +396,12 @@ public class TechLeadDashboardService {
     /**
      * Calcula métricas DORA agregadas del equipo.
      */
-    private DeveloperDoraMetricsDto calculateDoraMetrics(List<Commit> commits,
-                                                         LocalDate startDate,
-                                                         LocalDate endDate,
-                                                         List<Long> repositoryIds) {
+    private TeamDoraMetricsDto calculateDoraMetrics(List<Commit> commits,
+                                                    LocalDate startDate,
+                                                    LocalDate endDate,
+                                                    List<Long> repositoryIds) {
         if (commits.isEmpty()) {
-            return new DeveloperDoraMetricsDto(
+            return new TeamDoraMetricsDto(
                     null, null, null,
                     0L, 0L,
                     null, 0L,
@@ -421,7 +421,7 @@ public class TechLeadDashboardService {
                 .collect(Collectors.toList());
 
         if (leadTimes.isEmpty()) {
-            return new DeveloperDoraMetricsDto(
+            return new TeamDoraMetricsDto(
                     null, null, null,
                     0L, 0L,
                     null, 0L,
@@ -477,9 +477,9 @@ public class TechLeadDashboardService {
             }
         }
 
-        List<DailyMetricDto> dailyMetrics = calculateDailyTimeSeries(leadTimes, failedDeploymentIds, resolvedIncidents);
+        List<TeamDailyMetricDto> dailyMetrics = calculateDailyTimeSeries(leadTimes, failedDeploymentIds, resolvedIncidents);
 
-        return new DeveloperDoraMetricsDto(
+        return new TeamDoraMetricsDto(
                 averageLeadTimeHours,
                 minLeadTimeHours,
                 maxLeadTimeHours,
@@ -569,11 +569,11 @@ public class TechLeadDashboardService {
     }
 
     /**
-     * Calcula series de tiempo diarias.
+     * Calcula series de tiempo diarias del equipo.
      */
-    private List<DailyMetricDto> calculateDailyTimeSeries(List<ChangeLeadTime> leadTimes,
-                                                           Set<Long> failedDeploymentIds,
-                                                           List<Incident> resolvedIncidents) {
+    private List<TeamDailyMetricDto> calculateDailyTimeSeries(List<ChangeLeadTime> leadTimes,
+                                                              Set<Long> failedDeploymentIds,
+                                                              List<Incident> resolvedIncidents) {
         Map<LocalDate, List<ChangeLeadTime>> leadTimesByDate = leadTimes.stream()
                 .collect(Collectors.groupingBy(lt ->
                         lt.getDeployment().getCreatedAt().toLocalDate()));
@@ -624,7 +624,7 @@ public class TechLeadDashboardService {
                         avgMTTRHours = mttrAvg.isPresent() ? mttrAvg.getAsDouble() : null;
                     }
 
-                    return new DailyMetricDto(
+                    return new TeamDailyMetricDto(
                             date,
                             avgLeadTimeHours,
                             deploymentCount,
@@ -634,7 +634,7 @@ public class TechLeadDashboardService {
                             resolvedIncidentCount
                     );
                 })
-                .sorted(Comparator.comparing(DailyMetricDto::date))
+                .sorted(Comparator.comparing(TeamDailyMetricDto::date))
                 .collect(Collectors.toList());
     }
 
@@ -709,7 +709,7 @@ public class TechLeadDashboardService {
                 Collections.emptyList(),
                 new CommitStatsDto(0L, 0L, null, null),
                 new PullRequestStatsDto(0L, 0L, 0L),
-                new DeveloperDoraMetricsDto(
+                new TeamDoraMetricsDto(
                         null, null, null,
                         0L, 0L,
                         null, 0L,
