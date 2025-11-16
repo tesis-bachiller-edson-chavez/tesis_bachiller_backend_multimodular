@@ -39,7 +39,7 @@ public class DeploymentSyncService implements DeploymentSyncTrigger {
     }
 
     @Override
-    @Scheduled(fixedRate = 3600000)
+    @Scheduled(fixedRate = 300000)
     public void syncDeployments() {
         log.info("Iniciando la sincronización de deployments para todos los repositorios configurados.");
 

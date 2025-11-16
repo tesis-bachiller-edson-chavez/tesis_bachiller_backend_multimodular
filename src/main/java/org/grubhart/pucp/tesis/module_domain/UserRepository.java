@@ -12,6 +12,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByGithubUsernameIgnoreCase(String username);
 
+    Optional<User> findByGithubId(Long githubId);
+
+    Optional<User> findByEmailIgnoreCase(String email);
+
     List<User> findAllByActiveTrue();
 
     /**

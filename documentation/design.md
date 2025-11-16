@@ -4445,6 +4445,234 @@ public DoraMetric getMetric(String metric, LocalDate start, LocalDate end) {
 - Rate limit: 300 requests/hora
 - Estrategia: Sincronización cada 15 minutos, caché de 1 hora para datos históricos
 
+## 17. Trabajo Futuro
+
+### 17.1. Atribución de Commits de Herramientas de IA
+
+#### 17.1.1. Problema Identificado
+
+Cuando se utilizan herramientas de IA para generar código (ej. Claude Code, GitHub Copilot), los commits pueden aparecer atribuidos a la herramienta en lugar del desarrollador real:
+
+```
+Commit en GitHub:
+├─ author.login: "claude" (usuario de la herramienta)
+├─ commit.author.email: "claude@anthropic.com"
+└─ commit.author.name: "Claude"
+
+Problema: El desarrollador real no recibe crédito en las métricas DORA
+```
+
+**Impacto en métricas**:
+- Lead Time incorrectamente atribuido
+- Conteo de commits por desarrollador impreciso
+- Deployment Frequency mal calculada por equipo
+
+#### 17.1.2. Opciones de Solución
+
+##### Opción 1: Co-authored-by (Git Trailers) ⭐ RECOMENDADA
+
+Utilizar el mecanismo estándar de Git para co-autoría:
+
+```
+feat: implement new feature
+
+Co-authored-by: RealDeveloper <developer@company.com>
+
+🤖 Generated with Claude Code
+```
+
+**Implementación propuesta**:
+
+```java
+// En Commit.java, método extractRealAuthor()
+private String extractRealAuthor(GithubCommitDto dto, UserRepository userRepository) {
+    // 1. PRIMERO: Buscar Co-authored-by en mensaje del commit
+    String coAuthor = extractCoAuthorFromMessage(dto.getCommit().getMessage());
+    if (coAuthor != null) {
+        return coAuthor; // Desarrollador real
+    }
+
+    // 2. SEGUNDO: Método actual (email del commit)
+    return extractFromCommitEmail(dto, userRepository);
+}
+
+private String extractCoAuthorFromMessage(String message) {
+    // Regex: Co-authored-by: Name <email@example.com>
+    Pattern pattern = Pattern.compile("Co-authored-by:\\s+[^<]+<([^>]+)>");
+    Matcher matcher = pattern.matcher(message);
+    if (matcher.find()) {
+        String email = matcher.group(1);
+        return userRepository.findByEmailIgnoreCase(email)
+            .map(User::getGithubUsername)
+            .orElse(null);
+    }
+    return null;
+}
+```
+
+**Ventajas**:
+- ✅ Estándar de Git/GitHub ampliamente adoptado
+- ✅ Claude Code ya utiliza este formato
+- ✅ Funciona retroactivamente con commits existentes
+- ✅ No requiere configuración adicional
+- ✅ Soportado nativamente por GitHub en la UI
+
+**Desventajas**:
+- ❌ Requiere parsear el mensaje del commit
+- ❌ Depende de que la herramienta agregue correctamente el trailer
+
+##### Opción 2: Mapeo por Pull Request Author
+
+Atribuir los commits al autor del Pull Request:
+
+```
+PR #123 (author: real_developer)
+  ├─ Commit 1 (author: claude)
+  ├─ Commit 2 (author: claude)
+  └─ Commit 3 (author: claude)
+
+Solución: Usar pr.author como autor real
+```
+
+**Implementación propuesta**:
+
+```java
+private String extractRealAuthor(GithubCommitDto dto,
+                                  UserRepository userRepository,
+                                  PullRequest pr) {
+    // 1. Si el commit pertenece a un PR, usar el author del PR
+    if (pr != null && pr.getAuthor() != null) {
+        return pr.getAuthor();
+    }
+
+    // 2. Fallback al método actual
+    return extractFromCommitEmail(dto, userRepository);
+}
+```
+
+**Ventajas**:
+- ✅ Simple de implementar
+- ✅ Preciso (quien abre el PR trabajó en el código)
+- ✅ Ya existe la relación Commit ↔ PR en el sistema
+
+**Desventajas**:
+- ❌ Solo funciona para commits que llegaron vía PR
+- ❌ Commits directos a main no tienen PR asociado
+- ❌ No distingue entre múltiples co-autores en un PR
+
+##### Opción 3: Tabla de Mapeo Manual
+
+Configuración de usuarios bot a usuarios reales:
+
+```yaml
+# application.yml
+bot-user-mappings:
+  claude:
+    default-user: real_developer_1
+  copilot:
+    default-user: real_developer_2
+```
+
+**Ventajas**:
+- ✅ Flexible para múltiples herramientas
+- ✅ Control explícito del mapeo
+
+**Desventajas**:
+- ❌ Requiere configuración manual
+- ❌ No escala (¿qué pasa si varios developers usan la misma herramienta?)
+- ❌ Propenso a errores de configuración
+- ❌ No funciona en entornos multi-tenant
+
+##### Opción 4: Branch Name Pattern
+
+Si las ramas siguen una convención de nombres:
+
+```
+feature/john-doe/add-feature
+fix/jane-smith/bug-123
+```
+
+**Implementación**: Parsear el username desde el nombre de la rama del PR.
+
+**Ventajas**:
+- ✅ Funciona si existe convención estricta
+
+**Desventajas**:
+- ❌ Requiere enforcement de convención de nombres
+- ❌ Frágil ante cambios en la convención
+- ❌ No funciona para commits directos
+
+#### 17.1.3. Estrategia Híbrida Recomendada
+
+Implementar una **cascada de fallbacks** para maximizar la cobertura:
+
+```java
+private String extractRealAuthor(GithubCommitDto dto,
+                                  UserRepository userRepository,
+                                  PullRequest pr) {
+    // 1. PRIMERO: Buscar Co-authored-by en mensaje (más confiable)
+    String coAuthor = extractCoAuthorFromMessage(dto.getCommit().getMessage());
+    if (coAuthor != null) {
+        return coAuthor;
+    }
+
+    // 2. SEGUNDO: Usar author del PR (si el commit vino de PR)
+    if (pr != null && pr.getAuthor() != null) {
+        return pr.getAuthor();
+    }
+
+    // 3. TERCERO: Método actual (email del commit Git)
+    return extractFromCommitEmail(dto, userRepository);
+}
+```
+
+**Cobertura esperada**:
+- **90%+** de commits: Co-authored-by (Claude Code, herramientas modernas)
+- **5-8%** de commits: PR author (herramientas sin trailer)
+- **2-5%** de commits: Email original (commits normales de humanos)
+
+#### 17.1.4. Trabajo de Implementación Estimado
+
+**Fase 1: Co-authored-by Parser** (2-3 días)
+- Agregar método `extractCoAuthorFromMessage()`
+- Tests unitarios con diferentes formatos
+- Integración en `Commit.java`
+- Migración de commits existentes
+
+**Fase 2: PR Author Fallback** (1-2 días)
+- Modificar `CommitSyncService` para pasar referencia al PR
+- Actualizar lógica de atribución
+- Tests de integración
+
+**Fase 3: Métricas y Monitoreo** (1 día)
+- Dashboard de atribución de commits
+- Alertas para commits sin autor identificado
+- Logs de debugging
+
+**Fase 4: Documentación** (1 día)
+- Guías para configurar herramientas de IA
+- Best practices para equipos
+- Troubleshooting guide
+
+**Total estimado**: 5-7 días de desarrollo
+
+#### 17.1.5. Consideraciones Adicionales
+
+**Compatibilidad hacia atrás**:
+- La implementación debe ser no-destructiva
+- Commits existentes deben reprocesarse en batch job
+- Mantener logs de cambios de autoría para auditoría
+
+**Performance**:
+- Parseo de mensajes puede ser costoso
+- Considerar caché de patrones regex compilados
+- Batch processing para reprocesamiento masivo
+
+**Seguridad**:
+- Validar formato de emails extraídos
+- Prevenir inyección vía mensajes de commit maliciosos
+- Mantener trazabilidad de cambios de autoría
+
 ### 16.10. Referencias
 
 1. Forsgren, N., Humble, J., & Kim, G. (2018). *Accelerate: The Science of Lean Software and DevOps*. IT Revolution Press.

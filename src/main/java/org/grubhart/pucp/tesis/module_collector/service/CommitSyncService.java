@@ -10,6 +10,7 @@ import org.grubhart.pucp.tesis.module_domain.RepositoryConfigRepository;
 import org.grubhart.pucp.tesis.module_domain.SyncStatus;
 import org.grubhart.pucp.tesis.module_domain.SyncStatusRepository;
 import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
+import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,24 +35,27 @@ public class CommitSyncService {
     private final SyncStatusRepository syncStatusRepository;
     private final RepositoryConfigRepository repositoryConfigRepository;
     private final GithubCommitCollector githubCommitCollector;
+    private final UserRepository userRepository;
 
     public CommitSyncService(CommitRepository commitRepository,
                              CommitParentRepository commitParentRepository,
                              SyncStatusRepository syncStatusRepository,
                              RepositoryConfigRepository repositoryConfigRepository,
-                             GithubCommitCollector githubCommitCollector) {
+                             GithubCommitCollector githubCommitCollector,
+                             UserRepository userRepository) {
         this.commitRepository = commitRepository;
         this.commitParentRepository = commitParentRepository;
         this.syncStatusRepository = syncStatusRepository;
         this.repositoryConfigRepository = repositoryConfigRepository;
         this.githubCommitCollector = githubCommitCollector;
+        this.userRepository = userRepository;
     }
 
     /**
      * Tarea programada para sincronizar commits desde los repositorios configurados.
      * Se ejecuta 10 segundos después de que la aplicación arranca y luego cada hora.
      */
-    @Scheduled(initialDelay = 10000, fixedRate = 3600000)
+    @Scheduled(initialDelay = 10000, fixedRate = 300000)
     public void syncCommits() {
         List<RepositoryConfig> configs = repositoryConfigRepository.findAll();
         if (configs.isEmpty()) {
@@ -88,7 +92,7 @@ public class CommitSyncService {
             // First pass: Save all commits that don't exist yet
             List<Commit> newCommitsToSave = commitDtos.stream()
                     .filter(dto -> !commitRepository.existsById(dto.getSha()))
-                    .map(dto -> new Commit(dto, config))
+                    .map(dto -> new Commit(dto, config, userRepository))
                     .collect(Collectors.toList());
 
             if (!newCommitsToSave.isEmpty()) {

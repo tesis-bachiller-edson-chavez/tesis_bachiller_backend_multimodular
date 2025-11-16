@@ -177,6 +177,7 @@ public class TechLeadDashboardService {
 
     /**
      * Obtiene todos los commits de una lista de usuarios.
+     * Filtra commits de merge que no representan trabajo real.
      */
     private List<Commit> getTeamCommits(List<User> members) {
         Set<String> memberUsernames = members.stream()
@@ -184,9 +185,17 @@ public class TechLeadDashboardService {
                 .map(String::toLowerCase)
                 .collect(Collectors.toSet());
 
-        return commitRepository.findAll().stream()
+        List<Commit> allTeamCommits = commitRepository.findAll().stream()
                 .filter(commit -> memberUsernames.contains(commit.getAuthor().toLowerCase()))
                 .collect(Collectors.toList());
+
+        // Filtrar commits de merge (no representan trabajo real del equipo)
+        List<Commit> filteredCommits = filterOutMergeCommits(allTeamCommits);
+
+        logger.debug("Team commits: {} totales, {} después de filtrar merge commits",
+                allTeamCommits.size(), filteredCommits.size());
+
+        return filteredCommits;
     }
 
     /**
@@ -717,5 +726,44 @@ public class TechLeadDashboardService {
                         Collections.emptyList()
                 )
         );
+    }
+
+    /**
+     * Filtra commits de merge que no representan trabajo real del equipo.
+     * Los commits de merge se guardan en la BD para mantener el grafo de commits,
+     * pero no deben contarse en las métricas del equipo.
+     *
+     * @param commits Lista de commits a filtrar
+     * @return Lista de commits sin merge commits
+     */
+    private List<Commit> filterOutMergeCommits(List<Commit> commits) {
+        return commits.stream()
+                .filter(commit -> !isMergeCommit(commit))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Determina si un commit es un merge commit basándose en:
+     * 1. Número de parents: >= 2 parents indica merge de múltiples ramas
+     * 2. Mensaje del commit: comienza con "Merge pull request" o "Merge branch"
+     *
+     * @param commit El commit a evaluar
+     * @return true si es un merge commit, false en caso contrario
+     */
+    private boolean isMergeCommit(Commit commit) {
+        // Criterio 1: Commits con 2 o más parents son merge commits
+        if (commit.getParents() != null && commit.getParents().size() >= 2) {
+            return true;
+        }
+
+        // Criterio 2: Mensaje comienza con patrones típicos de merge
+        if (commit.getMessage() != null && !commit.getMessage().isEmpty()) {
+            String messageLower = commit.getMessage().toLowerCase();
+            return messageLower.startsWith("merge pull request") ||
+                   messageLower.startsWith("merge branch") ||
+                   messageLower.startsWith("merge remote-tracking branch");
+        }
+
+        return false;
     }
 }

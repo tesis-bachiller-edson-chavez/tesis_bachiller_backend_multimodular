@@ -43,20 +43,20 @@ public class Commit {
     /**
      * Constructor de conveniencia para crear una entidad Commit a partir de un GithubCommitDto.
      * Esto centraliza la lógica de mapeo y la elimina de los servicios.
+     *
+     * IMPORTANTE: Extrae el autor REAL del commit (quien escribió el código), no quien lo mergeo/revisó.
+     *
      * @param dto El objeto de transferencia de datos de la API de GitHub.
      * @param repository El repositorio al que pertenece este commit.
+     * @param userRepository Repositorio para buscar usuarios por email o ID de GitHub.
      */
-    public Commit(GithubCommitDto dto, RepositoryConfig repository) {
+    public Commit(GithubCommitDto dto, RepositoryConfig repository, UserRepository userRepository) {
         this.sha = dto.getSha();
         this.repository = repository;
-        // Priorizamos el 'login' del usuario de GitHub, que es más consistente.
-        // Si no está, usamos el nombre del autor del commit como respaldo.
-        this.author = Optional.ofNullable(dto.getAuthor())
-                .map(GithubCommitDto.Author::getLogin)
-                .or(() -> Optional.ofNullable(dto.getCommit())
-                        .map(GithubCommitDto.Commit::getAuthor)
-                        .map(GithubCommitDto.CommitAuthor::getName))
-                .orElse("N/A");
+
+        // Extraer el autor REAL del commit GIT (no el usuario asociado en GitHub que puede ser el merger)
+        this.author = extractRealAuthor(dto, userRepository);
+
         this.message = Optional.ofNullable(dto.getCommit())
                 .map(GithubCommitDto.Commit::getMessage)
                 .orElse("");
@@ -65,6 +65,65 @@ public class Commit {
                 .map(GithubCommitDto.CommitAuthor::getDate)
                 .map(d -> Instant.ofEpochMilli(d.getTime()).atZone(ZoneId.systemDefault()).toLocalDateTime())
                 .orElse(LocalDateTime.now());
+    }
+
+    /**
+     * Extrae el githubUsername del autor REAL del commit.
+     * Prioriza el email del commit GIT sobre el usuario asociado en GitHub.
+     *
+     * Estrategia:
+     * 1. Intentar con email del commit GIT (commit.author.email)
+     * 2. Si es email noreply de GitHub, extraer username/id del formato
+     * 3. Buscar en BD por email, github_id o github_username
+     * 4. Fallback al nombre del autor o "N/A"
+     */
+    private String extractRealAuthor(GithubCommitDto dto, UserRepository userRepository) {
+        // Obtener email del commit GIT
+        String commitEmail = Optional.ofNullable(dto.getCommit())
+                .map(GithubCommitDto.Commit::getAuthor)
+                .map(GithubCommitDto.CommitAuthor::getEmail)
+                .orElse(null);
+
+        if (commitEmail != null && !commitEmail.isEmpty()) {
+            // Caso 1: Email es noreply de GitHub
+            // Formatos: username@users.noreply.github.com o github_id+username@users.noreply.github.com
+            if (commitEmail.endsWith("@users.noreply.github.com")) {
+                String localPart = commitEmail.substring(0, commitEmail.indexOf('@'));
+
+                // Formato: github_id+username
+                if (localPart.contains("+")) {
+                    String[] parts = localPart.split("\\+", 2);
+                    try {
+                        Long githubId = Long.parseLong(parts[0]);
+                        return userRepository.findByGithubId(githubId)
+                                .map(User::getGithubUsername)
+                                .orElse(parts[1]); // Usar el username del email como fallback
+                    } catch (NumberFormatException e) {
+                        // Si no es un número, usar el username del email
+                        return parts[1];
+                    }
+                } else {
+                    // Formato: username (sin github_id)
+                    return userRepository.findByGithubUsernameIgnoreCase(localPart)
+                            .map(User::getGithubUsername)
+                            .orElse(localPart);
+                }
+            }
+
+            // Caso 2: Email real (público)
+            // Buscar usuario por email en la BD
+            User user = userRepository.findByEmailIgnoreCase(commitEmail).orElse(null);
+            if (user != null) {
+                return user.getGithubUsername();
+            }
+        }
+
+        // Caso 3: No hay email o no se pudo resolver
+        // Usar el nombre del autor del commit como último recurso
+        return Optional.ofNullable(dto.getCommit())
+                .map(GithubCommitDto.Commit::getAuthor)
+                .map(GithubCommitDto.CommitAuthor::getName)
+                .orElse("N/A");
     }
 
     public Commit() {

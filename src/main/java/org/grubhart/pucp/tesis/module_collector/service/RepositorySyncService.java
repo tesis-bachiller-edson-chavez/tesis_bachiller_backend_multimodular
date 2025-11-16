@@ -47,7 +47,7 @@ public class RepositorySyncService implements org.grubhart.pucp.tesis.module_dom
      *
      * @return Resultado de la sincronización con estadísticas
      */
-    @Scheduled(initialDelay = 10000, fixedRate = 3600000)
+    @Scheduled(initialDelay = 10000, fixedRate = 300000)
     public RepositorySyncResult synchronizeRepositories() {
         logger.info("Starting repository synchronization from GitHub for organization '{}'", organizationName);
 
