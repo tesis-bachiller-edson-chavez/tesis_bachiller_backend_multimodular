@@ -37,7 +37,7 @@ public class IncidentSyncService {
         this.repositoryConfigRepository = repositoryConfigRepository;
     }
 
-    @Scheduled(initialDelay = 40000, fixedRate = 3600000) // Initial delay: 40s, then every 60 minutes
+    @Scheduled(initialDelay = 40000, fixedRate = 300000) // Initial delay: 40s, then every 60 minutes
     public void syncIncidents() {
         log.info("Starting Datadog incident synchronization for all configured repositories");
 

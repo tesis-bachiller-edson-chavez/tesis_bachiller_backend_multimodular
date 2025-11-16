@@ -76,14 +76,15 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
 
     @Override
     public List<GithubCommitDto> getCommits(String owner, String repo, LocalDateTime since) {
+        logger.info("Iniciando recolección de commits de main para {}/{} desde {}",
+                owner, repo, since.format(DateTimeFormatter.ISO_DATE_TIME));
+
         String formattedSince = since.format(DateTimeFormatter.ISO_DATE_TIME);
         String initialUrl = UriComponentsBuilder.fromPath("/repos/{owner}/{repo}/commits")
                 .queryParam("since", formattedSince)
                 .queryParam("per_page", 100)
                 .buildAndExpand(owner, repo)
                 .toString();
-
-        logger.info("Iniciando recolección paginada de commits para {}/{} desde {}", owner, repo, formattedSince);
 
         List<GithubCommitDto> allCommits = new ArrayList<>();
         String nextPageUrl = initialUrl;
@@ -107,21 +108,28 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
                         nextPageUrl = null;
                     }
                 } catch (WebClientResponseException e) {
-                    logger.error("Error fetching commits from {}: {} {}", currentUrl, e.getStatusCode().value(), e.getStatusText(), e);
+                    logger.error("Error fetching commits from {}: {} {}", currentUrl,
+                            e.getStatusCode().value(), e.getStatusText(), e);
                     if (e.getStatusCode().is5xxServerError()) {
-                        throw new RuntimeException("Failed to fetch commits from GitHub due to a server error: " + e.getMessage(), e);
+                        throw new RuntimeException("Failed to fetch commits from GitHub: " + e.getMessage(), e);
                     }
-                    nextPageUrl = null; // Stop pagination on client or non-5xx server errors
+                    nextPageUrl = null;
                 }
             }
         } catch (RuntimeException e) {
             if (allCommits.isEmpty()) {
-                throw e; // Rethrow if error happened on the first page
+                throw e;
             }
-            logger.warn("Error during paginated commit collection. Returning partial results. Error: {}", e.getMessage());
+            logger.warn("Error during commits collection. Returning partial results. Error: {}", e.getMessage());
         }
 
-        logger.info("Recolección paginada finalizada. Total de commits obtenidos: {}", allCommits.size());
+        logger.info("Recolección finalizada. Total de commits obtenidos: {}", allCommits.size());
+
+        // NOTA: Retornamos TODOS los commits (incluidos merge) para mantener el grafo parent-child completo.
+        // El filtrado de merge commits se hace en DeveloperDashboardService/TechLeadDashboardService
+        // al calcular métricas, NO aquí.
+        // La autoría real se extrae del campo dto.commit.author.email (no dto.author.login)
+        // en el constructor de la entidad Commit.
         return allCommits;
     }
 

@@ -9,6 +9,7 @@ import org.grubhart.pucp.tesis.module_domain.GithubCommitDto;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfig;
 import org.grubhart.pucp.tesis.module_domain.RepositoryConfigRepository;
 import org.grubhart.pucp.tesis.module_domain.SyncStatusRepository;
+import org.grubhart.pucp.tesis.module_domain.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +43,9 @@ class CommitSyncServiceTest {
 
     @Mock
     private GithubCommitCollector githubCommitCollector;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private CommitSyncService commitSyncService;
@@ -251,7 +255,7 @@ class CommitSyncServiceTest {
         // Configuración completa del mock del repositorio para el flujo lógico.
         when(commitRepository.existsById(newCommitSha)).thenReturn(false); // El commit es nuevo.
         when(commitRepository.findById(existingParentSha)).thenReturn(Optional.of(new Commit())); // El padre ya existe.
-        when(commitRepository.findById(newCommitSha)).thenReturn(Optional.of(new Commit(newCommitDto, validConfig))); // El commit hijo se encuentra después de ser guardado.
+        when(commitRepository.findById(newCommitSha)).thenReturn(Optional.of(new Commit(newCommitDto, validConfig, userRepository))); // El commit hijo se encuentra después de ser guardado.
 
         // WHEN
         commitSyncService.syncCommits();
@@ -290,7 +294,7 @@ class CommitSyncServiceTest {
         // El commit hijo es nuevo y se guarda.
         when(commitRepository.existsById(childSha)).thenReturn(false);
         // El commit hijo se encuentra después de ser guardado.
-        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto, validConfig)));
+        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto, validConfig, userRepository)));
         // El commit padre NO se encuentra en la BD.
         when(commitRepository.findById(nonExistentParentSha)).thenReturn(Optional.empty());
 
@@ -334,7 +338,7 @@ class CommitSyncServiceTest {
         when(commitRepository.existsById(childSha)).thenReturn(true);
 
         // Simulamos que tanto el hijo como el padre existen en la BD y pueden ser recuperados.
-        Commit childCommit = new Commit(childDto, validConfig);
+        Commit childCommit = new Commit(childDto, validConfig, userRepository);
         Commit parentCommit = new Commit(parentSha, null, null, null, validConfig);
         when(commitRepository.findById(childSha)).thenReturn(Optional.of(childCommit));
         when(commitRepository.findById(parentSha)).thenReturn(Optional.of(parentCommit));
@@ -385,7 +389,7 @@ class CommitSyncServiceTest {
         when(commitRepository.existsById(childSha)).thenReturn(true);
 
         // Simulamos que tanto el hijo como el padre existen en la BD.
-        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto, validConfig)));
+        when(commitRepository.findById(childSha)).thenReturn(Optional.of(new Commit(childDto, validConfig, userRepository)));
         when(commitRepository.findById(parentSha)).thenReturn(Optional.of(new Commit(parentSha, null, null, null, validConfig)));
 
         // Punto Clave: La relación de parentesco YA EXISTE.

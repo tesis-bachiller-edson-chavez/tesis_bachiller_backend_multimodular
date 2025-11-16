@@ -37,7 +37,7 @@ public class PullRequestSyncService {
      * Tarea programada para sincronizar Pull Requests desde los repositorios configurados.
      * Se ejecuta 20 segundos después de que la aplicación arranca y luego cada hora.
      */
-    @Scheduled(initialDelay = 20000, fixedRate = 86400000)
+    @Scheduled(initialDelay = 20000, fixedRate = 300000)
     public void syncPullRequests() {
         List<RepositoryConfig> configs = repositoryConfigRepository.findAll();
         if (configs.isEmpty()) {

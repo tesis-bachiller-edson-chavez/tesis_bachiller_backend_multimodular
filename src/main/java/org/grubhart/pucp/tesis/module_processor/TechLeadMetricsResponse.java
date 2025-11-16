@@ -31,7 +31,7 @@ public record TechLeadMetricsResponse(
         @Schema(description = "Estadísticas agregadas de pull requests del equipo")
         PullRequestStatsDto pullRequestStats,
 
-        @Schema(description = "Métricas DORA del equipo (Lead Time, Deployment Frequency, CFR)")
-        DeveloperDoraMetricsDto doraMetrics
+        @Schema(description = "Métricas DORA del equipo (Lead Time, Deployment Frequency, CFR, MTTR)")
+        TeamDoraMetricsDto doraMetrics
 ) {
 }
