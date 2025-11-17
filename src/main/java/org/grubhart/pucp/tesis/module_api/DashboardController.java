@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.grubhart.pucp.tesis.module_processor.DeveloperDashboardService;
 import org.grubhart.pucp.tesis.module_processor.DeveloperMetricsResponse;
+import org.grubhart.pucp.tesis.module_processor.EngineeringManagerDashboardService;
+import org.grubhart.pucp.tesis.module_processor.EngineeringManagerMetricsResponse;
 import org.grubhart.pucp.tesis.module_processor.TechLeadDashboardService;
 import org.grubhart.pucp.tesis.module_processor.TechLeadMetricsResponse;
 import org.slf4j.Logger;
@@ -93,11 +95,14 @@ class DashboardApiController {
 
     private final DeveloperDashboardService developerDashboardService;
     private final TechLeadDashboardService techLeadDashboardService;
+    private final EngineeringManagerDashboardService engineeringManagerDashboardService;
 
     public DashboardApiController(DeveloperDashboardService developerDashboardService,
-                                  TechLeadDashboardService techLeadDashboardService) {
+                                  TechLeadDashboardService techLeadDashboardService,
+                                  EngineeringManagerDashboardService engineeringManagerDashboardService) {
         this.developerDashboardService = developerDashboardService;
         this.techLeadDashboardService = techLeadDashboardService;
+        this.engineeringManagerDashboardService = engineeringManagerDashboardService;
     }
 
     @GetMapping("/developer/metrics")
@@ -227,6 +232,81 @@ class DashboardApiController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         } catch (Exception e) {
             logger.error("Error al obtener métricas del tech lead", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/engineering-manager/metrics")
+    @PreAuthorize("hasAnyRole('ENGINEERING_MANAGER', 'ADMIN')")
+    @Operation(
+            summary = "Obtener métricas del dashboard para Engineering Manager",
+            description = "Retorna métricas agregadas de toda la organización o equipos filtrados. " +
+                    "Los datos incluyen estadísticas individuales de cada equipo, " +
+                    "métricas agregadas de commits, pull requests y métricas DORA de todos los equipos. " +
+                    "**Filtros opcionales:** startDate, endDate (basados en fecha de deployment), " +
+                    "repositoryIds (filtrar por repositorios), teamIds (filtrar por equipos específicos), " +
+                    "memberIds (filtrar por miembros específicos - deben pertenecer a equipos seleccionados). " +
+                    "**Permisos:** El engineering manager puede ver métricas de todos los equipos. " +
+                    "**Accesible para usuarios con rol ENGINEERING_MANAGER o superior**.",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Métricas obtenidas exitosamente",
+                            content = @Content(schema = @Schema(implementation = EngineeringManagerMetricsResponse.class))
+                    ),
+                    @ApiResponse(
+                            responseCode = "400",
+                            description = "Solicitud inválida (ej: memberIds no pertenecen a equipos seleccionados)"
+                    ),
+                    @ApiResponse(
+                            responseCode = "403",
+                            description = "Acceso denegado - requiere rol ENGINEERING_MANAGER o superior"
+                    ),
+                    @ApiResponse(
+                            responseCode = "500",
+                            description = "Error interno al calcular métricas"
+                    )
+            }
+    )
+    public ResponseEntity<EngineeringManagerMetricsResponse> getEngineeringManagerMetrics(
+            Authentication authentication,
+            @Parameter(description = "Fecha de inicio del rango (formato: YYYY-MM-DD, basado en fecha de deployment)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "Fecha de fin del rango (formato: YYYY-MM-DD, basado en fecha de deployment)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "Lista de IDs de repositorios para filtrar")
+            @RequestParam(required = false) List<Long> repositoryIds,
+            @Parameter(description = "Lista de IDs de equipos para filtrar (vacío = todos los equipos)")
+            @RequestParam(required = false) List<Long> teamIds,
+            @Parameter(description = "Lista de IDs de miembros para filtrar (deben pertenecer a equipos seleccionados)")
+            @RequestParam(required = false) List<Long> memberIds) {
+        try {
+            if (!(authentication.getPrincipal() instanceof OAuth2User)) {
+                logger.error("El principal de la autenticación no es de tipo OAuth2User");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+
+            OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
+            String githubUsername = oauthUser.getAttribute("login");
+
+            if (githubUsername == null || githubUsername.isBlank()) {
+                logger.error("No se pudo obtener el nombre de usuario de GitHub del usuario autenticado");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            }
+
+            logger.info("Solicitando métricas de engineering manager para el usuario: {} " +
+                            "(startDate: {}, endDate: {}, repositoryIds: {}, teamIds: {}, memberIds: {})",
+                    githubUsername, startDate, endDate, repositoryIds, teamIds, memberIds);
+
+            EngineeringManagerMetricsResponse metrics = engineeringManagerDashboardService.getEngineeringManagerMetrics(
+                    githubUsername, startDate, endDate, repositoryIds, teamIds, memberIds);
+            return ResponseEntity.ok(metrics);
+
+        } catch (IllegalArgumentException e) {
+            logger.error("Error de validación al obtener métricas del engineering manager: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        } catch (Exception e) {
+            logger.error("Error al obtener métricas del engineering manager", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
