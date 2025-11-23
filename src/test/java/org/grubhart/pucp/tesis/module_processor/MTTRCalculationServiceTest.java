@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.*;
@@ -353,14 +354,13 @@ class MTTRCalculationServiceTest {
 
         return new Incident(
                 id,
-                repo,
                 "Test Incident",
                 IncidentState.RESOLVED,
                 null,
                 startTime,
                 resolvedTime,
                 durationSeconds,
-                SERVICE_NAME,
+                Set.of(SERVICE_NAME),
                 startTime,
                 resolvedTime
         );
@@ -371,14 +371,13 @@ class MTTRCalculationServiceTest {
 
         return new Incident(
                 id,
-                repo,
                 "Test Incident",
                 IncidentState.RESOLVED,
                 null,
                 startTime,
                 null,  // null resolved time
                 null,  // null duration
-                SERVICE_NAME,
+                Set.of(SERVICE_NAME),
                 startTime,
                 startTime
         );

@@ -119,7 +119,16 @@ public class Commit {
         }
 
         // Caso 3: No hay email o no se pudo resolver
-        // Usar el nombre del autor del commit como último recurso
+        // Intentar usar el login del usuario de GitHub asociado al commit
+        String githubLogin = Optional.ofNullable(dto.getAuthor())
+                .map(GithubCommitDto.Author::getLogin)
+                .orElse(null);
+
+        if (githubLogin != null && !githubLogin.isEmpty()) {
+            return githubLogin;
+        }
+
+        // Último recurso: usar el nombre del autor del commit
         return Optional.ofNullable(dto.getCommit())
                 .map(GithubCommitDto.Commit::getAuthor)
                 .map(GithubCommitDto.CommitAuthor::getName)

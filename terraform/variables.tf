@@ -62,13 +62,26 @@ variable "environment_name" {
 }
 
 variable "datadog_api_key" {
-  description = "La clave de API de Datadog para la instalación del agente."
+  description = "La clave de API de Datadog para ENVIAR logs/traces de esta aplicación."
   type        = string
   sensitive   = true
 }
 
-variable "datadog_application_key" {
-  description = "La clave de aplicación de Datadog para acceder a la API de Incidents."
+# Variables para LEER datos de la organización a evaluar (pueden ser de otra org)
+variable "datadog_read_api_key" {
+  description = "La clave de API de Datadog para LEER servicios APM e incidentes de la org a evaluar."
   type        = string
   sensitive   = true
+}
+
+variable "datadog_read_application_key" {
+  description = "La clave de aplicación de Datadog para LEER servicios APM e incidentes de la org a evaluar."
+  type        = string
+  sensitive   = true
+}
+
+variable "datadog_read_base_url" {
+  description = "URL base de Datadog de la organización a evaluar (ej: https://api.datadoghq.com)"
+  type        = string
+  default     = "https://api.datadoghq.com"
 }

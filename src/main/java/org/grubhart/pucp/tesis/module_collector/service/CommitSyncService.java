@@ -55,7 +55,7 @@ public class CommitSyncService {
      * Tarea programada para sincronizar commits desde los repositorios configurados.
      * Se ejecuta 10 segundos después de que la aplicación arranca y luego cada hora.
      */
-    @Scheduled(initialDelay = 10000, fixedRate = 300000)
+    @Scheduled(initialDelay = 1440000, fixedRate = 3600000) // Every hour, starts at 24 min
     public void syncCommits() {
         List<RepositoryConfig> configs = repositoryConfigRepository.findAll();
         if (configs.isEmpty()) {
@@ -64,8 +64,19 @@ public class CommitSyncService {
         }
 
         log.info("Iniciando ciclo de sincronización para {} repositorios configurados.", configs.size());
-        for (RepositoryConfig config : configs) {
-            syncRepository(config);
+        for (int i = 0; i < configs.size(); i++) {
+            syncRepository(configs.get(i));
+
+            // Add delay between repositories to avoid hitting GitHub rate limit
+            if (i < configs.size() - 1) {
+                try {
+                    Thread.sleep(2000); // 2 seconds delay between repos
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Sincronización de commits interrumpida");
+                    return;
+                }
+            }
         }
         log.info("Ciclo de sincronización de commits finalizado.");
     }
@@ -82,8 +93,8 @@ public class CommitSyncService {
         String syncId = SYNC_ID_PREFIX + owner + "/" + repoName;
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById(syncId);
         LocalDateTime lastSync = syncStatus.map(SyncStatus::getLastSuccessfulRun)
-                // Si nunca se ha sincronizado, trae los commits de hace un año.
-                .orElse(LocalDateTime.now().minusYears(1));
+                // Si nunca se ha sincronizado, trae los commits de los últimos 3 meses.
+                .orElse(LocalDateTime.now().minusMonths(3));
 
         try {
             log.info("Iniciando sincronización de commits para {}/{}", owner, repoName);

@@ -25,9 +25,9 @@ public class DatadogServiceClient implements DatadogServiceCollector {
 
     public DatadogServiceClient(
             WebClient.Builder webClientBuilder,
-            @Value("${datadog.base-url:https://us5.datadoghq.com}") String baseUrl,
-            @Value("${datadog.api-key}") String apiKey,
-            @Value("${datadog.application-key}") String applicationKey,
+            @Value("${datadog.read.base-url:https://api.datadoghq.com}") String baseUrl,
+            @Value("${datadog.read.api-key}") String apiKey,
+            @Value("${datadog.read.application-key}") String applicationKey,
             @Value("${datadog.environment:prod}") String environment) {
 
         this.webClient = webClientBuilder
@@ -36,7 +36,7 @@ public class DatadogServiceClient implements DatadogServiceCollector {
                 .defaultHeader("DD-APPLICATION-KEY", applicationKey)
                 .build();
         this.environment = environment;
-        logger.info("DatadogServiceClient initialized with base URL: {} and environment: {}", baseUrl, environment);
+        logger.info("DatadogServiceClient initialized with base URL: {} and environment: {} (READ mode)", baseUrl, environment);
     }
 
     /**

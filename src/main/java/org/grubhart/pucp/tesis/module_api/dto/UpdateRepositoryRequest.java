@@ -10,6 +10,9 @@ public record UpdateRepositoryRequest(
         @Schema(description = "Nombre del servicio en Datadog (puede ser null para eliminar la asociación)", example = "tesis-backend", nullable = true)
         String datadogServiceName,
         @Schema(description = "Nombre del archivo de workflow de deployment en GitHub Actions", example = "deploy.yml", nullable = true)
-        String deploymentWorkflowFileName
+        String deploymentWorkflowFileName,
+
+        @Schema(description = "Nombre del ambiente de producción para filtrar deployments (por defecto 'prod')", example = "prod", nullable = true)
+        String productionEnvironmentName
 ) {
 }

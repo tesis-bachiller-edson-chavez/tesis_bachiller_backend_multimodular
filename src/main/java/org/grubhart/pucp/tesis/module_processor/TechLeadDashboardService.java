@@ -513,10 +513,26 @@ public class TechLeadDashboardService {
                                                     LocalDate startDate,
                                                     LocalDate endDate,
                                                     List<Long> repositoryIds) {
-        // Obtener los IDs de repositorios relevantes
-        Set<Long> relevantRepoIds = deployments.stream()
-                .map(d -> d.getRepository().getId())
+        // Obtener los service names relevantes de los deployments
+        Set<String> relevantServiceNames = deployments.stream()
+                .map(Deployment::getServiceName)
+                .filter(s -> s != null && !s.isBlank())
                 .collect(Collectors.toSet());
+
+        // Si hay filtro de repositoryIds, obtener los service names correspondientes
+        Set<String> filteredServiceNames = null;
+        if (repositoryIds != null && !repositoryIds.isEmpty()) {
+            filteredServiceNames = deployments.stream()
+                    .filter(d -> repositoryIds.contains(d.getRepository().getId()))
+                    .map(Deployment::getServiceName)
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(Collectors.toSet());
+        }
+
+        // Determinar qué service names usar para filtrar
+        final Set<String> serviceNamesToFilter = (filteredServiceNames != null && !filteredServiceNames.isEmpty())
+                ? filteredServiceNames
+                : relevantServiceNames;
 
         return allIncidents.stream()
                 .filter(incident -> incident.getState() == IncidentState.RESOLVED)
@@ -533,14 +549,12 @@ public class TechLeadDashboardService {
                     return true;
                 })
                 .filter(incident -> {
-                    // Aplicar filtro de repositorio
-                    if (repositoryIds != null && !repositoryIds.isEmpty()) {
-                        return incident.getRepository() != null
-                                && repositoryIds.contains(incident.getRepository().getId());
+                    // Filtrar por service names - el incidente debe tener al menos un servicio en común
+                    if (serviceNamesToFilter.isEmpty()) {
+                        return false;
                     }
-                    // Si no hay filtro de repositorio, usar solo incidentes de repos relevantes
-                    return incident.getRepository() != null
-                            && relevantRepoIds.contains(incident.getRepository().getId());
+                    return incident.getServiceNames().stream()
+                            .anyMatch(serviceNamesToFilter::contains);
                 })
                 .collect(Collectors.toList());
     }
@@ -560,13 +574,17 @@ public class TechLeadDashboardService {
                         boolean withinTimeWindow = !incident.getStartTime().isBefore(deploymentTime)
                                 && incident.getStartTime().isBefore(windowEnd);
 
-                        if (deployment.getServiceName() != null && incident.getServiceName() != null) {
-                            return withinTimeWindow
-                                    && deployment.getServiceName().equals(incident.getServiceName());
+                        if (!withinTimeWindow) {
+                            return false;
                         }
 
-                        return withinTimeWindow
-                                && deployment.getRepository().getId().equals(incident.getRepository().getId());
+                        // Match by service name - check if incident's services contain the deployment's service
+                        String deploymentService = deployment.getServiceName();
+                        if (deploymentService != null && !deploymentService.isBlank()) {
+                            return incident.getServiceNames().contains(deploymentService);
+                        }
+
+                        return false;
                     });
 
             if (hasIncident) {

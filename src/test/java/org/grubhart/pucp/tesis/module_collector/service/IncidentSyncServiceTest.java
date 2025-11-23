@@ -21,6 +21,7 @@ import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,7 +91,9 @@ class IncidentSyncServiceTest {
         Instant now = Instant.now();
         DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
                 List.of(new DatadogIncidentData("inc-1", "incidents",
-                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5",
+                            new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                    new DatadogServicesFieldValue(List.of(SERVICE_NAME)))))),
                 new DatadogMeta(new DatadogPagination(0, 1))
         );
         when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
@@ -117,7 +120,9 @@ class IncidentSyncServiceTest {
         Instant now = Instant.now();
         DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
                 List.of(new DatadogIncidentData("inc-1", "incidents",
-                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5",
+                            new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                    new DatadogServicesFieldValue(List.of(SERVICE_NAME)))))),
                 new DatadogMeta(new DatadogPagination(0, 1))
         );
         when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
@@ -149,7 +154,9 @@ class IncidentSyncServiceTest {
         Instant now = Instant.now();
         DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
                 List.of(new DatadogIncidentData("inc-1", "incidents",
-                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5",
+                            new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                    new DatadogServicesFieldValue(List.of(workingService)))))),
                 new DatadogMeta(new DatadogPagination(0, 1))
         );
         when(datadogClient.getIncidents(any(Instant.class), eq(workingService))).thenReturn(responseWithIncident);
@@ -172,14 +179,24 @@ class IncidentSyncServiceTest {
         RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2", "service2");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
 
-        // Create responses with at least one incident so SyncStatus will be updated
+        // Create responses with incidents for each service
         Instant now = Instant.now();
-        DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
+        DatadogIncidentResponse response1 = new DatadogIncidentResponse(
                 List.of(new DatadogIncidentData("inc-1", "incidents",
-                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5",
+                            new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                    new DatadogServicesFieldValue(List.of("service1")))))),
                 new DatadogMeta(new DatadogPagination(0, 1))
         );
-        when(datadogClient.getIncidents(any(Instant.class), anyString())).thenReturn(responseWithIncident);
+        DatadogIncidentResponse response2 = new DatadogIncidentResponse(
+                List.of(new DatadogIncidentData("inc-2", "incidents",
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5",
+                            new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                    new DatadogServicesFieldValue(List.of("service2")))))),
+                new DatadogMeta(new DatadogPagination(0, 1))
+        );
+        when(datadogClient.getIncidents(any(Instant.class), eq("service1"))).thenReturn(response1);
+        when(datadogClient.getIncidents(any(Instant.class), eq("service2"))).thenReturn(response2);
         when(incidentRepository.findByDatadogIncidentId(any())).thenReturn(Optional.empty());
 
         // WHEN
@@ -204,7 +221,9 @@ class IncidentSyncServiceTest {
         Instant now = Instant.now();
         DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
                 List.of(new DatadogIncidentData("inc-1", "incidents",
-                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5",
+                            new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                    new DatadogServicesFieldValue(List.of(SERVICE_NAME)))))),
                 new DatadogMeta(new DatadogPagination(0, 1))
         );
         when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
@@ -276,7 +295,8 @@ class IncidentSyncServiceTest {
                                         "SEV-2",
                                         new DatadogIncidentFields(
                                                 new DatadogFieldValue("resolved"),
-                                                new DatadogFieldValue("SEV-2")
+                                                new DatadogFieldValue("SEV-2"),
+                                                new DatadogServicesFieldValue(List.of(SERVICE_NAME))
                                         )
                                 )
                         )
@@ -298,7 +318,7 @@ class IncidentSyncServiceTest {
         assertThat(savedIncident.getTitle()).isEqualTo("Database connection timeout");
         assertThat(savedIncident.getState()).isEqualTo(IncidentState.RESOLVED);
         assertThat(savedIncident.getSeverity()).isEqualTo(IncidentSeverity.SEV2);
-        assertThat(savedIncident.getServiceName()).isEqualTo(SERVICE_NAME);
+        assertThat(savedIncident.getServiceNames()).contains(SERVICE_NAME);
         assertThat(savedIncident.getDurationSeconds()).isEqualTo(7200L); // 2 hours
     }
 
@@ -315,14 +335,13 @@ class IncidentSyncServiceTest {
 
         Incident existingIncident = new Incident(
                 "incident-123",
-                repoConfig,
                 "Database connection timeout",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV2,
                 LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
                 null,
                 null,
-                SERVICE_NAME,
+                Set.of(SERVICE_NAME),
                 LocalDateTime.now(),
                 LocalDateTime.now()
         );
@@ -343,7 +362,8 @@ class IncidentSyncServiceTest {
                                         "SEV-2",
                                         new DatadogIncidentFields(
                                                 new DatadogFieldValue("resolved"),
-                                                new DatadogFieldValue("SEV-2")
+                                                new DatadogFieldValue("SEV-2"),
+                                                new DatadogServicesFieldValue(List.of(SERVICE_NAME))
                                         )
                                 )
                         )
@@ -392,7 +412,8 @@ class IncidentSyncServiceTest {
                                         "SEV-1",
                                         new DatadogIncidentFields(
                                                 new DatadogFieldValue("active"),
-                                                new DatadogFieldValue("SEV-1")
+                                                new DatadogFieldValue("SEV-1"),
+                                                new DatadogServicesFieldValue(List.of(SERVICE_NAME))
                                         )
                                 )
                         )
@@ -427,7 +448,9 @@ class IncidentSyncServiceTest {
         Instant now = Instant.now();
         DatadogIncidentResponse responseWithIncident = new DatadogIncidentResponse(
                 List.of(new DatadogIncidentData("inc-1", "incidents",
-                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5", null))),
+                    new DatadogIncidentAttributes("Test", "none", now, now, null, "active", "SEV-5",
+                            new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                    new DatadogServicesFieldValue(List.of(SERVICE_NAME)))))),
                 new DatadogMeta(new DatadogPagination(0, 1))
         );
         when(datadogClient.getIncidents(any(Instant.class), eq(SERVICE_NAME))).thenReturn(responseWithIncident);
@@ -476,10 +499,14 @@ class IncidentSyncServiceTest {
 
         Instant now = Instant.now();
         DatadogIncidentData failingIncidentData = new DatadogIncidentData(
-                "incident-1", "incidents", new DatadogIncidentAttributes("Failing", "none", now, now, null, "active", "SEV-5", null)
+                "incident-1", "incidents", new DatadogIncidentAttributes("Failing", "none", now, now, null, "active", "SEV-5",
+                        new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                new DatadogServicesFieldValue(List.of(SERVICE_NAME))))
         );
         DatadogIncidentData successfulIncidentData = new DatadogIncidentData(
-                "incident-2", "incidents", new DatadogIncidentAttributes("Successful", "none", now, now, null, "active", "SEV-5", null)
+                "incident-2", "incidents", new DatadogIncidentAttributes("Successful", "none", now, now, null, "active", "SEV-5",
+                        new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-5"),
+                                new DatadogServicesFieldValue(List.of(SERVICE_NAME))))
         );
 
         DatadogIncidentResponse response = new DatadogIncidentResponse(
@@ -556,12 +583,14 @@ class IncidentSyncServiceTest {
                 "incident-null-modified",
                 "incidents",
                 new DatadogIncidentAttributes(
-                        "Title", "none", createdTime, null, null, "active", "SEV-3", null
+                        "Title", "none", createdTime, null, null, "active", "SEV-3",
+                        new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-3"),
+                                new DatadogServicesFieldValue(List.of(SERVICE_NAME)))
                 )
         );
 
         // When
-        Incident result = incidentSyncService.mapToIncident(incidentData, repoConfig);
+        Incident result = incidentSyncService.mapToIncident(incidentData);
 
         // Then
         assertThat(result.getUpdatedAt()).isEqualTo(result.getCreatedAt());
@@ -580,7 +609,9 @@ class IncidentSyncServiceTest {
                 "incident-123",
                 "incidents",
                 new DatadogIncidentAttributes(
-                        "Test Incident", "none", createdTime, null, null, "active", "SEV-1", null
+                        "Test Incident", "none", createdTime, null, null, "active", "SEV-1",
+                        new DatadogIncidentFields(new DatadogFieldValue("active"), new DatadogFieldValue("SEV-1"),
+                                new DatadogServicesFieldValue(List.of(SERVICE_NAME)))
                 )
         );
         DatadogIncidentResponse response = new DatadogIncidentResponse(
@@ -598,9 +629,7 @@ class IncidentSyncServiceTest {
         verify(incidentRepository).save(incidentCaptor.capture());
         Incident savedIncident = incidentCaptor.getValue();
 
-        assertThat(savedIncident.getRepository()).isNotNull();
-        assertThat(savedIncident.getRepository()).isEqualTo(repoConfig);
-        assertThat(savedIncident.getServiceName()).isEqualTo(SERVICE_NAME);
+        assertThat(savedIncident.getServiceNames()).contains(SERVICE_NAME);
         assertThat(savedIncident.getDatadogIncidentId()).isEqualTo("incident-123");
     }
 }

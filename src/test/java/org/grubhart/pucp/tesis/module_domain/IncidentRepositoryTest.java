@@ -9,6 +9,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,14 +42,13 @@ class IncidentRepositoryTest {
         // Given
         Incident incident = new Incident(
                 "INC-123",
-                testRepository,
                 "Database connection timeout",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 baseTime,
                 baseTime.plusHours(2),
                 7200L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(2)
         );
@@ -72,14 +72,13 @@ class IncidentRepositoryTest {
         // Given
         Incident incident = new Incident(
                 "INC-456",
-                testRepository,
                 "API rate limit exceeded",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV3,
                 baseTime,
                 baseTime.plusHours(1),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(1)
         );
@@ -110,70 +109,65 @@ class IncidentRepositoryTest {
         // Given
         Incident resolved1 = new Incident(
                 "INC-100",
-                testRepository,
                 "Incident 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 baseTime.plusHours(1),
                 baseTime.plusHours(3),
                 7200L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(3)
         );
 
         Incident resolved2 = new Incident(
                 "INC-101",
-                testRepository,
                 "Incident 2",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV3,
                 baseTime.plusHours(5),
                 baseTime.plusHours(6),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(6)
         );
 
         Incident active = new Incident(
                 "INC-102",
-                testRepository,
                 "Incident 3",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
                 baseTime.plusHours(2),
                 null,
                 null,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(2)
         );
 
         Incident differentService = new Incident(
                 "INC-103",
-                testRepository,
                 "Incident 4",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 baseTime.plusHours(3),
                 baseTime.plusHours(4),
                 3600L,
-                "other-service",
+                Set.of("other-service"),
                 baseTime,
                 baseTime.plusHours(4)
         );
 
         Incident outsideRange = new Incident(
                 "INC-104",
-                testRepository,
                 "Incident 5",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 baseTime.plusDays(10),
                 baseTime.plusDays(10).plusHours(1),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusDays(10).plusHours(1)
         );
@@ -206,56 +200,52 @@ class IncidentRepositoryTest {
         // Given
         Incident incident1 = new Incident(
                 "INC-200",
-                testRepository,
                 "Incident 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 baseTime.plusHours(1),
                 baseTime.plusHours(2),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(2)
         );
 
         Incident incident2 = new Incident(
                 "INC-201",
-                testRepository,
                 "Incident 2",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
                 baseTime.plusHours(3),
                 null,
                 null,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(3)
         );
 
         Incident incident3 = new Incident(
                 "INC-202",
-                testRepository,
                 "Incident 3",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV3,
                 baseTime.plusDays(10),
                 baseTime.plusDays(10).plusHours(1),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusDays(10).plusHours(1)
         );
 
         Incident differentService = new Incident(
                 "INC-203",
-                testRepository,
                 "Incident 4",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 baseTime.plusHours(2),
                 baseTime.plusHours(3),
                 3600L,
-                "other-service",
+                Set.of("other-service"),
                 baseTime,
                 baseTime.plusHours(3)
         );
@@ -284,14 +274,13 @@ class IncidentRepositoryTest {
         // Given
         Incident incident1 = new Incident(
                 "INC-DUPLICATE",
-                testRepository,
                 "First incident",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
                 baseTime,
                 null,
                 null,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime
         );
@@ -299,14 +288,13 @@ class IncidentRepositoryTest {
 
         Incident incident2 = new Incident(
                 "INC-DUPLICATE",
-                testRepository,
                 "Second incident with same ID",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 baseTime.plusHours(1),
                 baseTime.plusHours(2),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 baseTime,
                 baseTime.plusHours(2)
         );

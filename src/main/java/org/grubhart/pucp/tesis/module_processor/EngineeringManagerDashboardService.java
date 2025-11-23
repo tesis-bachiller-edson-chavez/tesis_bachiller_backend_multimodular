@@ -105,13 +105,10 @@ public class EngineeringManagerDashboardService {
         // Obtener commits de todos los miembros filtrados
         List<Commit> allCommits = getCommitsForMembers(filteredMembers);
 
-        if (allCommits.isEmpty()) {
-            logger.warn("No se encontraron commits para los miembros");
-            return createEmptyMetricsResponse(engineeringManagerGithubUsername);
-        }
-
         // Filtrar commits basándose en deployments (fecha y repositorio)
-        List<Commit> filteredCommits = filterCommitsByDeployments(allCommits, startDate, endDate, repositoryIds);
+        List<Commit> filteredCommits = allCommits.isEmpty()
+                ? Collections.emptyList()
+                : filterCommitsByDeployments(allCommits, startDate, endDate, repositoryIds);
 
         logger.debug("Después de aplicar filtros: {} commits (de {} totales)",
                 filteredCommits.size(), allCommits.size());
@@ -120,15 +117,20 @@ public class EngineeringManagerDashboardService {
         List<TeamMetricsDto> teamMetrics = calculateTeamMetrics(teams, filteredMembers, filteredCommits,
                 startDate, endDate, repositoryIds);
 
+        // Obtener todos los repositorios únicos de todos los equipos
+        Set<RepositoryConfig> allTeamRepos = teams.stream()
+                .flatMap(team -> team.getRepositories().stream())
+                .collect(Collectors.toSet());
+
         // Agrupar commits filtrados por repositorio
         Map<RepositoryConfig, List<Commit>> commitsByRepository = filteredCommits.stream()
                 .collect(Collectors.groupingBy(Commit::getRepository));
 
-        // Crear estadísticas agregadas por repositorio
-        List<RepositoryStatsDto> repositoryStats = commitsByRepository.entrySet().stream()
-                .map(entry -> {
-                    RepositoryConfig repo = entry.getKey();
-                    long commitCount = entry.getValue().size();
+        // Crear estadísticas agregadas para TODOS los repositorios de los equipos
+        List<RepositoryStatsDto> repositoryStats = allTeamRepos.stream()
+                .map(repo -> {
+                    List<Commit> repoCommits = commitsByRepository.getOrDefault(repo, Collections.emptyList());
+                    long commitCount = repoCommits.size();
                     return new RepositoryStatsDto(
                             repo.getId(),
                             repo.getRepoName(),
@@ -140,7 +142,7 @@ public class EngineeringManagerDashboardService {
                 .collect(Collectors.toList());
 
         // Calcular estadísticas agregadas de commits
-        CommitStatsDto aggregatedCommitStats = calculateCommitStats(filteredCommits, commitsByRepository.size());
+        CommitStatsDto aggregatedCommitStats = calculateCommitStats(filteredCommits, allTeamRepos.size());
 
         // Calcular estadísticas agregadas de Pull Requests
         PullRequestStatsDto aggregatedPullRequestStats = calculatePullRequestStats(filteredCommits);
@@ -251,9 +253,39 @@ public class EngineeringManagerDashboardService {
                             .filter(member -> team.getId().equals(member.getTeamId()))
                             .collect(Collectors.toList());
 
+                    // Obtener repositorios asignados al equipo
+                    Set<RepositoryConfig> teamRepos = team.getRepositories();
+
                     if (teamMembers.isEmpty()) {
-                        // Equipo sin miembros filtrados
-                        return createEmptyTeamMetrics(team);
+                        // Equipo sin miembros filtrados, pero mostrar repositorios con 0 commits
+                        List<RepositoryStatsDto> emptyRepoStats = teamRepos.stream()
+                                .map(repo -> new RepositoryStatsDto(
+                                        repo.getId(),
+                                        repo.getRepoName(),
+                                        repo.getRepositoryUrl(),
+                                        0L
+                                ))
+                                .sorted(Comparator.comparing(RepositoryStatsDto::repositoryName))
+                                .collect(Collectors.toList());
+
+                        return new TeamMetricsDto(
+                                team.getId(),
+                                team.getName(),
+                                0,
+                                0L,
+                                0L,
+                                emptyRepoStats.size(),
+                                new CommitStatsDto(0L, 0L, null, null),
+                                new PullRequestStatsDto(0L, 0L, 0L),
+                                new TeamDoraMetricsDto(
+                                        null, null, null,
+                                        0L, 0L,
+                                        null, 0L,
+                                        null, null, null, 0L,
+                                        Collections.emptyList()
+                                ),
+                                emptyRepoStats
+                        );
                     }
 
                     Set<String> teamMemberUsernames = teamMembers.stream()
@@ -275,10 +307,11 @@ public class EngineeringManagerDashboardService {
                     Map<RepositoryConfig, List<Commit>> teamCommitsByRepo = teamCommits.stream()
                             .collect(Collectors.groupingBy(Commit::getRepository));
 
-                    List<RepositoryStatsDto> teamRepositories = teamCommitsByRepo.entrySet().stream()
-                            .map(entry -> {
-                                RepositoryConfig repo = entry.getKey();
-                                long commitCount = entry.getValue().size();
+                    // Crear estadísticas para TODOS los repositorios del equipo (no solo los que tienen commits)
+                    List<RepositoryStatsDto> teamRepositories = teamRepos.stream()
+                            .map(repo -> {
+                                List<Commit> repoCommits = teamCommitsByRepo.getOrDefault(repo, Collections.emptyList());
+                                long commitCount = repoCommits.size();
                                 return new RepositoryStatsDto(
                                         repo.getId(),
                                         repo.getRepoName(),
@@ -290,7 +323,7 @@ public class EngineeringManagerDashboardService {
                             .collect(Collectors.toList());
 
                     // Calcular estadísticas de commits del equipo
-                    CommitStatsDto teamCommitStats = calculateCommitStats(teamCommits, teamCommitsByRepo.size());
+                    CommitStatsDto teamCommitStats = calculateCommitStats(teamCommits, teamRepositories.size());
 
                     // Calcular métricas DORA del equipo
                     TeamDoraMetricsDto teamDoraMetrics = calculateDoraMetrics(teamCommits, startDate, endDate, repositoryIds);
@@ -551,10 +584,26 @@ public class EngineeringManagerDashboardService {
                                                     LocalDate startDate,
                                                     LocalDate endDate,
                                                     List<Long> repositoryIds) {
-        // Obtener los IDs de repositorios relevantes
-        Set<Long> relevantRepoIds = deployments.stream()
-                .map(d -> d.getRepository().getId())
+        // Obtener los service names relevantes de los deployments
+        Set<String> relevantServiceNames = deployments.stream()
+                .map(Deployment::getServiceName)
+                .filter(s -> s != null && !s.isBlank())
                 .collect(Collectors.toSet());
+
+        // Si hay filtro de repositoryIds, obtener los service names correspondientes
+        Set<String> filteredServiceNames = null;
+        if (repositoryIds != null && !repositoryIds.isEmpty()) {
+            filteredServiceNames = deployments.stream()
+                    .filter(d -> repositoryIds.contains(d.getRepository().getId()))
+                    .map(Deployment::getServiceName)
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(Collectors.toSet());
+        }
+
+        // Determinar qué service names usar para filtrar
+        final Set<String> serviceNamesToFilter = (filteredServiceNames != null && !filteredServiceNames.isEmpty())
+                ? filteredServiceNames
+                : relevantServiceNames;
 
         return allIncidents.stream()
                 .filter(incident -> incident.getState() == IncidentState.RESOLVED)
@@ -571,14 +620,12 @@ public class EngineeringManagerDashboardService {
                     return true;
                 })
                 .filter(incident -> {
-                    // Aplicar filtro de repositorio
-                    if (repositoryIds != null && !repositoryIds.isEmpty()) {
-                        return incident.getRepository() != null
-                                && repositoryIds.contains(incident.getRepository().getId());
+                    // Filtrar por service names - el incidente debe tener al menos un servicio en común
+                    if (serviceNamesToFilter.isEmpty()) {
+                        return false;
                     }
-                    // Si no hay filtro de repositorio, usar solo incidentes de repos relevantes
-                    return incident.getRepository() != null
-                            && relevantRepoIds.contains(incident.getRepository().getId());
+                    return incident.getServiceNames().stream()
+                            .anyMatch(serviceNamesToFilter::contains);
                 })
                 .collect(Collectors.toList());
     }
@@ -598,13 +645,17 @@ public class EngineeringManagerDashboardService {
                         boolean withinTimeWindow = !incident.getStartTime().isBefore(deploymentTime)
                                 && incident.getStartTime().isBefore(windowEnd);
 
-                        if (deployment.getServiceName() != null && incident.getServiceName() != null) {
-                            return withinTimeWindow
-                                    && deployment.getServiceName().equals(incident.getServiceName());
+                        if (!withinTimeWindow) {
+                            return false;
                         }
 
-                        return withinTimeWindow
-                                && deployment.getRepository().getId().equals(incident.getRepository().getId());
+                        // Match by service name - check if incident's services contain the deployment's service
+                        String deploymentService = deployment.getServiceName();
+                        if (deploymentService != null && !deploymentService.isBlank()) {
+                            return incident.getServiceNames().contains(deploymentService);
+                        }
+
+                        return false;
                     });
 
             if (hasIncident) {

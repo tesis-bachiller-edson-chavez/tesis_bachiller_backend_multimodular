@@ -3,6 +3,7 @@ package org.grubhart.pucp.tesis.module_domain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
+import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class IncidentTest {
@@ -24,7 +25,7 @@ class IncidentTest {
         incident.setStartTime(now);
         incident.setResolvedTime(resolved);
         incident.setDurationSeconds(7200L);
-        incident.setServiceName("tesis-backend");
+        incident.setServiceNames(Set.of("tesis-backend"));
         incident.setCreatedAt(now);
         incident.setUpdatedAt(resolved);
 
@@ -38,7 +39,7 @@ class IncidentTest {
                 () -> assertEquals(now, incident.getStartTime()),
                 () -> assertEquals(resolved, incident.getResolvedTime()),
                 () -> assertEquals(7200L, incident.getDurationSeconds()),
-                () -> assertEquals("tesis-backend", incident.getServiceName()),
+                () -> assertTrue(incident.getServiceNames().contains("tesis-backend")),
                 () -> assertEquals(now, incident.getCreatedAt()),
                 () -> assertEquals(resolved, incident.getUpdatedAt())
         );
@@ -55,19 +56,18 @@ class IncidentTest {
         IncidentState state = IncidentState.RESOLVED;
         IncidentSeverity severity = IncidentSeverity.SEV3;
         Long durationSeconds = 7200L;
-        String service = "tesis-backend";
+        Set<String> serviceNames = Set.of("tesis-backend");
 
         // When
         Incident incident = new Incident(
                 datadogIncidentId,
-                null,
                 title,
                 state,
                 severity,
                 now,
                 resolved,
                 durationSeconds,
-                service,
+                serviceNames,
                 now,
                 resolved
         );
@@ -82,7 +82,7 @@ class IncidentTest {
                 () -> assertEquals(now, incident.getStartTime()),
                 () -> assertEquals(resolved, incident.getResolvedTime()),
                 () -> assertEquals(durationSeconds, incident.getDurationSeconds()),
-                () -> assertEquals(service, incident.getServiceName()),
+                () -> assertTrue(incident.getServiceNames().contains("tesis-backend")),
                 () -> assertEquals(now, incident.getCreatedAt()),
                 () -> assertEquals(resolved, incident.getUpdatedAt())
         );
@@ -97,14 +97,13 @@ class IncidentTest {
         // When
         Incident incident = new Incident(
                 "INC-789",
-                null,
                 "Ongoing database issue",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
                 now,
                 null,  // Not resolved yet
                 null,  // No duration yet
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 now,
                 now
         );
@@ -124,14 +123,13 @@ class IncidentTest {
         LocalDateTime now = LocalDateTime.now();
         Incident incident1 = new Incident(
                 "INC-123",
-                null,
                 "Title 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 now,
                 now.plusHours(1),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 now,
                 now
         );
@@ -139,14 +137,13 @@ class IncidentTest {
 
         Incident incident2 = new Incident(
                 "INC-123",
-                null,
                 "Title 1",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 now,
                 now.plusHours(1),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 now,
                 now
         );
@@ -154,14 +151,13 @@ class IncidentTest {
 
         Incident incident3 = new Incident(
                 "INC-456",
-                null,
                 "Title 2",
                 IncidentState.ACTIVE,
                 IncidentSeverity.SEV1,
                 now,
                 null,
                 null,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 now,
                 now
         );
@@ -182,14 +178,13 @@ class IncidentTest {
         LocalDateTime now = LocalDateTime.now();
         Incident incident = new Incident(
                 "INC-123",
-                null,
                 "Title",
                 IncidentState.RESOLVED,
                 IncidentSeverity.SEV2,
                 now,
                 now.plusHours(1),
                 3600L,
-                "tesis-backend",
+                Set.of("tesis-backend"),
                 now,
                 now
         );

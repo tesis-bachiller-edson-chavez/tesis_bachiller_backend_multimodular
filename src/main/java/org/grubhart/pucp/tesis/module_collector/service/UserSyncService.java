@@ -84,7 +84,7 @@ public class UserSyncService {
         }
     }
 
-    @Scheduled(initialDelay = 20000, fixedRate = 300000) // Executes at 2 AM every day
+    @Scheduled(initialDelay = 20000, fixedRate = 3600000) // Every hour, starts at 0 min
     public void scheduledSync() {
         synchronizeUsers(organizationName);
     }

@@ -147,6 +147,7 @@ class DeploymentSyncServiceTest {
 
         RepositoryConfig goodRepo = new RepositoryConfig("https://github.com/owner/good-repo");
         goodRepo.setDeploymentWorkflowFileName("deploy.yml");
+        goodRepo.setProductionEnvironmentName("prod");
 
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(badRepo, goodRepo));
 
@@ -164,8 +165,10 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig failingRepo = new RepositoryConfig("https://github.com/owner/failing-repo");
         failingRepo.setDeploymentWorkflowFileName("deploy.yml");
+        failingRepo.setProductionEnvironmentName("prod");
         RepositoryConfig workingRepo = new RepositoryConfig("https://github.com/owner/working-repo");
         workingRepo.setDeploymentWorkflowFileName("deploy.yml");
+        workingRepo.setProductionEnvironmentName("prod");
 
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(failingRepo, workingRepo));
 
@@ -192,6 +195,7 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         GitHubWorkflowRunDto validRun = createWorkflowRun(1L, "sha1", "success", "main");
@@ -215,6 +219,7 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         GitHubWorkflowRunDto validRun = createWorkflowRun(1L, "sha1", "success", "main");
@@ -238,6 +243,7 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         List<GitHubWorkflowRunDto> workflowRuns = List.of(
@@ -261,6 +267,7 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         when(syncStatusRepository.findById(anyString())).thenReturn(Optional.empty());
@@ -287,6 +294,7 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         List<GitHubWorkflowRunDto> workflowRuns = List.of(
@@ -308,6 +316,7 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         List<GitHubWorkflowRunDto> workflowRuns = List.of(
@@ -332,8 +341,10 @@ class DeploymentSyncServiceTest {
         // GIVEN
         RepositoryConfig repo1 = new RepositoryConfig("https://github.com/owner1/repo1");
         repo1.setDeploymentWorkflowFileName("deploy1.yml");
+        repo1.setProductionEnvironmentName("prod");
         RepositoryConfig repo2 = new RepositoryConfig("https://github.com/owner2/repo2");
         repo2.setDeploymentWorkflowFileName("deploy2.yml");
+        repo2.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repo1, repo2));
 
         // Configure workflow runs for both repos
@@ -361,6 +372,7 @@ class DeploymentSyncServiceTest {
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDatadogServiceName("test-service");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         List<GitHubWorkflowRunDto> workflowRuns = List.of(
@@ -389,6 +401,7 @@ class DeploymentSyncServiceTest {
         // Given
         RepositoryConfig repoConfig = new RepositoryConfig("https://github.com/owner/repo");
         repoConfig.setDeploymentWorkflowFileName("deploy.yml");
+        repoConfig.setProductionEnvironmentName("prod");
         when(repositoryConfigRepository.findAll()).thenReturn(List.of(repoConfig));
 
         // GitHub returns empty list (no workflow runs)
@@ -411,6 +424,7 @@ class DeploymentSyncServiceTest {
         runDto.setHeadSha(headSha);
         runDto.setStatus("completed");
         runDto.setConclusion(conclusion);
+        runDto.setDisplayTitle("Deploy to prod by @user"); // Required for production deployment validation
         runDto.setCreatedAt(LocalDateTime.now());
         runDto.setUpdatedAt(LocalDateTime.now());
         return runDto;

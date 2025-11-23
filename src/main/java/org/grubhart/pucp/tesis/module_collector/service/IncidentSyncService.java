@@ -13,7 +13,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class IncidentSyncService {
@@ -37,7 +40,7 @@ public class IncidentSyncService {
         this.repositoryConfigRepository = repositoryConfigRepository;
     }
 
-    @Scheduled(initialDelay = 40000, fixedRate = 300000) // Initial delay: 40s, then every 60 minutes
+    @Scheduled(initialDelay = 720000, fixedRate = 3600000) // Every hour, starts at 12 min
     public void syncIncidents() {
         log.info("Starting Datadog incident synchronization for all configured repositories");
 
@@ -70,10 +73,19 @@ public class IncidentSyncService {
 
                 int created = 0;
                 int updated = 0;
+                int skippedByService = 0;
 
                 for (DatadogIncidentData incidentData : response.data()) {
                     try {
-                        Incident incident = mapToIncident(incidentData, repository);
+                        // Validar que el incidente tenga el servicio esperado
+                        if (!hasExpectedService(incidentData, serviceName)) {
+                            skippedByService++;
+                            log.debug("Skipping incident {} - service mismatch (expected: {})",
+                                    incidentData.id(), serviceName);
+                            continue;
+                        }
+
+                        Incident incident = mapToIncident(incidentData);
                         Optional<Incident> existing = incidentRepository.findByDatadogIncidentId(incident.getDatadogIncidentId());
 
                         if (existing.isPresent()) {
@@ -86,6 +98,10 @@ public class IncidentSyncService {
                     } catch (Exception e) {
                         log.error("Error processing incident {}: {}", incidentData.id(), e.getMessage(), e);
                     }
+                }
+
+                if (skippedByService > 0) {
+                    log.info("Service {} - skipped {} incidents without matching service", serviceName, skippedByService);
                 }
 
                 // Only update sync status if incidents were actually processed
@@ -119,7 +135,7 @@ public class IncidentSyncService {
         }
     }
 
-    Incident mapToIncident(DatadogIncidentData data, RepositoryConfig repositoryConfig) {
+    Incident mapToIncident(DatadogIncidentData data) {
         LocalDateTime createdAt = LocalDateTime.ofInstant(data.attributes().created(), ZoneOffset.UTC);
         LocalDateTime updatedAt = LocalDateTime.ofInstant(
                 data.attributes().modified() != null ? data.attributes().modified() : data.attributes().created(),
@@ -138,19 +154,37 @@ public class IncidentSyncService {
         IncidentState state = mapState(data.attributes().state());
         IncidentSeverity severity = mapSeverity(data.attributes().severity());
 
+        // Extract all services from the incident
+        Set<String> serviceNames = extractServiceNames(data);
+
         return new Incident(
                 data.id(),
-                repositoryConfig,
                 data.attributes().title(),
                 state,
                 severity,
                 createdAt,
                 resolvedTime,
                 durationSeconds,
-                repositoryConfig.getDatadogServiceName(),
+                serviceNames,
                 createdAt,
                 updatedAt
         );
+    }
+
+    /**
+     * Extracts all service names from a Datadog incident.
+     */
+    private Set<String> extractServiceNames(DatadogIncidentData data) {
+        Set<String> serviceNames = new HashSet<>();
+
+        if (data.attributes() != null && data.attributes().fields() != null) {
+            var servicesField = data.attributes().fields().services();
+            if (servicesField != null && servicesField.value() != null) {
+                serviceNames.addAll(servicesField.value());
+            }
+        }
+
+        return serviceNames;
     }
 
     private void updateIncident(Incident existing, Incident updated) {
@@ -159,6 +193,11 @@ public class IncidentSyncService {
         existing.setResolvedTime(updated.getResolvedTime());
         existing.setDurationSeconds(updated.getDurationSeconds());
         existing.setUpdatedAt(updated.getUpdatedAt());
+
+        // Merge service names - create new mutable set with both existing and new services
+        Set<String> mergedServices = new HashSet<>(existing.getServiceNames());
+        mergedServices.addAll(updated.getServiceNames());
+        existing.setServiceNames(mergedServices);
 
         incidentRepository.save(existing);
     }
@@ -196,5 +235,27 @@ public class IncidentSyncService {
             case "SEV4" -> IncidentSeverity.SEV4;
             default -> IncidentSeverity.SEV5;
         };
+    }
+
+    /**
+     * Valida si el incidente tiene el servicio esperado en su campo services.
+     *
+     * @param incidentData Datos del incidente de Datadog
+     * @param expectedService Nombre del servicio esperado
+     * @return true si el incidente tiene el servicio esperado, false en caso contrario
+     */
+    boolean hasExpectedService(DatadogIncidentData incidentData, String expectedService) {
+        if (incidentData.attributes() == null || incidentData.attributes().fields() == null) {
+            return false;
+        }
+
+        var servicesField = incidentData.attributes().fields().services();
+        if (servicesField == null || servicesField.value() == null || servicesField.value().isEmpty()) {
+            return false;
+        }
+
+        List<String> services = servicesField.value();
+        return services.stream()
+                .anyMatch(service -> service != null && service.equalsIgnoreCase(expectedService));
     }
 }

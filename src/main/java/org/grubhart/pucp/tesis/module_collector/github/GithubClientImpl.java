@@ -232,7 +232,7 @@ public class GithubClientImpl implements GithubUserAuthenticator, GithubCommitCo
 
         if (commits != null && !commits.isEmpty()) {
             String sha = commits.get(0).getSha();
-            logger.info("First commit for PR #{} is {}", prNumber, sha);
+            logger.debug("First commit for PR #{} is {}", prNumber, sha);
             return sha;
         } else {
             logger.warn("No commits found for PR #{}", prNumber);

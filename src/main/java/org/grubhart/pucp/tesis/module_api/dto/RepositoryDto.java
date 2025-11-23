@@ -23,6 +23,9 @@ public record RepositoryDto(
         String repoName,
 
         @Schema(description = "Nombre del archivo de workflow de deployment en GitHub Actions (puede ser null)", example = "deploy.yml")
-        String deploymentWorkflowFileName
+        String deploymentWorkflowFileName,
+
+        @Schema(description = "Nombre del ambiente de producción para filtrar deployments (por defecto 'prod')", example = "prod")
+        String productionEnvironmentName
 ) {
 }

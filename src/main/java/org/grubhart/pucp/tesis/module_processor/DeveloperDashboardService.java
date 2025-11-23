@@ -362,14 +362,14 @@ public class DeveloperDashboardService {
                                 && incident.getStartTime().isBefore(windowEnd);
 
                         // Correlacionar por serviceName si está disponible
-                        if (deployment.getServiceName() != null && incident.getServiceName() != null) {
+                        String deploymentService = deployment.getServiceName();
+                        if (deploymentService != null && incident.getServiceNames() != null) {
                             return withinTimeWindow
-                                    && deployment.getServiceName().equals(incident.getServiceName());
+                                    && incident.getServiceNames().contains(deploymentService);
                         }
 
-                        // Fallback: correlacionar por repositorio
-                        return withinTimeWindow
-                                && deployment.getRepository().getId().equals(incident.getRepository().getId());
+                        // Si no hay match por service name, no correlacionar
+                        return false;
                     });
 
             if (hasIncident) {

@@ -124,6 +124,12 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   }
 
   # --- Variables de Entorno ---
+  # JPA/Hibernate - 'update' para producción, evita destruir datos
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "SPRING_JPA_HIBERNATE_DDL_AUTO"
+    value     = "update"
+  }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "JDBC_DATABASE_URL"
@@ -181,15 +187,27 @@ resource "aws_elastic_beanstalk_environment" "tesis_env" {
   }
 
   # --- Variables de Entorno para Datadog ---
+  # Para ENVIAR logs/traces de esta aplicación
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "DD_API_KEY"
     value     = var.datadog_api_key
   }
+  # Para LEER datos de la organización a evaluar (servicios APM, incidentes)
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "DD_APPLICATION_KEY"
-    value     = var.datadog_application_key
+    name      = "DD_READ_API_KEY"
+    value     = var.datadog_read_api_key
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_READ_APPLICATION_KEY"
+    value     = var.datadog_read_application_key
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DD_READ_BASE_URL"
+    value     = var.datadog_read_base_url
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"

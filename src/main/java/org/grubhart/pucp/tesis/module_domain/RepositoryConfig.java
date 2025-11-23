@@ -25,9 +25,18 @@ public class RepositoryConfig {
 
     /**
      * The file name of the GitHub Actions workflow that handles deployments.
-     * Example: "deploy.yml"
+     * Example: "deploy.yml", "deploy-production.yml"
+     * Must be configured per repository.
      */
     private String deploymentWorkflowFileName;
+
+    /**
+     * The environment name that identifies production deployments.
+     * This value is matched against the display_title of workflow runs.
+     * Example: "prod" matches "Deploy to prod by @username"
+     * Must be configured per repository.
+     */
+    private String productionEnvironmentName;
 
 
 
@@ -131,5 +140,13 @@ public class RepositoryConfig {
 
     public void setRepositoryUrl(String repositoryUrl) {
         this.repositoryUrl = repositoryUrl;
+    }
+
+    public String getProductionEnvironmentName() {
+        return productionEnvironmentName;
+    }
+
+    public void setProductionEnvironmentName(String productionEnvironmentName) {
+        this.productionEnvironmentName = productionEnvironmentName;
     }
 }

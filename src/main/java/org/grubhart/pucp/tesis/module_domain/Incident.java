@@ -2,7 +2,9 @@ package org.grubhart.pucp.tesis.module_domain;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 @Entity
 @Table(name = "incidents")
@@ -14,10 +16,6 @@ public class Incident {
 
     @Column(nullable = false, unique = true)
     private String datadogIncidentId;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "repository_id", nullable = false)
-    private RepositoryConfig repository;
 
     @Column(nullable = false)
     private String title;
@@ -37,11 +35,14 @@ public class Incident {
     private Long durationSeconds;
 
     /**
-     * The Datadog service name this incident is associated with.
-     * This should match the DD_SERVICE tag in Datadog.
-     * Maintained for reference and debugging purposes.
+     * The Datadog service names this incident is associated with.
+     * An incident can affect multiple services.
      */
-    private String serviceName;
+    @ElementCollection
+    @CollectionTable(name = "incident_services",
+        joinColumns = @JoinColumn(name = "incident_id"))
+    @Column(name = "service_name")
+    private Set<String> serviceNames = new HashSet<>();
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
@@ -53,18 +54,17 @@ public class Incident {
         // JPA constructor
     }
 
-    public Incident(String datadogIncidentId, RepositoryConfig repository, String title, IncidentState state,
+    public Incident(String datadogIncidentId, String title, IncidentState state,
                    IncidentSeverity severity, LocalDateTime startTime, LocalDateTime resolvedTime,
-                   Long durationSeconds, String serviceName, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                   Long durationSeconds, Set<String> serviceNames, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.datadogIncidentId = datadogIncidentId;
-        this.repository = repository;
         this.title = title;
         this.state = state;
         this.severity = severity;
         this.startTime = startTime;
         this.resolvedTime = resolvedTime;
         this.durationSeconds = durationSeconds;
-        this.serviceName = serviceName;
+        this.serviceNames = serviceNames != null ? serviceNames : new HashSet<>();
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -135,12 +135,16 @@ public class Incident {
         this.durationSeconds = durationSeconds;
     }
 
-    public String getServiceName() {
-        return serviceName;
+    public Set<String> getServiceNames() {
+        return serviceNames;
     }
 
-    public void setServiceName(String serviceName) {
-        this.serviceName = serviceName;
+    public void setServiceNames(Set<String> serviceNames) {
+        this.serviceNames = serviceNames;
+    }
+
+    public void addServiceName(String serviceName) {
+        this.serviceNames.add(serviceName);
     }
 
     public LocalDateTime getCreatedAt() {
@@ -157,14 +161,6 @@ public class Incident {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
-    }
-
-    public RepositoryConfig getRepository() {
-        return repository;
-    }
-
-    public void setRepository(RepositoryConfig repository) {
-        this.repository = repository;
     }
 
     @Override

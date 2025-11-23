@@ -139,17 +139,20 @@ public class RepositoryController {
     public ResponseEntity<RepositoryDto> updateRepository(
             @PathVariable Long id,
             @RequestBody UpdateRepositoryRequest request) {
-        logger.debug("Updating repository {} with datadogServiceName: {}, deploymentWorkflowFileName: {}",
-                id, request.datadogServiceName(), request.deploymentWorkflowFileName());
+        logger.debug("Updating repository {} with datadogServiceName: {}, deploymentWorkflowFileName: {}, productionEnvironmentName: {}",
+                id, request.datadogServiceName(), request.deploymentWorkflowFileName(), request.productionEnvironmentName());
 
         try {
             return repositoryConfigRepository.findById(id)
                     .map(repo -> {
                         repo.setDatadogServiceName(request.datadogServiceName());
                         repo.setDeploymentWorkflowFileName(request.deploymentWorkflowFileName());
+                        if (request.productionEnvironmentName() != null && !request.productionEnvironmentName().isBlank()) {
+                            repo.setProductionEnvironmentName(request.productionEnvironmentName());
+                        }
                         RepositoryConfig updated = repositoryConfigRepository.save(repo);
-                        logger.info("Repository {} updated with datadogServiceName: {}, deploymentWorkflowFileName: {}",
-                                id, request.datadogServiceName(), request.deploymentWorkflowFileName());
+                        logger.info("Repository {} updated with datadogServiceName: {}, deploymentWorkflowFileName: {}, productionEnvironmentName: {}",
+                                id, request.datadogServiceName(), request.deploymentWorkflowFileName(), request.productionEnvironmentName());
                         return ResponseEntity.ok(mapToDto(updated));
                     })
                     .orElseGet(() -> {
@@ -169,7 +172,8 @@ public class RepositoryController {
                 repo.getDatadogServiceName(),
                 repo.getOwner(),
                 repo.getRepoName(),
-                repo.getDeploymentWorkflowFileName()
+                repo.getDeploymentWorkflowFileName(),
+                repo.getProductionEnvironmentName()
         );
     }
 }

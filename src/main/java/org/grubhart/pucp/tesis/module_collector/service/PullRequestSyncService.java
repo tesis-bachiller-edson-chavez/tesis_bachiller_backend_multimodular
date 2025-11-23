@@ -37,7 +37,7 @@ public class PullRequestSyncService {
      * Tarea programada para sincronizar Pull Requests desde los repositorios configurados.
      * Se ejecuta 20 segundos después de que la aplicación arranca y luego cada hora.
      */
-    @Scheduled(initialDelay = 20000, fixedRate = 300000)
+    @Scheduled(initialDelay = 2160000, fixedRate = 3600000) // Every hour, starts at 36 min
     public void syncPullRequests() {
         List<RepositoryConfig> configs = repositoryConfigRepository.findAll();
         if (configs.isEmpty()) {
@@ -46,8 +46,19 @@ public class PullRequestSyncService {
         }
 
         log.info("Iniciando ciclo de sincronización para {} repositorios configurados.", configs.size());
-        for (RepositoryConfig config : configs) {
-            syncRepository(config);
+        for (int i = 0; i < configs.size(); i++) {
+            syncRepository(configs.get(i));
+
+            // Add delay between repositories to avoid hitting GitHub rate limit
+            if (i < configs.size() - 1) {
+                try {
+                    Thread.sleep(2000); // 2 seconds delay between repos
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Sincronización de Pull Requests interrumpida");
+                    return;
+                }
+            }
         }
         log.info("Ciclo de sincronización de Pull Requests finalizado.");
     }
@@ -64,7 +75,7 @@ public class PullRequestSyncService {
         String jobName = JOB_NAME_PREFIX + owner + "/" + repo;
         Optional<SyncStatus> syncStatus = syncStatusRepository.findById(jobName);
         LocalDateTime lastSync = syncStatus.map(SyncStatus::getLastSuccessfulRun)
-                .orElse(LocalDateTime.now().minusYears(1)); // Si nunca se ha sincronizado, trae los PRs de hace un año.
+                .orElse(LocalDateTime.now().minusMonths(3)); // Si nunca se ha sincronizado, trae los PRs de los últimos 3 meses.
 
         try {
             log.info("Iniciando sincronización de Pull Requests para {}/{}", owner, repo);

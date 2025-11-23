@@ -19,6 +19,8 @@ public class GitHubWorkflowRunDto {
     private LocalDateTime createdAt;
     @JsonProperty("updated_at")
     private LocalDateTime updatedAt;
+    @JsonProperty("display_title")
+    private String displayTitle;
 
     // No-args constructor
     public GitHubWorkflowRunDto() {
@@ -87,5 +89,13 @@ public class GitHubWorkflowRunDto {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getDisplayTitle() {
+        return displayTitle;
+    }
+
+    public void setDisplayTitle(String displayTitle) {
+        this.displayTitle = displayTitle;
     }
 }

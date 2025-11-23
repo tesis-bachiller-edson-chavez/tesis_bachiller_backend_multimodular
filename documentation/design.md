@@ -4684,3 +4684,436 @@ private String extractRealAuthor(GithubCommitDto dto,
 4. Datadog API Documentation: https://docs.datadoghq.com/api/latest/incidents/
 
 5. GitHub Deployments API: https://docs.github.com/en/rest/deployments
+
+---
+
+## 18. Análisis de Filtrado de Métricas del Dashboard y Colaboración Entre Equipos
+
+### 18.1. Resumen Ejecutivo
+
+Los servicios de dashboard (TechLeadDashboardService, EngineeringManagerDashboardService y DeveloperDashboardService) implementan un modelo de filtrado de tres niveles basado en la jerarquía organizacional. **El sistema actualmente carece de soporte integrado para colaboración entre equipos**: las contribuciones a repositorios fuera del equipo de un desarrollador no se rastrean ni se atribuyen en las métricas del equipo/miembro.
+
+### 18.2. Arquitectura Actual de Filtrado
+
+#### 18.2.1. Scope de Cada Servicio
+
+**TechLeadDashboardService**
+- Scope: Equipo único (basado en `techLead.teamId`)
+- Miembros: Todos los usuarios donde `teamId = techLead.teamId`
+- Repositorios: Asignados explícitamente al equipo via `Team.repositories` (ManyToMany)
+- Commits: Solo de miembros del equipo a repositorios del equipo
+- **Limitación**: Commits de miembros a otros repositorios se excluyen completamente
+
+**EngineeringManagerDashboardService**
+- Scope: Múltiples equipos (filtrados por `teamIds` o todos si es null)
+- Miembros: Todos los usuarios de equipos seleccionados
+- Repositorios: Union de todos los repositorios de equipos seleccionados
+- Commits: Cada equipo solo ve commits de sus miembros a sus repositorios
+- **Limitación**: Requiere que miembros sean parte del equipo para contar sus contribuciones
+
+**DeveloperDashboardService**
+- Scope: Desarrollador individual (por `githubUsername`)
+- Miembros: N/A (desarrollador único)
+- Repositorios: Todos aquellos a los que el desarrollador ha contribuido
+- Commits: Todos los commits del desarrollador sin restricción de equipo
+- **Fortaleza**: Única vista que muestra contribuciones cross-team
+
+#### 18.2.2. Lógica de Filtrado por Capas
+
+**Capa 1: Filtrado de Miembros**
+```
+TechLead: teamId = techLead.teamId
+EM: teamId IN (selectedTeamIds)
+Developer: githubUsername = parameter
+```
+
+**Capa 2: Filtrado de Repositorios**
+```
+TechLead: repositoryIds (via Team.repositories)
+EM: repositoryIds (union de Team.repositories)
+Developer: repositoryIds (donde desarrollador contribuyó)
+```
+
+**Capa 3: Filtrado de Deployments**
+```
+All: via ChangeLeadTime junction table
+  - Commit.sha IN (developer commits)
+  - Deployment.createdAt BETWEEN startDate AND endDate
+  - Deployment.repository.id IN repositoryIds
+```
+
+### 18.3. El Problema: Invisibilidad de Contribuciones Cross-Team
+
+#### 18.3.1. Escenario Típico
+
+```
+Equipo Backend (alice, bob)
+  └─ Repositorio backend-api
+
+Equipo Frontend (charlie, diana)
+  └─ Repositorio frontend-app
+
+Escenario Real: alice ayuda a charlie con bug crítico en frontend-app
+  → alice hace 5 commits a frontend-app
+  → estos commits APARECEN en dashboard de alice
+  → estos commits NO APARECEN en métricas del Equipo Backend
+  → estos commits APARECEN en métricas del Equipo Frontend
+```
+
+#### 18.3.2. Tabla de Visibilidad
+
+| Métrica | alice→backend-api | alice→frontend-app |
+|---------|-------------------|------------------|
+| TechLead Backend | ✓ Mostrado | ✗ Excluido |
+| TechLead Frontend | ✗ N/A | ✓ Mostrado |
+| EM (ambos equipos) | ✓ Backend | ✓ Frontend |
+| Developer alice | ✓ Mostrado | ✓ Mostrado |
+| Métricas Equipo Backend | ✓ Contado | ✗ Excluido |
+| Métricas Equipo Frontend | ✗ No | ✓ Contado |
+
+**Impacto**:
+- Equipo Backend: alice aparece con menos commits (trabajo invisible)
+- Equipo Frontend: charlie obtiene ayuda externa sin registro
+- EM: ve contribuciones pero no puede identificar colaboración real
+- alice: ve toda su actividad pero métricas de equipo no reflejan su real impacto
+
+### 18.4. Brechas Identificadas
+
+#### Brecha 1: Sin Vista de Colaboración Entre Equipos
+**Problema**: No existe endpoint/métrica que muestre "¿quién en el Equipo A contribuyó al Equipo B?"
+
+**Impacto Operacional**:
+- Impossibilidad de medir deuda técnica compartida
+- Impossibilidad de identificar silos de conocimiento
+- Falta de visibilidad en dependencias entre equipos
+
+#### Brecha 2: Sin Historial de Cambios de Equipo
+**Problema**: `User.teamId` es un FK simple, sin auditoría de cambios
+
+**Código Actual**:
+```java
+@Column(nullable = true)
+private Long teamId; // Solo un equipo, sin historial
+```
+
+**Impacto**:
+- Si alice se mueve del Equipo A al Equipo B, sus commits antiguos se reasignan
+- Imposible responder: "¿Cuándo alice estaba en el Equipo A?"
+- Métricas históricas pueden ser incorrectas
+
+#### Brecha 3: Sin Clasificación de Tipo de Contribución
+**Problema**: Commits se incluyen o excluyen, sin marcar intención de colaboración
+
+**Casos No Manejados**:
+- alice contribuye voluntariamente a otro equipo
+- alice es forzada a ayudar por deadline
+- alice revisa código pero no commits
+- alice mentoriza pero no contribuye directamente
+- alice arregla dependency compartida
+
+#### Brecha 4: Sin Aprobación de Trabajo Cross-Team
+**Problema**: Contribuciones a otros equipos son implícitas, sin workflow de aprobación
+
+**Escenario**:
+```
+alice quiere contribuir 20 horas a Equipo Frontend
+Equipo Backend Lead: ¿debo aprobar esto?
+Equipo Frontend Lead: ¿cuándo empieza?
+Sistema: *silencio* (commits aparecen sin registro)
+```
+
+#### Brecha 5: Sin Asignación de Repositorio a Nivel de Desarrollador
+**Problema**: Team -> Repositories es N:N, pero sin granularidad Developer -> Repositories
+
+**Limitación Actual**:
+```java
+Team
+├── repositories (ManyToMany) // Solo a nivel de equipo
+```
+
+**Necesidad**:
+```java
+Developer
+├── repositories (subset del equipo) // "alice solo trabaja en estos 3 repos"
+```
+
+### 18.5. Impacto en DORA Metrics
+
+Las métricas DORA calculadas no reflejan la verdadera capacidad de los equipos cuando hay colaboración cross-team:
+
+**Deployment Frequency**:
+- alice contribuye a frontend-app pero no se cuenta en Backend metrics
+- Backend parece tener menos deployments de los que realmente hace
+
+**Lead Time**:
+- alice arregla bug crítico en otra rama (frontend-app)
+- Lead time de ese commit no se cuenta en Backend team
+- Métricas de velocidad del Backend quedan artificialmente bajas
+
+**Change Failure Rate**:
+- Incident en frontend-app causado por frontend-app deployment
+- Pero alice (Backend) trabajó en el código
+- CFR del Backend no refleja que alice contribuyó a ese incident
+
+**MTTR**:
+- Frontend tarda 6 horas en resolver un issue
+- alice (Backend) contribuyó 2 horas a la solución
+- Backend nunca se entera de que hubo un incident
+
+---
+
+## 19. Recomendaciones para Trabajos Futuros
+
+### 19.1. Corto Plazo (Próximo Sprint)
+
+#### 19.1.1. Agregar Visibilidad de Contribuciones Cross-Team
+
+**Implementar clasificación de commits**:
+```java
+@Entity
+public class Commit {
+    // ... campos existentes ...
+    
+    @Enumerated(EnumType.STRING)
+    private CommitClassification classification; // TEAM_REPO, CROSS_TEAM, EXTERNAL
+    
+    @ManyToOne
+    private Team primaryTeam; // Equipo del desarrollador en el momento del commit
+}
+
+public enum CommitClassification {
+    TEAM_REPO,    // Desarrollador contribuye a repo de su equipo
+    CROSS_TEAM,   // Contribuye a repo de otro equipo
+    EXTERNAL      // Contribuye a repo no asignado a ningún equipo
+}
+```
+
+**Actualizar filtros**:
+```java
+// En TechLeadDashboardService
+Map<CommitClassification, List<Commit>> classifiedCommits = 
+    filteredCommits.stream().collect(Collectors.groupingBy(Commit::getClassification));
+
+TechLeadMetricsResponse {
+    // ... métricas existentes ...
+    List<CrossTeamContributionDto> crossTeamContributions; // alice contribuyó a X repos externos
+}
+```
+
+#### 19.1.2. Dashboard de Desarrollo para Verificar Visibilidad
+
+Crear endpoint `/dashboard/cross-team-contributions` que muestre:
+```java
+@Data
+public class CrossTeamContributionSummary {
+    List<DeveloperCrossTeamStats> developers;
+    // alice: 10 commits Backend, 5 commits Frontend
+    
+    List<RepositoryCollaborationStats> repositories;
+    // frontend-app: contribuciones de 2 desarrolladores del Backend team
+    
+    List<TeamDependencyStats> teamDependencies;
+    // Backend depende de 3 repos Frontend, Frontend depende de 0 Backend
+}
+```
+
+### 19.2. Mediano Plazo (Próximas 2-3 Sprints)
+
+#### 19.2.1. Implementar Auditoría de Cambios de Equipo
+
+```java
+@Entity
+public class UserTeamHistory {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @ManyToOne
+    private User user;
+    
+    @ManyToOne
+    private Team team;
+    
+    private LocalDate startDate;
+    private LocalDate endDate; // null si es actual
+    
+    private String reason; // "promotion", "reorganization", "temporary_assignment"
+}
+
+// En User
+@OneToMany(mappedBy = "user")
+private List<UserTeamHistory> teamHistory;
+
+public Team getCurrentTeam() {
+    return teamHistory.stream()
+        .filter(h -> h.getEndDate() == null)
+        .findFirst()
+        .map(UserTeamHistory::getTeam)
+        .orElse(null);
+}
+```
+
+**Impacto**: Métricas pueden atribuir commits al equipo correcto en el momento del commit
+
+#### 19.2.2. Asignación de Repositorio a Nivel de Desarrollador
+
+```java
+@Entity
+public class DeveloperRepositoryAssignment {
+    @ManyToOne
+    private Developer developer;
+    
+    @ManyToOne
+    private RepositoryConfig repository;
+    
+    @Enumerated(EnumType.STRING)
+    private AssignmentType type; // PRIMARY, SUPPORTING, REVIEWING
+    
+    private LocalDate startDate;
+    private LocalDate endDate;
+}
+
+// En Developer (User)
+@OneToMany
+private Set<DeveloperRepositoryAssignment> repositoryAssignments;
+```
+
+**Impacto**: 
+- TechLead puede ver a quién está asignado a cada repo
+- Puede validar que no hay cambios sin autorización
+- Métricas pueden reflejar intención, no solo realidad
+
+#### 19.2.3. Workflow de Aprobación para Contribuciones Cross-Team
+
+Crear request/approval flow:
+```java
+@Entity
+public class CrossTeamContributionRequest {
+    @ManyToOne
+    private Developer developer;
+    
+    @ManyToOne
+    private Team fromTeam;
+    
+    @ManyToOne
+    private Team toTeam;
+    
+    @ManyToOne
+    private RepositoryConfig repository;
+    
+    private String description; // "Fix critical bug", "Feature implementation"
+    
+    @Enumerated(EnumType.STRING)
+    private RequestStatus status; // PENDING, APPROVED, REJECTED, COMPLETED
+    
+    @ManyToOne
+    private User approvedByFromTeam;
+    
+    @ManyToOne
+    private User approvedByToTeam;
+    
+    private LocalDate startDate;
+    private LocalDate endDate;
+}
+```
+
+### 19.3. Largo Plazo (Roadmap Estratégico)
+
+#### 19.3.1. Dashboard de Colaboración Entre Equipos
+
+```
+Visualización:
+- Matriz de equipos mostrando dependencias
+- Grafo de contribuciones developer-to-team
+- Timeline de cambios de equipo
+- Heatmap de cross-team commits por sprint
+```
+
+#### 19.3.2. Métricas de Organizacionales Avanzadas
+
+```java
+public class OrganizationMetrics {
+    // Conocimiento compartido
+    List<KnowledgeBridge> knowledgeBridges; 
+    // alice es la única que conoce X módulo en ambos equipos
+    
+    // Interdependencias
+    List<TeamDependency> dependencies;
+    // Backend 100% depende de Frontend API
+    
+    // Patrón de colaboración
+    CollaborationPattern pattern;
+    // Matriz rígida vs matriz flexible vs ad-hoc
+    
+    // Riesgo organizacional
+    RiskMetrics risks;
+    // Bus factor, Knowledge silos, Deployment risk
+}
+```
+
+#### 19.3.3. Soporte para Estructuras Organizacionales Complejas
+
+```java
+// Soportar diferentes modelos:
+// 1. Equipos puros (actual)
+// 2. Matriz (equipos + líneas funcionales)
+// 3. Guildas (comunidades de práctica)
+// 4. Pods (equipos pequeños cross-funcionales)
+
+@Entity
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+public abstract class OrganizationalUnit {
+    Long id;
+    String name;
+    Set<Developer> members;
+    Set<RepositoryConfig> repositories;
+}
+
+public class Team extends OrganizationalUnit { }
+public class Guild extends OrganizationalUnit { }
+public class Pod extends OrganizationalUnit { }
+```
+
+### 19.4. Consideraciones de Implementación
+
+#### 19.4.1. Migración de Datos
+
+- Todos los commits históricos necesitan classification
+- Script de migración para asignar `primaryTeam` a commits basado en User.teamId en esa fecha
+- Auditoría de cambios históricos
+
+#### 19.4.2. Impacto en DORA Metrics
+
+Las métricas DORA pueden necesitar recalculación:
+- Opción 1: Incluir cross-team contributions (actual)
+- Opción 2: Excluir cross-team contributions (más puro)
+- Opción 3: Doble conteo (cross-team commits se cuentan en ambos equipos)
+
+**Recomendación**: Hacer configurable por organización
+
+#### 19.4.3. Performance
+
+- Cross-team analysis requiere joins complejos
+- Considerar materializar vistas (pre-computed tables)
+- Cache de clasificaciones de commits
+
+#### 19.4.4. Seguridad y Privacidad
+
+- ¿Quién puede ver contribuciones cross-team?
+- ¿Puede un TechLead ver que alice contribuyó a otro equipo?
+- Auditoría de accesos a datos cross-team
+
+---
+
+## 20. Conclusión
+
+El sistema actual implementa un modelo de métricas **centrado en equipos** que es efectivo para equipos independientes pero se quiebra con colaboración real. Las contribuciones cross-team existen, son invisibles en las métricas del equipo, y crean divergencia entre lo que reportan las métricas y la realidad operativa.
+
+**Próximos pasos recomendados**:
+1. Aumentar visibilidad con clasificación de commits (corto plazo)
+2. Implementar auditoría histórica de equipos (mediano plazo)
+3. Crear workflow de aprobación para cross-team work (mediano plazo)
+4. Desarrollar métricas de organización (largo plazo)
+
+La falta de este soporte es particularmente importante en organizaciones matriciales o con alta colaboración entre equipos.
+
