@@ -67,6 +67,12 @@ variable "datadog_api_key" {
   sensitive   = true
 }
 
+variable "datadog_application_key" {
+  description = "La clave de aplicación de Datadog para ENVIAR logs/traces de esta aplicación."
+  type        = string
+  sensitive   = true
+}
+
 # Variables para LEER datos de la organización a evaluar (pueden ser de otra org)
 variable "datadog_read_api_key" {
   description = "La clave de API de Datadog para LEER servicios APM e incidentes de la org a evaluar."
