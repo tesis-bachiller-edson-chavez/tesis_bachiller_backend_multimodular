@@ -184,8 +184,8 @@ public class Oauth2LoginSuccessHandlerTest {
     }
 
     @Test
-    @DisplayName("M (Many): El primer administrador es redirigido a la página de setup")
-    void onAuthenticationSuccess_whenFirstAdmin_shouldRedirectToSetupPage() throws IOException, ServletException {
+    @DisplayName("M (Many): El primer administrador es redirigido a home")
+    void onAuthenticationSuccess_whenFirstAdmin_shouldRedirectToHome() throws IOException, ServletException {
         // GIVEN
         Map<String, Object> userAttributes = Map.of(
                 "id", 1L,
@@ -204,13 +204,13 @@ public class Oauth2LoginSuccessHandlerTest {
         successHandler.onAuthenticationSuccess(request, response, authentication);
 
         // THEN
-        // 2. Verificamos que se redirige a la página de configuración del frontend.
-        verify(response).sendRedirect(frontendUrlForTest + "/admin/setup");
+        // 2. Verificamos que se redirige a home (el frontend maneja la lógica de setup si es necesario).
+        verify(response).sendRedirect(frontendUrlForTest + "/home");
     }
 
     @Test
-    @DisplayName("C (Corner Case): El primer admin (pre-existente) es redirigido a setup")
-    void onAuthenticationSuccess_whenFirstAdminExistsWithoutRole_shouldBeRedirectedToSetup() throws IOException, ServletException {
+    @DisplayName("C (Corner Case): El primer admin (pre-existente) es redirigido a home")
+    void onAuthenticationSuccess_whenFirstAdminExistsWithoutRole_shouldBeRedirectedToHome() throws IOException, ServletException {
         // GIVEN
         Map<String, Object> userAttributes = Map.of(
                 "id", 1L,
@@ -229,7 +229,7 @@ public class Oauth2LoginSuccessHandlerTest {
         successHandler.onAuthenticationSuccess(request, response, authentication);
 
         // THEN
-        // 2. Verificamos que se redirige a la página de configuración del frontend, incluso si el usuario ya existía.
-        verify(response).sendRedirect(frontendUrlForTest + "/admin/setup");
+        // 2. Verificamos que se redirige a home (el frontend maneja la lógica de setup si es necesario).
+        verify(response).sendRedirect(frontendUrlForTest + "/home");
     }
 }
